@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2019 Hemanth Savarala.
+ * Copyright (c) 2019 Hemanth Savarla.
  *
  * Licensed under the GNU General Public License v3
  *
@@ -38,6 +38,7 @@ interface Repository {
     suspend fun allSongs(): List<Song>
     suspend fun fetchArtists(): List<Artist>
     suspend fun albumArtists(): List<Artist>
+    suspend fun fetchMultiArtists(): List<Artist>
     suspend fun fetchLegacyPlaylist(): List<Playlist>
     suspend fun fetchGenres(): List<Genre>
     suspend fun search(query: String?, filter: Filter): MutableList<Any>
@@ -45,6 +46,7 @@ interface Repository {
     suspend fun getGenre(genreId: Long): List<Song>
     suspend fun artistById(artistId: Long): Artist
     suspend fun albumArtistByName(name: String): Artist
+    suspend fun multiArtistByName(name: String): Artist
     suspend fun recentArtists(): List<Artist>
     suspend fun topArtists(): List<Artist>
     suspend fun topAlbums(): List<Album>
@@ -130,10 +132,15 @@ class RealRepository(
 
     override suspend fun albumArtists(): List<Artist> = artistRepository.albumArtists()
 
+    override suspend fun fetchMultiArtists(): List<Artist> = artistRepository.multiArtists()
+
     override suspend fun artistById(artistId: Long): Artist = artistRepository.artist(artistId)
 
     override suspend fun albumArtistByName(name: String): Artist =
         artistRepository.albumArtist(name)
+
+    override suspend fun multiArtistByName(name: String): Artist =
+        artistRepository.multiArtistByName(name)
 
     override suspend fun recentArtists(): List<Artist> = lastAddedRepository.recentArtists()
 
