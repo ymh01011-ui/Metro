@@ -124,12 +124,19 @@ object PreferenceUtil {
             putString(SAF_SDCARD_URI, value)
         }
 
-    var albumArtistsOnly
+        var albumArtistsOnly
         get() = sharedPreferences.getBoolean(
             ALBUM_ARTISTS_ONLY,
             false
         )
         set(value) = sharedPreferences.edit { putBoolean(ALBUM_ARTISTS_ONLY, value) }
+
+    var multiArtistsEnabled
+        get() = sharedPreferences.getBoolean(
+            "multi_artists_enabled",
+            false
+        )
+        set(value) = sharedPreferences.edit { putBoolean("multi_artists_enabled", value) }
 
     var albumDetailSongSortOrder
         get() = sharedPreferences.getStringOrDefault(
