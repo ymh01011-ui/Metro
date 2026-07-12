@@ -33,6 +33,7 @@ import code.name.monkey.retromusic.glide.RetroMusicColoredTarget
 import code.name.monkey.retromusic.helper.menu.SongsMenuHelper
 import code.name.monkey.retromusic.interfaces.IAlbumArtistClickListener
 import code.name.monkey.retromusic.interfaces.IArtistClickListener
+import code.name.monkey.retromusic.interfaces.IMultiArtistClickListener
 import code.name.monkey.retromusic.model.Artist
 import code.name.monkey.retromusic.model.Song
 import code.name.monkey.retromusic.util.MusicUtil
@@ -46,11 +47,13 @@ class ArtistAdapter(
     var dataSet: List<Artist>,
     var itemLayoutRes: Int,
     val IArtistClickListener: IArtistClickListener,
-    val IAlbumArtistClickListener: IAlbumArtistClickListener? = null
+    val IAlbumArtistClickListener: IAlbumArtistClickListener? = null,
+    val IMultiArtistClickListener: IMultiArtistClickListener? = null
 ) : AbsMultiSelectAdapter<ArtistAdapter.ViewHolder, Artist>(activity, R.menu.menu_media_selection),
     PopupTextProvider {
 
     var albumArtistsOnly = false
+    var multiArtistsEnabled = false
 
     init {
         this.setHasStableIds(true)
@@ -61,6 +64,7 @@ class ArtistAdapter(
         this.dataSet = dataSet
         notifyDataSetChanged()
         albumArtistsOnly = PreferenceUtil.albumArtistsOnly
+        multiArtistsEnabled = PreferenceUtil.multiArtistsEnabled
     }
 
     override fun getItemId(position: Int): Long {
@@ -88,7 +92,7 @@ class ArtistAdapter(
         holder.title?.text = artist.name
         holder.text?.hide()
         val transitionName =
-            if (albumArtistsOnly) artist.name else artist.id.toString()
+            if (albumArtistsOnly || multiArtistsEnabled) artist.name else artist.id.toString()
         if (holder.imageContainer != null) {
             holder.imageContainer?.transitionName = transitionName
         } else {
@@ -170,10 +174,16 @@ class ArtistAdapter(
             } else {
                 val artist = dataSet[layoutPosition]
                 image?.let {
-                    if (albumArtistsOnly && IAlbumArtistClickListener != null) {
-                        IAlbumArtistClickListener.onAlbumArtist(artist.name, imageContainer ?: it)
-                    } else {
-                        IArtistClickListener.onArtist(artist.id, imageContainer ?: it)
+                    when {
+                        multiArtistsEnabled && IMultiArtistClickListener != null -> {
+                            IMultiArtistClickListener.onMultiArtist(artist.name, imageContainer ?: it)
+                        }
+                        albumArtistsOnly && IAlbumArtistClickListener != null -> {
+                            IAlbumArtistClickListener.onAlbumArtist(artist.name, imageContainer ?: it)
+                        }
+                        else -> {
+                            IArtistClickListener.onArtist(artist.id, imageContainer ?: it)
+                        }
                     }
                 }
             }
