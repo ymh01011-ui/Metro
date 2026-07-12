@@ -99,10 +99,16 @@ class LibraryViewModel(
     }
 
     private suspend fun fetchArtists() {
-        if (PreferenceUtil.albumArtistsOnly) {
-            artists.postValue(repository.albumArtists())
-        } else {
-            artists.postValue(repository.fetchArtists())
+        when {
+            PreferenceUtil.multiArtistsEnabled -> {
+                artists.postValue(repository.fetchMultiArtists())
+            }
+            PreferenceUtil.albumArtistsOnly -> {
+                artists.postValue(repository.albumArtists())
+            }
+            else -> {
+                artists.postValue(repository.fetchArtists())
+            }
         }
     }
 
