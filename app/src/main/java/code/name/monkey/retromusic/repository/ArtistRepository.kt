@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2019 Hemanth Savarala.
+ * Copyright (c) 2019 Hemanth Savarla.
  *
  * Licensed under the GNU General Public License v3
  *
@@ -19,6 +19,7 @@ import code.name.monkey.retromusic.ALBUM_ARTIST
 import code.name.monkey.retromusic.helper.SortOrder
 import code.name.monkey.retromusic.model.Album
 import code.name.monkey.retromusic.model.Artist
+import code.name.monkey.retromusic.util.ArtistTagUtil
 import code.name.monkey.retromusic.util.PreferenceUtil
 import java.text.Collator
 
@@ -34,6 +35,14 @@ interface ArtistRepository {
     fun artist(artistId: Long): Artist
 
     fun albumArtist(artistName: String): Artist
+
+    // Multi-artist support: splits combined artist tags (e.g. "A, B feat. C")
+    // into individual artists, so a song appears under each of its artists.
+    fun multiArtists(): List<Artist>
+
+    fun multiArtists(query: String): List<Artist>
+
+    fun multiArtistByName(artistName: String): Artist
 }
 
 class RealArtistRepository(
@@ -145,6 +154,64 @@ class RealArtistRepository(
         return sortArtists(artists)
     }
 
+    override fun multiArtists(): List<Artist> {
+        val songs = songRepository.songs(
+            songRepository.makeSongCursor(
+                null, null,
+                getSongLoaderSortOrder()
+            )
+        )
+        val artists = splitIntoMultiArtists(albumRepository.splitIntoAlbums(songs))
+        return sortArtists(artists)
+    }
+
+    override fun multiArtists(query: String): List<Artist> {
+        val songs = songRepository.songs(
+            songRepository.makeSongCursor(
+                AudioColumns.ARTIST + " LIKE ?",
+                arrayOf("%$query%"),
+                getSongLoaderSortOrder()
+            )
+        )
+        val artists = splitIntoMultiArtists(albumRepository.splitIntoAlbums(songs))
+        return sortArtists(artists).filter { artist ->
+            artist.name.contains(query, ignoreCase = true)
+        }
+    }
+
+    override fun multiArtistByName(artistName: String): Artist {
+        if (artistName == Artist.VARIOUS_ARTISTS_DISPLAY_NAME) {
+            val songs = songRepository.songs(
+                songRepository.makeSongCursor(
+                    null,
+                    null,
+                    getSongLoaderSortOrder()
+                )
+            )
+            val albums = albumRepository.splitIntoAlbums(songs)
+                .filter { it.albumArtist == Artist.VARIOUS_ARTISTS_DISPLAY_NAME }
+            return Artist(Artist.VARIOUS_ARTISTS_ID, albums, true)
+        }
+
+        // We can't filter this in SQL because the artist name we want might be
+        // embedded inside a combined tag (e.g. looking for "Amir Eid" inside
+        // "Cairokee, Amir Eid"). So we pull all songs whose raw artist tag
+        // contains the name as a substring (cheap SQL pre-filter), then confirm
+        // with the real split logic, then re-group only the matching songs.
+        val songs = songRepository.songs(
+            songRepository.makeSongCursor(
+                AudioColumns.ARTIST + " LIKE ?",
+                arrayOf("%$artistName%"),
+                getSongLoaderSortOrder()
+            )
+        )
+        val matchingSongs = songs.filter { song ->
+            ArtistTagUtil.splitArtistNames(song.artistName)
+                .any { it.equals(artistName, ignoreCase = true) }
+        }
+        val albums = albumRepository.splitIntoAlbums(matchingSongs)
+        return Artist(artistName, albums, true)
+    }
 
     private fun splitIntoAlbumArtists(albums: List<Album>): List<Artist> {
         return albums.groupBy { it.albumArtist }
@@ -169,6 +236,42 @@ class RealArtistRepository(
     fun splitIntoArtists(albums: List<Album>): List<Artist> {
         return albums.groupBy { it.artistId }
             .map { Artist(it.key, it.value) }
+    }
+
+    /**
+     * Groups albums by each *individual* artist name found in the raw artist
+     * tag, after splitting on the configured separators (see [ArtistTagUtil]).
+     * A song/album with multiple artists therefore ends up under every one of
+     * those artists, instead of only under the combined-name "artist".
+     */
+    private fun splitIntoMultiArtists(albums: List<Album>): List<Artist> {
+        val buckets = LinkedHashMap<String, MutableList<Album>>()
+
+        for (album in albums) {
+            val names = ArtistTagUtil.splitArtistNames(album.artistName)
+            if (names.isEmpty()) continue
+            for (name in names) {
+                val key = name.lowercase()
+                buckets.getOrPut(key) { mutableListOf() }.add(album)
+                // Preserve the first-seen casing as the display name by
+                // storing it alongside; handled below via a name lookup map.
+            }
+        }
+
+        // Map from lowercase key -> the first-seen display casing
+        val displayNames = LinkedHashMap<String, String>()
+        for (album in albums) {
+            for (name in ArtistTagUtil.splitArtistNames(album.artistName)) {
+                val key = name.lowercase()
+                if (!displayNames.containsKey(key)) {
+                    displayNames[key] = name
+                }
+            }
+        }
+
+        return buckets.map { (key, albumList) ->
+            Artist(displayNames[key] ?: key, albumList, true)
+        }
     }
 
     private fun sortArtists(artists: List<Artist>): List<Artist> {
