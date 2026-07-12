@@ -31,12 +31,13 @@ import code.name.monkey.retromusic.helper.MusicPlayerRemote
 import code.name.monkey.retromusic.helper.SortOrder.ArtistSortOrder
 import code.name.monkey.retromusic.interfaces.IAlbumArtistClickListener
 import code.name.monkey.retromusic.interfaces.IArtistClickListener
+import code.name.monkey.retromusic.interfaces.IMultiArtistClickListener
 import code.name.monkey.retromusic.service.MusicService
 import code.name.monkey.retromusic.util.PreferenceUtil
 import code.name.monkey.retromusic.util.RetroUtil
 
 class ArtistsFragment : AbsRecyclerViewCustomGridSizeFragment<ArtistAdapter, GridLayoutManager>(),
-    IArtistClickListener, IAlbumArtistClickListener {
+    IArtistClickListener, IAlbumArtistClickListener, IMultiArtistClickListener {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
         libraryViewModel.getArtists().observe(viewLifecycleOwner) {
@@ -81,6 +82,7 @@ class ArtistsFragment : AbsRecyclerViewCustomGridSizeFragment<ArtistAdapter, Gri
             requireActivity(),
             dataSet,
             itemLayoutRes(),
+            this,
             this,
             this
         )
@@ -152,6 +154,16 @@ class ArtistsFragment : AbsRecyclerViewCustomGridSizeFragment<ArtistAdapter, Gri
         reenterTransition = null
     }
 
+    override fun onMultiArtist(artistName: String, view: View) {
+        findNavController().navigate(
+            R.id.multiArtistDetailsFragment,
+            bundleOf(EXTRA_ARTIST_NAME to artistName),
+            null,
+            FragmentNavigatorExtras(view to artistName)
+        )
+        reenterTransition = null
+    }
+
     override fun onCreateMenu(menu: Menu, inflater: MenuInflater) {
         super.onCreateMenu(menu, inflater)
         val gridSizeItem: MenuItem = menu.findItem(R.id.action_grid_size)
@@ -163,12 +175,20 @@ class ArtistsFragment : AbsRecyclerViewCustomGridSizeFragment<ArtistAdapter, Gri
         setupLayoutMenu(layoutItem.subMenu!!)
         setUpSortOrderMenu(menu.findItem(R.id.action_sort_order).subMenu!!)
         setupAlbumArtistMenu(menu)
+        setupMultiArtistMenu(menu)
     }
 
     private fun setupAlbumArtistMenu(menu: Menu) {
         menu.add(0, R.id.action_album_artist, 0, R.string.show_album_artists).apply {
             isCheckable = true
             isChecked = PreferenceUtil.albumArtistsOnly
+        }
+    }
+
+    private fun setupMultiArtistMenu(menu: Menu) {
+        menu.add(0, R.id.action_multi_artist, 0, "Split multiple artists").apply {
+            isCheckable = true
+            isChecked = PreferenceUtil.multiArtistsEnabled
         }
     }
 
@@ -256,13 +276,37 @@ class ArtistsFragment : AbsRecyclerViewCustomGridSizeFragment<ArtistAdapter, Gri
         if (handleAlbumArtistMenu(item)) {
             return true
         }
+        if (handleMultiArtistMenu(item)) {
+            return true
+        }
         return super.onMenuItemSelected(item)
     }
 
     private fun handleAlbumArtistMenu(item: MenuItem): Boolean {
         return if (item.itemId == R.id.action_album_artist) {
-            PreferenceUtil.albumArtistsOnly = !item.isChecked
-            item.isChecked = !item.isChecked
+            val newValue = !item.isChecked
+            PreferenceUtil.albumArtistsOnly = newValue
+            item.isChecked = newValue
+            if (newValue) {
+                // Mutually exclusive with multi-artist mode
+                PreferenceUtil.multiArtistsEnabled = false
+            }
+            libraryViewModel.forceReload(ReloadType.Artists)
+            true
+        } else {
+            false
+        }
+    }
+
+    private fun handleMultiArtistMenu(item: MenuItem): Boolean {
+        return if (item.itemId == R.id.action_multi_artist) {
+            val newValue = !item.isChecked
+            PreferenceUtil.multiArtistsEnabled = newValue
+            item.isChecked = newValue
+            if (newValue) {
+                // Mutually exclusive with album-artist mode
+                PreferenceUtil.albumArtistsOnly = false
+            }
             libraryViewModel.forceReload(ReloadType.Artists)
             true
         } else {
