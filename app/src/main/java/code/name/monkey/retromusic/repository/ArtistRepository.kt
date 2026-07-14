@@ -19,6 +19,7 @@ import code.name.monkey.retromusic.ALBUM_ARTIST
 import code.name.monkey.retromusic.helper.SortOrder
 import code.name.monkey.retromusic.model.Album
 import code.name.monkey.retromusic.model.Artist
+import code.name.monkey.retromusic.model.Song
 import code.name.monkey.retromusic.util.ArtistTagUtil
 import code.name.monkey.retromusic.util.PreferenceUtil
 import java.text.Collator
@@ -161,7 +162,7 @@ class RealArtistRepository(
                 getSongLoaderSortOrder()
             )
         )
-        val artists = splitIntoMultiArtists(albumRepository.splitIntoAlbums(songs))
+        val artists = splitIntoMultiArtists(songs)
         return sortArtists(artists)
     }
 
@@ -173,7 +174,7 @@ class RealArtistRepository(
                 getSongLoaderSortOrder()
             )
         )
-        val artists = splitIntoMultiArtists(albumRepository.splitIntoAlbums(songs))
+        val artists = splitIntoMultiArtists(songs)
         return sortArtists(artists).filter { artist ->
             artist.name.contains(query, ignoreCase = true)
         }
@@ -239,38 +240,35 @@ class RealArtistRepository(
     }
 
     /**
-     * Groups albums by each *individual* artist name found in the raw artist
-     * tag, after splitting on the configured separators (see [ArtistTagUtil]).
-     * A song/album with multiple artists therefore ends up under every one of
-     * those artists, instead of only under the combined-name "artist".
+     * Groups songs by each *individual* artist name found in each song's own
+     * raw artist tag, after splitting on the configured separators (see
+     * [ArtistTagUtil]). This works at the Song level (not Album level) so that
+     * within a single album (e.g. a movie/game soundtrack with a different
+     * featured artist per track), each track is credited to its own artists
+     * rather than inheriting the artist of the album's first song.
+     *
+     * A song/track with multiple artists ends up under every one of those
+     * artists, and each artist's page shows every track they contributed to -
+     * including as a secondary/featured artist.
      */
-    private fun splitIntoMultiArtists(albums: List<Album>): List<Artist> {
-        val buckets = LinkedHashMap<String, MutableList<Album>>()
+    private fun splitIntoMultiArtists(songs: List<Song>): List<Artist> {
+        val buckets = LinkedHashMap<String, MutableList<Song>>()
+        val displayNames = LinkedHashMap<String, String>()
 
-        for (album in albums) {
-            val names = ArtistTagUtil.splitArtistNames(album.artistName)
-            if (names.isEmpty()) continue
+        for (song in songs) {
+            val names = ArtistTagUtil.splitArtistNames(song.artistName)
             for (name in names) {
                 val key = name.lowercase()
-                buckets.getOrPut(key) { mutableListOf() }.add(album)
-                // Preserve the first-seen casing as the display name by
-                // storing it alongside; handled below via a name lookup map.
-            }
-        }
-
-        // Map from lowercase key -> the first-seen display casing
-        val displayNames = LinkedHashMap<String, String>()
-        for (album in albums) {
-            for (name in ArtistTagUtil.splitArtistNames(album.artistName)) {
-                val key = name.lowercase()
+                buckets.getOrPut(key) { mutableListOf() }.add(song)
                 if (!displayNames.containsKey(key)) {
                     displayNames[key] = name
                 }
             }
         }
 
-        return buckets.map { (key, albumList) ->
-            Artist(displayNames[key] ?: key, albumList, true)
+        return buckets.map { (key, songsForArtist) ->
+            val albums = albumRepository.splitIntoAlbums(songsForArtist)
+            Artist(displayNames[key] ?: key, albums, true)
         }
     }
 
