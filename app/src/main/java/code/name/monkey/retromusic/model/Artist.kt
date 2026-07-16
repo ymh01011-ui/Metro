@@ -22,18 +22,39 @@ import java.text.Collator
 data class Artist(
     val id: Long,
     val albums: List<Album>,
-    val isAlbumArtist: Boolean = false
+    val isAlbumArtist: Boolean = false,
+    // True when this Artist was built by splitting a combined artist tag
+    // (e.g. "A, B feat. C") into individual artists. When true, `name`
+    // uses the value assigned in the secondary constructor as-is instead
+    // of re-deriving it from the raw (un-split) tag on the first song.
+    val isMultiArtist: Boolean = false
 ) {
     constructor(
         artistName: String,
         albums: List<Album>,
-        isAlbumArtist: Boolean = false
-    ) : this(albums[0].artistId, albums, isAlbumArtist) {
+        isAlbumArtist: Boolean = false,
+        isMultiArtist: Boolean = false
+    ) : this(
+        if (isMultiArtist) {
+            // Derive a stable-ish id from the split name itself, since there's
+            // no single MediaStore artistId that represents a split artist.
+            artistName.lowercase().hashCode().toLong()
+        } else {
+            albums.firstOrNull()?.artistId ?: -1L
+        },
+        albums,
+        isAlbumArtist,
+        isMultiArtist
+    ) {
         name = artistName
     }
 
     var name: String = "-"
         get() {
+            // Multi-artist entries already carry the correct split name;
+            // don't re-derive it from the (un-split) raw tag on the song.
+            if (isMultiArtist) return field
+
             val name = if (isAlbumArtist) getAlbumArtistName()
             else getArtistName()
             return when {
