@@ -16,6 +16,7 @@ package code.name.monkey.retromusic.fragments.artists
 
 import android.os.Bundle
 import android.view.*
+import android.widget.Toast
 import androidx.core.os.bundleOf
 import androidx.navigation.fragment.FragmentNavigatorExtras
 import androidx.navigation.fragment.findNavController
@@ -41,6 +42,13 @@ class ArtistsFragment : AbsRecyclerViewCustomGridSizeFragment<ArtistAdapter, Gri
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
         libraryViewModel.getArtists().observe(viewLifecycleOwner) {
+            // ---- DIAGNOSTIC (temporary) ----
+            Toast.makeText(
+                requireContext(),
+                "count=${it.size} multiMode=${PreferenceUtil.multiArtistsEnabled} albumArtistsOnly=${PreferenceUtil.albumArtistsOnly}",
+                Toast.LENGTH_LONG
+            ).show()
+            // ---- END DIAGNOSTIC ----
             if (it.isNotEmpty())
                 adapter?.swapDataSet(it)
             else
