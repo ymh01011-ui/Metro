@@ -211,7 +211,7 @@ class RealArtistRepository(
                 .any { it.equals(artistName, ignoreCase = true) }
         }
         val albums = albumRepository.splitIntoAlbums(matchingSongs)
-        return Artist(artistName, albums, true)
+        return Artist(artistName, albums, isAlbumArtist = false, isMultiArtist = true)
     }
 
     private fun splitIntoAlbumArtists(albums: List<Album>): List<Artist> {
@@ -266,24 +266,15 @@ class RealArtistRepository(
             }
         }
 
-        val result = buckets.map { (key, songsForArtist) ->
+        return buckets.map { (key, songsForArtist) ->
             val albums = albumRepository.splitIntoAlbums(songsForArtist)
-            Artist(displayNames[key] ?: key, albums, true)
+            Artist(
+                displayNames[key] ?: key,
+                albums,
+                isAlbumArtist = false,
+                isMultiArtist = true
+            )
         }
-
-        // ---- DIAGNOSTIC (temporary) ----
-        // Adds a fake artist entry at the top of the list showing:
-        //   songs   = total raw songs passed in
-        //   buckets = number of unique artist keys after splitting
-        //   result  = number of Artist objects actually returned
-        // Search for "DEBUG" in the Artists screen to find it.
-        val debugArtist = Artist(
-            "0000_DEBUG songs=${songs.size} buckets=${buckets.size} result=${result.size}",
-            emptyList(),
-            true
-        )
-        return listOf(debugArtist) + result
-        // ---- END DIAGNOSTIC ----
     }
 
     private fun sortArtists(artists: List<Artist>): List<Artist> {
