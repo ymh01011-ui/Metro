@@ -252,17 +252,34 @@ class RealArtistRepository(
      * including as a secondary/featured artist.
      */
     private fun splitIntoMultiArtists(songs: List<Song>): List<Artist> {
-        val buckets = LinkedHashMap<String, MutableList<Song>>()
-        val displayNames = LinkedHashMap<String, String>()
+    val buckets = LinkedHashMap<String, MutableList<Song>>()
+    val displayNames = LinkedHashMap<String, String>()
 
-        for (song in songs) {
-            val names = ArtistTagUtil.splitArtistNames(song.artistName)
-            for (name in names) {
-                val key = name.lowercase()
-                buckets.getOrPut(key) { mutableListOf() }.add(song)
-                if (!displayNames.containsKey(key)) {
-                    displayNames[key] = name
-                }
+    for (song in songs) {
+        val names = ArtistTagUtil.splitArtistNames(song.artistName)
+        for (name in names) {
+            val key = name.lowercase()
+            buckets.getOrPut(key) { mutableListOf() }.add(song)
+            if (!displayNames.containsKey(key)) {
+                displayNames[key] = name
+            }
+        }
+    }
+
+    val result = buckets.map { (key, songsForArtist) ->
+        val albums = albumRepository.splitIntoAlbums(songsForArtist)
+        Artist(displayNames[key] ?: key, albums, true)
+    }
+
+    // ---- DIAGNOSTIC (temporary) ----
+    val debugArtist = Artist(
+        "0000_DEBUG songs=${songs.size} buckets=${buckets.size} result=${result.size}",
+        emptyList(),
+        true
+    )
+    return listOf(debugArtist) + result
+    // ---- END DIAGNOSTIC ----
+    }
             }
         }
 
