@@ -89,7 +89,7 @@ class ArtistAdapter(
         val artist = dataSet[position]
         val isChecked = isChecked(artist)
         holder.itemView.isActivated = isChecked
-        holder.title?.text = artist.name
+        holder.title?.text = "${artist.name} [len=${artist.name.length}]"
         holder.text?.hide()
         val transitionName =
             if (albumArtistsOnly || multiArtistsEnabled) artist.name else artist.id.toString()
