@@ -36,8 +36,11 @@ class ArtistDetailsViewModel(
     private fun fetchArtist() {
         viewModelScope.launch(IO) {
             if (isMultiArtist) {
-                // معالجة خاصة للفنانين المتعددين
-                artistName?.let { artistDetails.postValue(realRepository.albumArtistByName(it)) }
+                // Multi-artist mode: the artist we want may only appear inside
+                // a combined tag (e.g. "Amr Diab, Jana Diab"), not as the
+                // exact album_artist value, so we must use the split-aware
+                // lookup instead of an exact album_artist match.
+                artistName?.let { artistDetails.postValue(realRepository.multiArtistByName(it)) }
             } else {
                 artistId?.let { artistDetails.postValue(realRepository.artistById(it)) }
                 artistName?.let { artistDetails.postValue(realRepository.albumArtistByName(it)) }
