@@ -120,7 +120,8 @@ class RealRepository(
     override fun getSongByGenre(genreId: Long): Song = genreRepository.song(genreId)
 
     override suspend fun searchArtists(query: String): List<Artist> =
-        artistRepository.artists(query)
+    if (PreferenceUtil.multiArtistsEnabled) artistRepository.multiArtists(query)
+    else artistRepository.artists(query)
 
     override suspend fun fetchAlbums(): List<Album> = albumRepository.albums()
 
