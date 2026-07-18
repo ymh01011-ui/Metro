@@ -251,7 +251,7 @@ class RealArtistRepository(
      * artists, and each artist's page shows every track they contributed to -
      * including as a secondary/featured artist.
      */
-    private fun splitIntoMultiArtists(songs: List<Song>): List<Artist> {
+    fun splitIntoMultiArtists(songs: List<Song>): List<Artist> {
         val buckets = LinkedHashMap<String, MutableList<Song>>()
         val displayNames = LinkedHashMap<String, String>()
 
