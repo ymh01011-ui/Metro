@@ -29,6 +29,7 @@ import android.view.MotionEvent
 import android.view.View
 import android.widget.RelativeLayout
 import androidx.annotation.LayoutRes
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.widget.Toolbar
 import androidx.core.os.bundleOf
 import androidx.core.view.isVisible
@@ -39,6 +40,7 @@ import androidx.viewpager.widget.ViewPager
 import code.name.monkey.appthemehelper.util.VersionUtils
 import code.name.monkey.retromusic.EXTRA_ALBUM_ID
 import code.name.monkey.retromusic.EXTRA_ARTIST_ID
+import code.name.monkey.retromusic.EXTRA_ARTIST_NAME
 import code.name.monkey.retromusic.extensions.hide
 import code.name.monkey.retromusic.R
 import code.name.monkey.retromusic.activities.MainActivity
@@ -61,6 +63,7 @@ import code.name.monkey.retromusic.interfaces.IPaletteColorHolder
 import code.name.monkey.retromusic.model.Song
 import code.name.monkey.retromusic.repository.RealRepository
 import code.name.monkey.retromusic.service.MusicService
+import code.name.monkey.retromusic.util.ArtistTagUtil
 import code.name.monkey.retromusic.util.NavigationUtil
 import code.name.monkey.retromusic.util.PreferenceUtil
 import code.name.monkey.retromusic.util.RingtoneManager
@@ -409,6 +412,17 @@ abstract class AbsPlayerFragment(@LayoutRes layout: Int) : AbsMusicServiceFragme
 fun goToArtist(activity: Activity) {
     if (activity !is MainActivity) return
     val song = MusicPlayerRemote.currentSong
+
+    // If the song has multiple artists (e.g. "Amr Diab, Jana Diab") and
+    // multi-artist mode is on, let the user pick which one to open instead
+    // of silently guessing. Otherwise fall back to the original single
+    // artist-by-id behavior.
+    val splitNames = ArtistTagUtil.splitArtistNames(song.artistName)
+    if (PreferenceUtil.multiArtistsEnabled && splitNames.size > 1) {
+        showArtistPickerDialog(activity, splitNames)
+        return
+    }
+
     activity.apply {
 
         // Remove exit transition of current fragment so
@@ -424,6 +438,32 @@ fun goToArtist(activity: Activity) {
         findNavController(R.id.fragment_container).navigate(
             R.id.artistDetailsFragment,
             bundleOf(EXTRA_ARTIST_ID to song.artistId)
+        )
+    }
+}
+
+private fun showArtistPickerDialog(activity: MainActivity, artistNames: List<String>) {
+    AlertDialog.Builder(activity)
+        .setTitle(R.string.action_go_to_artist)
+        .setItems(artistNames.toTypedArray()) { _, which ->
+            goToMultiArtist(activity, artistNames[which])
+        }
+        .show()
+}
+
+private fun goToMultiArtist(activity: MainActivity, artistName: String) {
+    activity.apply {
+        currentFragment(R.id.fragment_container)?.exitTransition = null
+
+        //Hide Bottom Bar First, else Bottom Sheet doesn't collapse fully
+        setBottomNavVisibility(false)
+        if (getBottomSheetBehavior().state == BottomSheetBehavior.STATE_EXPANDED) {
+            collapsePanel()
+        }
+
+        findNavController(R.id.fragment_container).navigate(
+            R.id.multiArtistDetailsFragment,
+            bundleOf(EXTRA_ARTIST_NAME to artistName)
         )
     }
 }
