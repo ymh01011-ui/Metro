@@ -22,9 +22,13 @@ package code.name.monkey.retromusic.util
  *   ","          e.g. "Cairokee, Amir Eid"   -> ["Cairokee", "Amir Eid"]
  *   "&"          e.g. "Drake & Rihanna"       -> ["Drake", "Rihanna"]
  *   ";"          e.g. "Drake; Rihanna"        -> ["Drake", "Rihanna"]
- *   "Feat."/"feat" e.g. "Drake feat. Rihanna" -> ["Drake", "Rihanna"]
+ *   "Feat."/"feat." e.g. "Drake feat. Rihanna" -> ["Drake", "Rihanna"]
  *   "ft"         e.g. "Drake ft Rihanna"      -> ["Drake", "Rihanna"]
  *   "featuring"  e.g. "Drake featuring Rihanna" -> ["Drake", "Rihanna"]
+ *
+ * Note: "feat" without a trailing period is NOT treated as a separator
+ * (only "feat." is), to avoid accidentally splitting on the substring
+ * inside unrelated words/names.
  *
  * Names are trimmed and de-duplicated (case-insensitive) while preserving
  * the original casing of the first occurrence.
@@ -32,7 +36,7 @@ package code.name.monkey.retromusic.util
 object ArtistTagUtil {
 
     private val SEPARATOR_REGEX = Regex(
-        pattern = """\s*(?:,|;|&|\bfeat\.?\b|\bft\.?\b|\bfeaturing\b)\s*""",
+        pattern = """\s*(?:,|;|&|\bfeat\.|\bft\.?\b|\bfeaturing\b)\s*""",
         option = RegexOption.IGNORE_CASE
     )
 
