@@ -29,7 +29,6 @@ import android.view.MotionEvent
 import android.view.View
 import android.widget.RelativeLayout
 import androidx.annotation.LayoutRes
-import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.widget.Toolbar
 import androidx.core.os.bundleOf
 import androidx.core.view.isVisible
@@ -41,6 +40,7 @@ import code.name.monkey.appthemehelper.util.VersionUtils
 import code.name.monkey.retromusic.EXTRA_ALBUM_ID
 import code.name.monkey.retromusic.EXTRA_ARTIST_ID
 import code.name.monkey.retromusic.EXTRA_ARTIST_NAME
+import code.name.monkey.retromusic.adapter.ArtistPickerAdapter
 import code.name.monkey.retromusic.extensions.hide
 import code.name.monkey.retromusic.R
 import code.name.monkey.retromusic.activities.MainActivity
@@ -61,6 +61,7 @@ import code.name.monkey.retromusic.fragments.player.PlayerAlbumCoverFragment
 import code.name.monkey.retromusic.helper.MusicPlayerRemote
 import code.name.monkey.retromusic.interfaces.IPaletteColorHolder
 import code.name.monkey.retromusic.model.Song
+import code.name.monkey.retromusic.model.Artist
 import code.name.monkey.retromusic.repository.RealRepository
 import code.name.monkey.retromusic.service.MusicService
 import code.name.monkey.retromusic.util.ArtistTagUtil
@@ -68,6 +69,7 @@ import code.name.monkey.retromusic.util.NavigationUtil
 import code.name.monkey.retromusic.util.PreferenceUtil
 import code.name.monkey.retromusic.util.RingtoneManager
 import com.google.android.material.bottomsheet.BottomSheetBehavior
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.Dispatchers.Main
 import kotlinx.coroutines.launch
@@ -413,13 +415,30 @@ fun goToArtist(activity: Activity) {
     if (activity !is MainActivity) return
     val song = MusicPlayerRemote.currentSong
 
-    // If the song has multiple artists (e.g. "Amr Diab, Jana Diab") and
-    // multi-artist mode is on, let the user pick which one to open instead
-    // of silently guessing. Otherwise fall back to the original single
-    // artist-by-id behavior.
-    val splitNames = ArtistTagUtil.splitArtistNames(song.artistName)
-    if (PreferenceUtil.multiArtistsEnabled && splitNames.size > 1) {
-        showArtistPickerDialog(activity, splitNames)
+    // When multi-artist mode is on, always resolve the artist by (split) name
+    // rather than by the raw MediaStore artistId of the current song. A solo
+    // track's artistId only matches other solo tracks by that artist - it
+    // won't include tracks where they're credited alongside someone else
+    // (different combined tag -> different artistId). Going by name instead
+    // ensures "Akon" shows every song he's on, whether solo or featured.
+    if (PreferenceUtil.multiArtistsEnabled) {
+        val splitNames = ArtistTagUtil.splitArtistNames(song.artistName)
+        when {
+            splitNames.size > 1 -> {
+                // Fetch the full Artist (with albums, for cover art) for each
+                // split name before showing the picker, so each row can show
+                // that artist's image instead of just plain text.
+                activity.lifecycleScope.launch(IO) {
+                    val repository = activity.get<RealRepository>()
+                    val artists = splitNames.map { repository.multiArtistByName(it) }
+                    withContext(Main) {
+                        showArtistPickerDialog(activity, artists)
+                    }
+                }
+            }
+            splitNames.size == 1 -> goToMultiArtist(activity, splitNames[0])
+            else -> goToMultiArtist(activity, song.artistName)
+        }
         return
     }
 
@@ -442,11 +461,12 @@ fun goToArtist(activity: Activity) {
     }
 }
 
-private fun showArtistPickerDialog(activity: MainActivity, artistNames: List<String>) {
-    AlertDialog.Builder(activity)
+private fun showArtistPickerDialog(activity: MainActivity, artists: List<Artist>) {
+    val adapter = ArtistPickerAdapter(activity, artists)
+    MaterialAlertDialogBuilder(activity)
         .setTitle(R.string.action_go_to_artist)
-        .setItems(artistNames.toTypedArray()) { _, which ->
-            goToMultiArtist(activity, artistNames[which])
+        .setAdapter(adapter) { _, which ->
+            goToMultiArtist(activity, artists[which].name)
         }
         .show()
 }
