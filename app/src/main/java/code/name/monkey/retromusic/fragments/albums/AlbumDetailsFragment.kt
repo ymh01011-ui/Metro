@@ -131,7 +131,8 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
             // Now Playing screen - instead of always opening the raw combined
             // entry or guessing a single one.
             if (PreferenceUtil.multiArtistsEnabled) {
-                val splitNames = ArtistTagUtil.splitArtistNames(album.artistName)
+                val nameToSplit = if (albumArtistExists) album.albumArtist!! else album.artistName
+                val splitNames = ArtistTagUtil.splitArtistNames(nameToSplit)
                 when {
                     splitNames.size > 1 -> {
                         lifecycleScope.launch(Dispatchers.IO) {
