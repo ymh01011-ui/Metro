@@ -52,8 +52,8 @@ class ArtistAdapter(
 ) : AbsMultiSelectAdapter<ArtistAdapter.ViewHolder, Artist>(activity, R.menu.menu_media_selection),
     PopupTextProvider {
 
-    var albumArtistsOnly = false
-    var multiArtistsEnabled = false
+    var albumArtistsOnly = PreferenceUtil.albumArtistsOnly
+    var multiArtistsEnabled = PreferenceUtil.multiArtistsEnabled
 
     init {
         this.setHasStableIds(true)
