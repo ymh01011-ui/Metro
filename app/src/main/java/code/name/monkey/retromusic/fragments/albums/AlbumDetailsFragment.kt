@@ -247,7 +247,7 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
         } else {
             binding.albumText.text = String.format(
                 "%s • %s • %s",
-                album.artistName,
+                if (albumArtistExists) album.albumArtist else album.artistName,
                 MusicUtil.getYearString(album.year),
                 MusicUtil.getReadableDurationString(MusicUtil.getTotalDuration(album.songs))
             )
