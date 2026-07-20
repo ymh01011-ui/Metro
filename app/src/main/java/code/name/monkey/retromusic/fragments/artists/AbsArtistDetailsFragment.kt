@@ -147,8 +147,9 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
         val appearsOn = mutableListOf<Album>()
         for (album in artist.albums) {
             val albumArtistName = album.albumArtist
-            val isPrimaryArtist = albumArtistName.isNullOrEmpty() ||
-                    albumArtistName.equals(artist.name, ignoreCase = true)
+            val albumArtistNames = ArtistTagUtil.splitArtistNames(albumArtistName)
+            val isPrimaryArtist = albumArtistNames.isEmpty() ||
+                    albumArtistNames.any { it.equals(artist.name, ignoreCase = true) }
             when {
                 !isPrimaryArtist -> appearsOn.add(album)
                 album.songCount <= 1 -> singles.add(album)
