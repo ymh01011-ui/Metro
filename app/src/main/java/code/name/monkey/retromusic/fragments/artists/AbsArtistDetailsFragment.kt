@@ -11,6 +11,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.widget.PopupMenu
 import androidx.core.os.bundleOf
 import androidx.core.view.doOnPreDraw
+import androidx.core.view.isVisible
 import androidx.lifecycle.lifecycleScope
 import androidx.navigation.fragment.FragmentNavigatorExtras
 import androidx.navigation.fragment.findNavController
@@ -32,6 +33,7 @@ import code.name.monkey.retromusic.glide.SingleColorTarget
 import code.name.monkey.retromusic.helper.MusicPlayerRemote
 import code.name.monkey.retromusic.helper.SortOrder
 import code.name.monkey.retromusic.interfaces.IAlbumClickListener
+import code.name.monkey.retromusic.model.Album
 import code.name.monkey.retromusic.model.Artist
 import code.name.monkey.retromusic.repository.RealRepository
 import code.name.monkey.retromusic.util.*
@@ -55,6 +57,8 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
     private lateinit var artist: Artist
     private lateinit var songAdapter: SimpleSongAdapter
     private lateinit var albumAdapter: HorizontalAlbumAdapter
+    private lateinit var singlesAdapter: HorizontalAlbumAdapter
+    private lateinit var appearsOnAdapter: HorizontalAlbumAdapter
     private var forceDownload: Boolean = false
 
     private val savedSongSortOrder: String
@@ -104,12 +108,54 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
             layoutManager = GridLayoutManager(this.context, 1, GridLayoutManager.HORIZONTAL, false)
             adapter = albumAdapter
         }
+
+        singlesAdapter = HorizontalAlbumAdapter(requireActivity(), ArrayList(), this)
+        binding.fragmentArtistContent.singlesRecyclerView.apply {
+            itemAnimator = DefaultItemAnimator()
+            layoutManager = GridLayoutManager(this.context, 1, GridLayoutManager.HORIZONTAL, false)
+            adapter = singlesAdapter
+        }
+
+        appearsOnAdapter = HorizontalAlbumAdapter(requireActivity(), ArrayList(), this)
+        binding.fragmentArtistContent.appearsOnRecyclerView.apply {
+            itemAnimator = DefaultItemAnimator()
+            layoutManager = GridLayoutManager(this.context, 1, GridLayoutManager.HORIZONTAL, false)
+            adapter = appearsOnAdapter
+        }
+
         songAdapter = SimpleSongAdapter(requireActivity(), ArrayList(), R.layout.item_song)
         binding.fragmentArtistContent.recyclerView.apply {
             itemAnimator = DefaultItemAnimator()
             layoutManager = LinearLayoutManager(this.context)
             adapter = songAdapter
         }
+    }
+
+    /**
+     * Splits this artist's albums into three groups, similar to how music
+     * streaming apps present an artist page:
+     *  - Albums: multi-song releases where this artist is the primary/album
+     *    artist.
+     *  - Singles: single-song releases credited to this artist.
+     *  - Appears on: releases where this artist contributed a song but isn't
+     *    the primary album artist (e.g. a featured artist on someone else's
+     *    album).
+     */
+    private fun categorizeAlbums(artist: Artist): Triple<List<Album>, List<Album>, List<Album>> {
+        val albums = mutableListOf<Album>()
+        val singles = mutableListOf<Album>()
+        val appearsOn = mutableListOf<Album>()
+        for (album in artist.albums) {
+            val albumArtistName = album.albumArtist
+            val isPrimaryArtist = albumArtistName.isNullOrEmpty() ||
+                    albumArtistName.equals(artist.name, ignoreCase = true)
+            when {
+                !isPrimaryArtist -> appearsOn.add(album)
+                album.songCount <= 1 -> singles.add(album)
+                else -> albums.add(album)
+            }
+        }
+        return Triple(albums, singles, appearsOn)
     }
 
     private fun showArtist(artist: Artist) {
@@ -128,13 +174,26 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
         val songText = resources.getQuantityString(
             R.plurals.albumSongs, artist.songCount, artist.songCount
         )
-        val albumText = resources.getQuantityString(
-            R.plurals.albums, artist.songCount, artist.songCount
-        )
         binding.fragmentArtistContent.songTitle.text = songText
-        binding.fragmentArtistContent.albumTitle.text = albumText
         songAdapter.swapDataSet(artist.sortedSongs)
-        albumAdapter.swapDataSet(artist.albums)
+
+        val (albums, singles, appearsOn) = categorizeAlbums(artist)
+
+        val albumText = resources.getQuantityString(
+            R.plurals.albums, albums.size, albums.size
+        )
+        binding.fragmentArtistContent.albumTitle.text = albumText
+        albumAdapter.swapDataSet(albums)
+        binding.fragmentArtistContent.albumTitle.isVisible = albums.isNotEmpty()
+        binding.fragmentArtistContent.albumRecyclerView.isVisible = albums.isNotEmpty()
+
+        singlesAdapter.swapDataSet(singles)
+        binding.fragmentArtistContent.singlesTitle.isVisible = singles.isNotEmpty()
+        binding.fragmentArtistContent.singlesRecyclerView.isVisible = singles.isNotEmpty()
+
+        appearsOnAdapter.swapDataSet(appearsOn)
+        binding.fragmentArtistContent.appearsOnTitle.isVisible = appearsOn.isNotEmpty()
+        binding.fragmentArtistContent.appearsOnRecyclerView.isVisible = appearsOn.isNotEmpty()
     }
 
     private fun loadArtistImage(artist: Artist) {
