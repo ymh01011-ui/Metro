@@ -138,6 +138,13 @@ object PreferenceUtil {
         )
         set(value) = sharedPreferences.edit { putBoolean("multi_artists_enabled", value) }
 
+    var includeSingles
+        get() = sharedPreferences.getBoolean(
+            "include_singles",
+            true
+        )
+        set(value) = sharedPreferences.edit { putBoolean("include_singles", value) }
+
     var albumDetailSongSortOrder
         get() = sharedPreferences.getStringOrDefault(
             ALBUM_DETAIL_SONG_SORT_ORDER,
