@@ -95,7 +95,14 @@ class LibraryViewModel(
     }
 
     private suspend fun fetchAlbums() {
-        albums.postValue(repository.fetchAlbums())
+        val allAlbums = repository.fetchAlbums()
+        albums.postValue(
+            if (PreferenceUtil.includeSingles) {
+                allAlbums
+            } else {
+                allAlbums.filter { it.songCount >= 2 }
+            }
+        )
     }
 
     private suspend fun fetchArtists() {
