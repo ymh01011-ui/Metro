@@ -18,7 +18,6 @@ import androidx.core.view.isVisible
 import androidx.lifecycle.lifecycleScope
 import androidx.navigation.fragment.FragmentNavigatorExtras
 import androidx.navigation.fragment.findNavController
-import androidx.palette.graphics.Palette
 import androidx.recyclerview.widget.DefaultItemAnimator
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -223,24 +222,15 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
             })
     }
 
-    // هنا السحر بتاع أبل ميوزك: بناخد اللون من الحتة السفلية بس من صورة الفنان (مش من الصورة كلها)
-    // عشان اللون يبقى مطابق لحواف الصورة من تحت، زي ما إنت عايز بالظبط
+    // بدل ما ناخد "أكتر لون متكرر" من الصورة كلها (اللي ممكن يمسك هدوم الفنان في النص)،
+    // بناخد متوسط اللون الفعلي من حواف الصورة بس (يمين وشمال) في الجزء السفلي منها،
+    // عشان نمسك لون الخلفية الحقيقي، زي ما بيحصل في أبل ميوزك بالظبط
     private fun extractColorFromBottomEdge(bitmap: Bitmap) {
         lifecycleScope.launch(Dispatchers.Default) {
-            // نسبة الشريط السفلي اللي هنستخرج اللون منه (٢٢٪ من ارتفاع الصورة)
-            val stripHeightRatio = 0.22f
-            val stripHeight = (bitmap.height * stripHeightRatio).toInt().coerceAtLeast(1)
-            val startY = (bitmap.height - stripHeight).coerceAtLeast(0)
-
-            var bottomStrip: Bitmap? = null
             val color = try {
-                bottomStrip = Bitmap.createBitmap(bitmap, 0, startY, bitmap.width, stripHeight)
-                val palette = Palette.from(bottomStrip).generate()
-                palette.getDominantColor(palette.getMutedColor(surfaceColor()))
+                averageEdgeColor(bitmap)
             } catch (e: Exception) {
                 surfaceColor()
-            } finally {
-                bottomStrip?.recycle()
             }
 
             withContext(Dispatchers.Main) {
@@ -249,8 +239,56 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
         }
     }
 
-    // هنا بنلوّن الصفحة باللون المستخرج، لكن بشكل أخف من قبل، وبنأخر بداية التلوين لتحت شوية
-    // عشان الفاصل بين الصورة والعناصر يبقى أوضح ومش حاسس إن التلوين طالع بدري وقوي أوي
+    private fun averageEdgeColor(original: Bitmap): Int {
+        // بنصغّر الصورة الأول عشان العملية تبقى سريعة (مش محتاجين دقة عالية لمتوسط لون)
+        val targetWidth = 100
+        val scale = targetWidth.toFloat() / original.width
+        val targetHeight = (original.height * scale).toInt().coerceAtLeast(1)
+        val scaled = Bitmap.createScaledBitmap(original, targetWidth, targetHeight, true)
+
+        // الجزء السفلي بس (٢٥٪ من ارتفاع الصورة)
+        val stripHeightRatio = 0.25f
+        val stripHeight = (scaled.height * stripHeightRatio).toInt().coerceAtLeast(1)
+        val startY = (scaled.height - stripHeight).coerceAtLeast(0)
+
+        // حواف الصورة بس (١٨٪ من الشمال + ١٨٪ من اليمين)، مش النص عشان نتجنب جسم/هدوم الفنان
+        val edgeWidthRatio = 0.18f
+        val edgeWidth = (scaled.width * edgeWidthRatio).toInt().coerceAtLeast(1)
+
+        var rSum = 0L
+        var gSum = 0L
+        var bSum = 0L
+        var count = 0L
+
+        for (y in startY until scaled.height) {
+            for (x in 0 until edgeWidth) {
+                val px = scaled.getPixel(x, y)
+                rSum += Color.red(px)
+                gSum += Color.green(px)
+                bSum += Color.blue(px)
+                count++
+            }
+            for (x in (scaled.width - edgeWidth) until scaled.width) {
+                val px = scaled.getPixel(x, y)
+                rSum += Color.red(px)
+                gSum += Color.green(px)
+                bSum += Color.blue(px)
+                count++
+            }
+        }
+
+        if (scaled !== original) {
+            scaled.recycle()
+        }
+
+        return if (count == 0L) {
+            surfaceColor()
+        } else {
+            Color.rgb((rSum / count).toInt(), (gSum / count).toInt(), (bSum / count).toInt())
+        }
+    }
+
+    // هنا بنلوّن الصفحة باللون المستخرج، بتدرّج ناعم (مش قفزة مفاجئة) زي أبل ميوزك بالظبط
     private fun setColors(color: Int) {
         if (_binding != null) {
             // صبغ الخلفيات الأساسية باللون المستخرج
@@ -259,20 +297,23 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
             binding.appBarLayout?.setBackgroundColor(color)
             binding.collapsingToolbar?.setContentScrimColor(color)
 
-            // اللون النهائي بشفافية أقل من الكامل (كان 255) عشان التأثير يبقى أخف على الصورة
-            val softenedColor = ColorUtils.setAlphaComponent(color, 215)
-            val transparentColor = ColorUtils.setAlphaComponent(color, 0)
+            // أقصى شفافية للون (كان 255 يعني كامل، دلوقتي أخف شوية)
+            val maxAlpha = 220
 
-            // بتكرار اللون الشفاف أكتر من مرة، التدرّج بيفضل شفاف لحد ٦٦٪ من ارتفاع الصورة
-            // وبعدين يبدأ يتحول للون فعلي في الثلث الأخير بس، يعني الفاصل نزل لتحت
+            // بنبني تدرّج من ٨ درجات بمنحنى تربيعي (ease-in): يعني في النص الأول من الصورة
+            // التلوين بيفضل خفيف جداً وشفه تقريباً، وبعدين بيزيد بشكل ناعم كل ما نقرب من الأسفل.
+            // ده اللي بيخلي الانتقال ناعم ومفهوش خط واضح زي ما كان بيحصل قبل كده.
+            val stopCount = 8
+            val colors = IntArray(stopCount) { i ->
+                val t = i / (stopCount - 1f) // من 0 لحد 1
+                val eased = t * t // منحنى تربيعي عشان البداية تبقى ناعمة جداً
+                val alpha = (eased * maxAlpha).toInt().coerceIn(0, 255)
+                ColorUtils.setAlphaComponent(color, alpha)
+            }
+
             val gradient = android.graphics.drawable.GradientDrawable(
                 android.graphics.drawable.GradientDrawable.Orientation.TOP_BOTTOM,
-                intArrayOf(
-                    transparentColor,
-                    transparentColor,
-                    transparentColor,
-                    softenedColor
-                )
+                colors
             )
             binding.headerGradient?.let { it.background = gradient }
         }
