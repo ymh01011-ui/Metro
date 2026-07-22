@@ -5,37 +5,111 @@
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
+    android:background="@android:color/black"
     android:fitsSystemWindows="true">
 
     <com.google.android.material.appbar.AppBarLayout
         android:id="@+id/appBarLayout"
         android:layout_width="match_parent"
-        android:layout_height="380dp"
-        android:background="@android:color/transparent"
+        android:layout_height="wrap_content"
+        android:background="@android:color/black"
         android:fitsSystemWindows="true">
 
         <com.google.android.material.appbar.CollapsingToolbarLayout
             android:id="@+id/collapsingToolbar"
             android:layout_width="match_parent"
-            android:layout_height="match_parent"
+            android:layout_height="wrap_content"
             app:contentScrim="?attr/colorSurface"
-            app:layout_scrollFlags="scroll|exitUntilCollapsed|snap">
+            app:layout_scrollFlags="scroll|exitUntilCollapsed">
 
-            <!-- صورة الفنان بعرض الشاشة -->
-            <androidx.appcompat.widget.AppCompatImageView
-                android:id="@+id/image"
+            <!-- حاوية الصورة مع أزرار التحكم والاسم فوقها -->
+            <FrameLayout
                 android:layout_width="match_parent"
-                android:layout_height="match_parent"
-                android:scaleType="centerCrop"
-                app:layout_collapseMode="parallax"
-                tools:srcCompat="@tools:sample/backgrounds/scenic" />
+                android:layout_height="420dp">
 
-            <!-- تدرج أسود خفيف تحت الصورة لقراءة النص بوضوح -->
-            <View
-                android:layout_width="match_parent"
-                android:layout_height="120dp"
-                android:layout_gravity="bottom"
-                android:background="@drawable/gradient_bottom_shadow" />
+                <!-- صورة الفنان بملء الهيدر -->
+                <androidx.appcompat.widget.AppCompatImageView
+                    android:id="@+id/image"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:scaleType="centerCrop"
+                    tools:srcCompat="@tools:sample/backgrounds/scenic" />
+
+                <!-- التدرج الظلي الدمج الناعم -->
+                <View
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:background="@drawable/gradient_artist_header" />
+
+                <!-- اسم الفنان والأزرار فوق الجزء المظلل أسفل الصورة -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="bottom"
+                    android:gravity="center"
+                    android:orientation="vertical"
+                    android:paddingBottom="16dp">
+
+                    <code.name.monkey.retromusic.views.BaselineGridTextView
+                        android:id="@+id/artistTitle"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:gravity="center"
+                        android:textAppearance="@style/TextViewHeadline4"
+                        android:textColor="@android:color/white"
+                        android:textStyle="bold"
+                        tools:text="Adele" />
+
+                    <code.name.monkey.retromusic.views.BaselineGridTextView
+                        android:id="@+id/text"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:paddingTop="4dp"
+                        android:paddingBottom="16dp"
+                        android:textAppearance="@style/TextViewCaption"
+                        android:textColor="#B3FFFFFF"
+                        tools:text="3 Albums • 3 Songs • 13:45" />
+
+                    <!-- أزرار التحكم الثلاثية -->
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:gravity="center"
+                        android:orientation="horizontal">
+
+                        <com.google.android.material.button.MaterialButton
+                            android:id="@+id/infoAction"
+                            style="@style/Widget.Material3.Button.IconButton.Filled.Tonal"
+                            android:layout_width="48dp"
+                            android:layout_height="48dp"
+                            android:layout_marginEnd="20dp"
+                            app:icon="@drawable/ic_info"
+                            app:iconGravity="textStart"
+                            app:iconPadding="0dp" />
+
+                        <com.google.android.material.floatingactionbutton.FloatingActionButton
+                            android:id="@+id/playAction"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            app:backgroundTint="@android:color/white"
+                            app:tint="@android:color/black"
+                            app:fabCustomSize="64dp"
+                            app:iconSize="32dp"
+                            app:srcCompat="@drawable/ic_play_arrow" />
+
+                        <com.google.android.material.button.MaterialButton
+                            android:id="@+id/shuffleAction"
+                            style="@style/Widget.Material3.Button.IconButton.Filled.Tonal"
+                            android:layout_width="48dp"
+                            android:layout_height="48dp"
+                            android:layout_marginStart="20dp"
+                            app:icon="@drawable/ic_shuffle"
+                            app:iconGravity="textStart"
+                            app:iconPadding="0dp" />
+
+                    </LinearLayout>
+                </LinearLayout>
+            </FrameLayout>
 
             <com.google.android.material.appbar.MaterialToolbar
                 android:id="@+id/toolbar"
@@ -48,7 +122,6 @@
         </com.google.android.material.appbar.CollapsingToolbarLayout>
     </com.google.android.material.appbar.AppBarLayout>
 
-    <!-- المحتوى القابل للتحريك -->
     <androidx.core.widget.NestedScrollView
         android:id="@+id/content"
         android:layout_width="match_parent"
