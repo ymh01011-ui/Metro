@@ -27,7 +27,6 @@ import code.name.monkey.retromusic.dialogs.AddToPlaylistDialog
 import code.name.monkey.retromusic.extensions.*
 import code.name.monkey.retromusic.fragments.base.AbsMainActivityFragment
 import code.name.monkey.retromusic.glide.RetroGlideExtension
-import code.name.monkey.retromusic.glide.RetroGlideExtension.albumCoverOptions
 import code.name.monkey.retromusic.glide.RetroGlideExtension.artistImageOptions
 import code.name.monkey.retromusic.glide.RetroGlideExtension.asBitmapPalette
 import code.name.monkey.retromusic.glide.SingleColorTarget
@@ -80,8 +79,11 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
         mainActivity.addMusicServiceEventListener(detailsViewModel)
         mainActivity.setSupportActionBar(binding.toolbar)
         binding.toolbar.title = null
-        binding.artistCoverContainer.transitionName = (artistId ?: artistName).toString()
+        
+        // ربط صورة الهيدر بالانتقال السلس (Transition)
+        binding.image.transitionName = (artistId ?: artistName).toString()
         postponeEnterTransition()
+        
         detailsViewModel.getArtist().observe(viewLifecycleOwner) {
             view.doOnPreDraw {
                 startPostponedEnterTransition()
@@ -90,11 +92,16 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
         }
         setupRecyclerView()
 
-        binding.fragmentArtistContent.playAction.apply {
-            setOnClickListener { MusicPlayerRemote.openQueue(artist.sortedSongs, 0, true) }
+        // أزرار التشغيل والتشغيل العشوائي في التصميم الجديد
+        binding.fragmentArtistContent.playAction.setOnClickListener {
+            if (::artist.isInitialized) {
+                MusicPlayerRemote.openQueue(artist.sortedSongs, 0, true)
+            }
         }
-        binding.fragmentArtistContent.shuffleAction.apply {
-            setOnClickListener { MusicPlayerRemote.openAndShuffleQueue(artist.songs, true) }
+        binding.fragmentArtistContent.shuffleAction.setOnClickListener {
+            if (::artist.isInitialized) {
+                MusicPlayerRemote.openAndShuffleQueue(artist.songs, true)
+            }
         }
 
         setupSongSortButton()
@@ -132,16 +139,6 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
         }
     }
 
-    /**
-     * Splits this artist's albums into three groups, similar to how music
-     * streaming apps present an artist page:
-     *  - Albums: multi-song releases where this artist is the primary/album
-     *    artist.
-     *  - Singles: single-song releases credited to this artist.
-     *  - Appears on: releases where this artist contributed a song but isn't
-     *    the primary album artist (e.g. a featured artist on someone else's
-     *    album).
-     */
     private fun categorizeAlbums(artist: Artist): Triple<List<Album>, List<Album>, List<Album>> {
         val albums = mutableListOf<Album>()
         val singles = mutableListOf<Album>()
@@ -167,21 +164,43 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
         }
         this.artist = artist
         loadArtistImage(artist)
-        binding.artistTitle.text = artist.name
-        binding.text.text = String.format(
+
+        // عرض اسم الفنان والمعلومات في التصميم الجديد
+        binding.fragmentArtistContent.artistTitle.text = artist.name
+        binding.fragmentArtistContent.text.text = String.format(
             "%s • %s",
             MusicUtil.getArtistInfoString(requireContext(), artist),
             MusicUtil.getReadableDurationString(MusicUtil.getTotalDuration(artist.songs))
         )
-        val songText = resources.getQuantityString(
-            R.plurals.albumSongs, artist.songCount, artist.songCount
-        )
-        binding.fragmentArtistContent.songTitle.text = songText
+
+        // إعداد كارت أحدث إصدار (Featured Release Card)
+        if (artist.albums.isNotEmpty()) {
+            val latestAlbum = artist.albums.first()
+            binding.fragmentArtistContent.featuredReleaseCard.isVisible = true
+            binding.fragmentArtistContent.featuredTitle.text = latestAlbum.title
+            binding.fragmentArtistContent.featuredDetails.text = String.format(
+                "%d %s",
+                latestAlbum.songCount,
+                resources.getQuantityString(R.plurals.albumSongs, latestAlbum.songCount)
+            )
+
+            // تحميل غلاف الألبوم المميز
+            Glide.with(requireContext())
+                .load(RetroGlideExtension.getSongModel(latestAlbum.safeGetFirstSong()))
+                .into(binding.fragmentArtistContent.featuredImage)
+
+            // عند الضغط على الكارت يتنقل لصفحة تفاصيل الألبوم
+            binding.fragmentArtistContent.featuredReleaseCard.setOnClickListener { view ->
+                onAlbumClick(latestAlbum.id, view)
+            }
+        } else {
+            binding.fragmentArtistContent.featuredReleaseCard.isVisible = false
+        }
+
+        binding.fragmentArtistContent.songTitle.text = "Top Songs ›"
         songAdapter.swapDataSet(artist.sortedSongs)
 
         val (albums, singles, appearsOn) = categorizeAlbums(artist)
-
-        bindFeaturedAlbum(albums + singles)
 
         val albumText = resources.getQuantityString(
             R.plurals.albums, albums.size, albums.size
@@ -200,42 +219,6 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
         binding.fragmentArtistContent.appearsOnRecyclerView.isVisible = appearsOn.isNotEmpty()
     }
 
-    /**
-     * Picks the most recent primary release (by year) from [candidates] and
-     * binds it into the Featured Album card. Hides the card entirely if
-     * there's nothing to feature (e.g. artist has only "Appears on" credits).
-     */
-    private fun bindFeaturedAlbum(candidates: List<Album>) {
-        val featured = candidates.maxByOrNull { it.year }
-
-        if (featured == null) {
-            binding.fragmentArtistContent.featuredAlbumCard.isVisible = false
-            return
-        }
-
-        binding.fragmentArtistContent.featuredAlbumCard.isVisible = true
-        binding.fragmentArtistContent.featuredAlbumTitle.text = featured.title
-        binding.fragmentArtistContent.featuredAlbumSubtitle.text = resources.getQuantityString(
-            R.plurals.albumSongs, featured.songCount, featured.songCount
-        )
-
-        Glide.with(requireContext())
-            .asDrawable()
-            .albumCoverOptions(featured.safeGetFirstSong())
-            .load(RetroGlideExtension.getSongModel(featured.safeGetFirstSong()))
-            .into(binding.fragmentArtistContent.featuredAlbumImage)
-
-        binding.fragmentArtistContent.featuredAlbumCard.setOnClickListener {
-            findNavController().navigate(
-                R.id.albumDetailsFragment,
-                bundleOf(EXTRA_ALBUM_ID to featured.id)
-            )
-        }
-        binding.fragmentArtistContent.featuredAlbumPlayButton.setOnClickListener {
-            MusicPlayerRemote.openQueue(featured.songs, 0, true)
-        }
-    }
-
     private fun loadArtistImage(artist: Artist) {
         Glide.with(requireContext()).asBitmapPalette().artistImageOptions(artist)
             .load(RetroGlideExtension.getArtistModel(artist)).dontAnimate()
@@ -249,7 +232,6 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
     private fun setColors(color: Int) {
         if (_binding != null) {
             binding.fragmentArtistContent.shuffleAction.applyColor(color)
-            binding.fragmentArtistContent.playAction.applyOutlineColor(color)
         }
     }
 
