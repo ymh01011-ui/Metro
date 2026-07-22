@@ -288,7 +288,8 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
         }
     }
 
-    // هنا بنلوّن الصفحة باللون المستخرج، بتدرّج ناعم (مش قفزة مفاجئة) زي أبل ميوزك بالظبط
+    // هنا بنلوّن الصفحة باللون المستخرج، وبنخلي التدرّج يوصل للون صافي (Opacity كامل) قبل ما
+    // الصورة تخلص بشوية، عشان يبقى فيه شريط لون صافي بيكمّل على طول مع خلفية الصفحة من غير أي خط فاصل
     private fun setColors(color: Int) {
         if (_binding != null) {
             // صبغ الخلفيات الأساسية باللون المستخرج
@@ -297,17 +298,24 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
             binding.appBarLayout?.setBackgroundColor(color)
             binding.collapsingToolbar?.setContentScrimColor(color)
 
-            // أقصى شفافية للون (كان 255 يعني كامل، دلوقتي أخف شوية)
-            val maxAlpha = 220
-
-            // بنبني تدرّج من ٨ درجات بمنحنى تربيعي (ease-in): يعني في النص الأول من الصورة
-            // التلوين بيفضل خفيف جداً وشفه تقريباً، وبعدين بيزيد بشكل ناعم كل ما نقرب من الأسفل.
-            // ده اللي بيخلي الانتقال ناعم ومفهوش خط واضح زي ما كان بيحصل قبل كده.
-            val stopCount = 8
+            // من 0 لحد 35% من ارتفاع الصورة: تفضل شفافة تماماً (الصورة واضحة زي ما هي)
+            // من 35% لحد 75%: تدرّج ناعم بمنحنى تربيعي (ease-in)
+            // من 75% لحد 100%: لون صافي بالكامل (Opacity 255) — نفس لون خلفية الصفحة بالظبط
+            // بالطريقة دي مفيش أي اختلاف في اللحظة اللي الصورة بتخلص فيها وتبدأ خلفية الصفحة
+            val fadeStartT = 0.35f
+            val fadeEndT = 0.75f
+            val stopCount = 12
             val colors = IntArray(stopCount) { i ->
-                val t = i / (stopCount - 1f) // من 0 لحد 1
-                val eased = t * t // منحنى تربيعي عشان البداية تبقى ناعمة جداً
-                val alpha = (eased * maxAlpha).toInt().coerceIn(0, 255)
+                val t = i / (stopCount - 1f)
+                val alpha = when {
+                    t <= fadeStartT -> 0
+                    t >= fadeEndT -> 255
+                    else -> {
+                        val progress = (t - fadeStartT) / (fadeEndT - fadeStartT)
+                        val eased = progress * progress
+                        (eased * 255).toInt().coerceIn(0, 255)
+                    }
+                }
                 ColorUtils.setAlphaComponent(color, alpha)
             }
 
@@ -316,7 +324,56 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
                 colors
             )
             binding.headerGradient?.let { it.background = gradient }
+
+            applyContrastingForegroundColor(color)
         }
+    }
+
+    // لو اللون المستخرج فاتح (زي خلفية بيضا)، الكلام والأيقونات تتحول لأسود عشان تفضل واضحة،
+    // ولو غامق تفضل بيضا زي ما كانت. بنحسب "سطوع" اللون (luminance) ونقارنه بحد وسط.
+    private fun applyContrastingForegroundColor(backgroundColor: Int) {
+        val isLightBackground = ColorUtils.calculateLuminance(backgroundColor) > 0.5
+        val foregroundColor = if (isLightBackground) Color.BLACK else Color.WHITE
+        val secondaryForegroundColor = ColorUtils.setAlphaComponent(foregroundColor, 0xB3)
+        val subtleOverlay = ColorUtils.setAlphaComponent(foregroundColor, 0x33)
+        val subtleStroke = ColorUtils.setAlphaComponent(foregroundColor, 0x1A)
+
+        binding.artistTitle.setTextColor(foregroundColor)
+        binding.text.setTextColor(secondaryForegroundColor)
+
+        binding.toolbar.navigationIcon = tintedDrawable(binding.toolbar.navigationIcon, foregroundColor)
+        binding.toolbar.overflowIcon = tintedDrawable(binding.toolbar.overflowIcon, foregroundColor)
+
+        binding.fragmentArtistContent.songTitle.setTextColor(foregroundColor)
+        binding.fragmentArtistContent.albumTitle.setTextColor(foregroundColor)
+        binding.fragmentArtistContent.singlesTitle.setTextColor(foregroundColor)
+        binding.fragmentArtistContent.appearsOnTitle.setTextColor(foregroundColor)
+
+        androidx.core.widget.ImageViewCompat.setImageTintList(
+            binding.fragmentArtistContent.songSortOrder,
+            android.content.res.ColorStateList.valueOf(foregroundColor)
+        )
+
+        binding.fragmentArtistContent.infoAction.iconTint =
+            android.content.res.ColorStateList.valueOf(foregroundColor)
+        binding.fragmentArtistContent.infoAction.backgroundTintList =
+            android.content.res.ColorStateList.valueOf(subtleOverlay)
+        binding.fragmentArtistContent.infoAction.strokeColor =
+            android.content.res.ColorStateList.valueOf(subtleStroke)
+
+        binding.fragmentArtistContent.shuffleAction.iconTint =
+            android.content.res.ColorStateList.valueOf(foregroundColor)
+        binding.fragmentArtistContent.shuffleAction.backgroundTintList =
+            android.content.res.ColorStateList.valueOf(subtleOverlay)
+        binding.fragmentArtistContent.shuffleAction.strokeColor =
+            android.content.res.ColorStateList.valueOf(subtleStroke)
+    }
+
+    private fun tintedDrawable(drawable: Drawable?, color: Int): Drawable? {
+        val source = drawable ?: return null
+        val wrapped = androidx.core.graphics.drawable.DrawableCompat.wrap(source.mutate())
+        androidx.core.graphics.drawable.DrawableCompat.setTint(wrapped, color)
+        return wrapped
     }
 
     override fun onAlbumClick(albumId: Long, view: View) {
