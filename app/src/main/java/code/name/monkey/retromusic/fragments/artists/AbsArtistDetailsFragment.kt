@@ -9,6 +9,7 @@ import android.view.View
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.widget.PopupMenu
+import androidx.core.graphics.ColorUtils
 import androidx.core.os.bundleOf
 import androidx.core.view.doOnPreDraw
 import androidx.core.view.isVisible
@@ -91,7 +92,6 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
         }
         setupRecyclerView()
 
-        // ربط أزرار التشغيل من الـ Content
         binding.fragmentArtistContent.playAction.setOnClickListener {
             if (::artist.isInitialized) {
                 MusicPlayerRemote.openQueue(artist.sortedSongs, 0, true)
@@ -104,7 +104,7 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
         }
 
         setupSongSortButton()
-        binding.appBarLayout?.statusBarForeground =
+        binding.appBarLayout.statusBarForeground =
             MaterialShapeDrawable.createWithElevationOverlay(requireContext())
     }
 
@@ -164,7 +164,6 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
         this.artist = artist
         loadArtistImage(artist)
 
-        // اسم الفنان والمؤشرات في الهيدر فوق خلفية الصورة
         binding.artistTitle.text = artist.name
         binding.text.text = String.format(
             "%s • %s",
@@ -172,30 +171,6 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
             MusicUtil.getReadableDurationString(MusicUtil.getTotalDuration(artist.songs))
         )
 
-        // إعداد كارت أحدث إصدار (Featured Release)
-        if (artist.albums.isNotEmpty()) {
-            val latestAlbum = artist.albums.first()
-            binding.fragmentArtistContent.featuredReleaseCard.isVisible = true
-            binding.fragmentArtistContent.featuredTitle.text = latestAlbum.title
-            binding.fragmentArtistContent.featuredDetails.text = String.format(
-                "%d %s",
-                latestAlbum.songCount,
-                resources.getQuantityString(R.plurals.albumSongs, latestAlbum.songCount)
-            )
-
-            // تحميل صورة ألبوم أحدث إصدار
-            Glide.with(requireContext())
-                .load(RetroGlideExtension.getSongModel(latestAlbum.safeGetFirstSong()))
-                .into(binding.fragmentArtistContent.featuredImage)
-
-            binding.fragmentArtistContent.featuredReleaseCard.setOnClickListener { view ->
-                onAlbumClick(latestAlbum.id, view)
-            }
-        } else {
-            binding.fragmentArtistContent.featuredReleaseCard.isVisible = false
-        }
-
-        binding.fragmentArtistContent.songTitle.text = "Top Songs ›"
         songAdapter.swapDataSet(artist.sortedSongs)
 
         val (albums, singles, appearsOn) = categorizeAlbums(artist)
@@ -227,9 +202,21 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
             })
     }
 
+    // هنا السحر بتاع أبل ميوزك: الصفحة كلها بتتصبغ باللون وتعمل تدرج متناسق مع الصورة
     private fun setColors(color: Int) {
         if (_binding != null) {
-            binding.fragmentArtistContent.shuffleAction.applyColor(color)
+            // صبغ الخلفيات الأساسية باللون المستخرج
+            binding.rootLayout.setBackgroundColor(color)
+            binding.appBarLayout.setBackgroundColor(color)
+            binding.collapsingToolbar.setContentScrimColor(color)
+
+            // دمج ناعم (Gradient) من شفاف للون المستخرج أسفل الصورة
+            val transparentColor = ColorUtils.setAlphaComponent(color, 0)
+            val gradient = android.graphics.drawable.GradientDrawable(
+                android.graphics.drawable.GradientDrawable.Orientation.TOP_BOTTOM,
+                intArrayOf(transparentColor, color)
+            )
+            binding.headerGradient.background = gradient
         }
     }
 
