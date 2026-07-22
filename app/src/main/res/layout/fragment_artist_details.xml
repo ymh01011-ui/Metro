@@ -22,12 +22,12 @@
             app:contentScrim="?attr/colorSurface"
             app:layout_scrollFlags="scroll|exitUntilCollapsed">
 
-            <!-- حاوية الصورة مع أزرار التحكم والاسم فوقها -->
+            <!-- حاوية الصورة بجودة وارتفاع مناسب -->
             <FrameLayout
                 android:layout_width="match_parent"
-                android:layout_height="420dp">
+                android:layout_height="380dp">
 
-                <!-- صورة الفنان بملء الهيدر -->
+                <!-- صورة الفنان -->
                 <androidx.appcompat.widget.AppCompatImageView
                     android:id="@+id/image"
                     android:layout_width="match_parent"
@@ -35,20 +35,20 @@
                     android:scaleType="centerCrop"
                     tools:srcCompat="@tools:sample/backgrounds/scenic" />
 
-                <!-- التدرج الظلي الدمج الناعم -->
+                <!-- التدرج الأسود الناعم -->
                 <View
                     android:layout_width="match_parent"
                     android:layout_height="match_parent"
                     android:background="@drawable/gradient_artist_header" />
 
-                <!-- اسم الفنان والأزرار فوق الجزء المظلل أسفل الصورة -->
+                <!-- اسم الفنان والمعلومات في الأسفل تماماً -->
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_gravity="bottom"
                     android:gravity="center"
                     android:orientation="vertical"
-                    android:paddingBottom="16dp">
+                    android:paddingBottom="12dp">
 
                     <code.name.monkey.retromusic.views.BaselineGridTextView
                         android:id="@+id/artistTitle"
@@ -64,50 +64,11 @@
                         android:id="@+id/text"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:paddingTop="4dp"
-                        android:paddingBottom="16dp"
+                        android:paddingTop="2dp"
                         android:textAppearance="@style/TextViewCaption"
                         android:textColor="#B3FFFFFF"
                         tools:text="3 Albums • 3 Songs • 13:45" />
 
-                    <!-- أزرار التحكم الثلاثية -->
-                    <LinearLayout
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:gravity="center"
-                        android:orientation="horizontal">
-
-                        <com.google.android.material.button.MaterialButton
-                            android:id="@+id/infoAction"
-                            style="@style/Widget.Material3.Button.IconButton.Filled.Tonal"
-                            android:layout_width="48dp"
-                            android:layout_height="48dp"
-                            android:layout_marginEnd="20dp"
-                            app:icon="@drawable/ic_info"
-                            app:iconGravity="textStart"
-                            app:iconPadding="0dp" />
-
-                        <com.google.android.material.floatingactionbutton.FloatingActionButton
-                            android:id="@+id/playAction"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            app:backgroundTint="@android:color/white"
-                            app:tint="@android:color/black"
-                            app:fabCustomSize="64dp"
-                            app:iconSize="32dp"
-                            app:srcCompat="@drawable/ic_play_arrow" />
-
-                        <com.google.android.material.button.MaterialButton
-                            android:id="@+id/shuffleAction"
-                            style="@style/Widget.Material3.Button.IconButton.Filled.Tonal"
-                            android:layout_width="48dp"
-                            android:layout_height="48dp"
-                            android:layout_marginStart="20dp"
-                            app:icon="@drawable/ic_shuffle"
-                            app:iconGravity="textStart"
-                            app:iconPadding="0dp" />
-
-                    </LinearLayout>
                 </LinearLayout>
             </FrameLayout>
 
