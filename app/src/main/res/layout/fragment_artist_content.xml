@@ -42,6 +42,98 @@
         app:layout_constraintStart_toEndOf="@+id/playAction"
         app:layout_constraintTop_toTopOf="@+id/playAction" />
 
+    <!-- Featured Album card, Apple Music style: cover + label + title + song
+         count on the left, a play button on the right. Hidden entirely when
+         the artist has no album to feature. -->
+    <com.google.android.material.card.MaterialCardView
+        android:id="@+id/featuredAlbumCard"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="16dp"
+        android:layout_marginTop="20dp"
+        android:layout_marginEnd="16dp"
+        app:cardCornerRadius="16dp"
+        app:cardElevation="0dp"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/playAction"
+        app:strokeWidth="0dp">
+
+        <androidx.constraintlayout.widget.ConstraintLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:padding="12dp">
+
+            <androidx.appcompat.widget.AppCompatImageView
+                android:id="@+id/featuredAlbumImage"
+                android:layout_width="56dp"
+                android:layout_height="56dp"
+                android:scaleType="centerCrop"
+                app:layout_constraintBottom_toBottomOf="parent"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintTop_toTopOf="parent"
+                app:shapeAppearanceOverlay="@style/RoundedCornersSmall"
+                tools:srcCompat="@tools:sample/backgrounds/scenic[1]" />
+
+            <com.google.android.material.textview.MaterialTextView
+                android:id="@+id/featuredAlbumLabel"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="12dp"
+                android:layout_marginEnd="8dp"
+                android:text="FEATURED ALBUM"
+                android:textAllCaps="true"
+                android:textAppearance="@style/TextViewOverline"
+                android:textColor="?android:attr/textColorSecondary"
+                app:layout_constraintEnd_toStartOf="@id/featuredAlbumPlayButton"
+                app:layout_constraintStart_toEndOf="@id/featuredAlbumImage"
+                app:layout_constraintTop_toTopOf="@id/featuredAlbumImage" />
+
+            <com.google.android.material.textview.MaterialTextView
+                android:id="@+id/featuredAlbumTitle"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="12dp"
+                android:layout_marginEnd="8dp"
+                android:ellipsize="end"
+                android:maxLines="1"
+                android:textAppearance="@style/TextViewSubtitle1"
+                android:textColor="?android:attr/textColorPrimary"
+                android:textStyle="bold"
+                app:layout_constraintEnd_toStartOf="@id/featuredAlbumPlayButton"
+                app:layout_constraintStart_toEndOf="@id/featuredAlbumImage"
+                app:layout_constraintTop_toBottomOf="@id/featuredAlbumLabel"
+                tools:text="Freedom" />
+
+            <com.google.android.material.textview.MaterialTextView
+                android:id="@+id/featuredAlbumSubtitle"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="12dp"
+                android:layout_marginEnd="8dp"
+                android:ellipsize="end"
+                android:maxLines="1"
+                android:textAppearance="@style/TextViewCaption"
+                android:textColor="?android:attr/textColorSecondary"
+                app:layout_constraintBottom_toBottomOf="@id/featuredAlbumImage"
+                app:layout_constraintEnd_toStartOf="@id/featuredAlbumPlayButton"
+                app:layout_constraintStart_toEndOf="@id/featuredAlbumImage"
+                app:layout_constraintTop_toBottomOf="@id/featuredAlbumTitle" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/featuredAlbumPlayButton"
+                style="@style/Widget.Material3.Button.IconButton"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                app:icon="@drawable/ic_play_arrow"
+                app:iconSize="24dp"
+                app:layout_constraintBottom_toBottomOf="parent"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintTop_toTopOf="parent" />
+
+        </androidx.constraintlayout.widget.ConstraintLayout>
+    </com.google.android.material.card.MaterialCardView>
+
     <com.google.android.material.textview.MaterialTextView
         android:id="@+id/albumTitle"
         android:layout_width="0dp"
@@ -54,7 +146,7 @@
         app:layout_constrainedWidth="true"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@id/playAction" />
+        app:layout_constraintTop_toBottomOf="@id/featuredAlbumCard" />
 
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/albumRecyclerView"
