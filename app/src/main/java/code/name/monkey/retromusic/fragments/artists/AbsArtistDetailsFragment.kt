@@ -211,7 +211,7 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
                     if (_binding != null) {
                         binding.image.setImageBitmap(resource)
                     }
-                    extractColorFromBottomEdge(resource)
+                    extractColorsAndApplyGradient(resource)
                 }
 
                 override fun onLoadCleared(placeholder: Drawable?) {
@@ -224,17 +224,28 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
 
     // بدل ما ناخد "أكتر لون متكرر" من الصورة كلها (اللي ممكن يمسك هدوم الفنان في النص)،
     // بناخد متوسط اللون الفعلي من حواف الصورة بس (يمين وشمال) في الجزء السفلي منها،
-    // عشان نمسك لون الخلفية الحقيقي، زي ما بيحصل في أبل ميوزك بالظبط
-    private fun extractColorFromBottomEdge(bitmap: Bitmap) {
+    // عشان نمسك لون خلفية الصفحة الثابتة (اللي بتظهر بعد ما الصورة تختفي مع السكرول)
+    //
+    // وبالتوازي، بنستخرج Palette كامل من الصورة (Dominant / Vibrant / Dark Vibrant / Dark Muted)
+    // مش لون واحد بس، عشان نبني منه تدرّج سينمائي متعدد الطبقات زي أبل ميوزك بالظبط
+    private fun extractColorsAndApplyGradient(bitmap: Bitmap) {
         lifecycleScope.launch(Dispatchers.Default) {
-            val color = try {
+            val flatBackgroundColor = try {
                 averageEdgeColor(bitmap)
             } catch (e: Exception) {
                 surfaceColor()
             }
 
+            val palette = try {
+                RetroColorUtil.generatePalette(bitmap)
+            } catch (e: Exception) {
+                null
+            }
+
+            val gradientColors = RetroColorUtil.getArtistGradientColors(palette, flatBackgroundColor)
+
             withContext(Dispatchers.Main) {
-                setColors(color)
+                setColors(flatBackgroundColor, gradientColors)
             }
         }
     }
@@ -288,45 +299,63 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
         }
     }
 
-    // هنا بنلوّن الصفحة باللون المستخرج، وبنخلي التدرّج يوصل للون صافي (Opacity كامل) قبل ما
-    // الصورة تخلص بشوية، عشان يبقى فيه شريط لون صافي بيكمّل على طول مع خلفية الصفحة من غير أي خط فاصل
-    private fun setColors(color: Int) {
-        if (_binding != null) {
-            // صبغ الخلفيات الأساسية باللون المستخرج
-            binding.rootLayout.setBackgroundColor(color)
-            // appBarLayout and collapsingToolbar are nullable in the generated binding; use safe calls
-            binding.appBarLayout?.setBackgroundColor(color)
-            binding.collapsingToolbar?.setContentScrimColor(color)
+    // بيبني تدرّج سينمائي متعدد الطبقات (Cinematic Gradient) على طريقة أبل ميوزك:
+    // Transparent → Dominant → Vibrant → Dark Vibrant → Dark Muted → لون خلفية الصفحة،
+    // مع مزج ناعم (Blend) بين كل طبقة واللي بعدها عشان مفيش حدود واضحة بين الألوان.
+    //
+    // الـ Fade بيبدأ بدري من حوالي 12% بس من ارتفاع الصورة (مش من النص)، فالصورة تفضل
+    // واضحة زي ما هي في الجزء العلوي، وبعدين التدرّج بيتكثّف تدريجيًا لحد ما يوصل
+    // للون خلفية الصفحة في الآخر من غير أي قطع مفاجئ.
+    private fun setColors(flatBackgroundColor: Int, gradient: RetroColorUtil.ArtistGradientColors) {
+        if (_binding == null) return
 
-            // من 0 لحد 35% من ارتفاع الصورة: تفضل شفافة تماماً (الصورة واضحة زي ما هي)
-            // من 35% لحد 75%: تدرّج ناعم بمنحنى تربيعي (ease-in)
-            // من 75% لحد 100%: لون صافي بالكامل (Opacity 255) — نفس لون خلفية الصفحة بالظبط
-            // بالطريقة دي مفيش أي اختلاف في اللحظة اللي الصورة بتخلص فيها وتبدأ خلفية الصفحة
-            val fadeStartT = 0.35f
-            val fadeEndT = 0.75f
-            val stopCount = 12
-            val colors = IntArray(stopCount) { i ->
-                val t = i / (stopCount - 1f)
-                val alpha = when {
-                    t <= fadeStartT -> 0
-                    t >= fadeEndT -> 255
-                    else -> {
-                        val progress = (t - fadeStartT) / (fadeEndT - fadeStartT)
-                        val eased = progress * progress
-                        (eased * 255).toInt().coerceIn(0, 255)
-                    }
-                }
-                ColorUtils.setAlphaComponent(color, alpha)
-            }
+        // خلفية الصفحة الثابتة (اللي بتفضل ظاهرة بعد ما الصورة تختفي مع السكرول)
+        binding.rootLayout.setBackgroundColor(flatBackgroundColor)
+        // appBarLayout and collapsingToolbar are nullable in the generated binding; use safe calls
+        binding.appBarLayout?.setBackgroundColor(flatBackgroundColor)
+        binding.collapsingToolbar?.setContentScrimColor(flatBackgroundColor)
 
-            val gradient = android.graphics.drawable.GradientDrawable(
-                android.graphics.drawable.GradientDrawable.Orientation.TOP_BOTTOM,
-                colors
-            )
-            binding.headerGradient?.let { it.background = gradient }
+        // آخر طبقة في التدرّج متبقاش سودا صافية لو الصورة أصلاً غامقة (Dark Artwork)،
+        // فبنمزجها مع لون خلفية الصفحة بدل الاعتماد على Color.BLACK
+        val endColor = RetroColorUtil.blendColors(gradient.darkMuted, flatBackgroundColor, 0.6f)
 
-            applyContrastingForegroundColor(color)
+        data class GradientKeyframe(val t: Float, val color: Int, val alpha: Int)
+
+        val fadeStartT = 0.12f // 10-15% من أعلى الصورة، الصورة تفضل واضحة زيها زي Apple Music
+        val keyframes = listOf(
+            GradientKeyframe(0.00f, gradient.dominant, 0),
+            GradientKeyframe(fadeStartT, gradient.dominant, 0),
+            GradientKeyframe(0.32f, gradient.dominant, 65),
+            GradientKeyframe(0.50f, gradient.vibrant, 135),
+            GradientKeyframe(0.68f, gradient.darkVibrant, 200),
+            GradientKeyframe(0.85f, gradient.darkMuted, 240),
+            GradientKeyframe(1.00f, endColor, 255)
+        )
+
+        val stopCount = 24
+        val colors = IntArray(stopCount) { i ->
+            val t = i / (stopCount - 1f)
+            val (from, to) = keyframes.zipWithNext().firstOrNull { (a, b) -> t in a.t..b.t }
+                ?: (keyframes.last() to keyframes.last())
+
+            val span = (to.t - from.t).takeIf { it > 0f } ?: 1f
+            val localProgress = ((t - from.t) / span).coerceIn(0f, 1f)
+            // Smoothstep بدل الانتقال الخطي المباشر، عشان الدمج بين كل لون واللي بعده
+            // يبقى ناعم من غير حدود واضحة (زي ما طلب)
+            val eased = localProgress * localProgress * (3f - 2f * localProgress)
+
+            val blendedRgb = RetroColorUtil.blendColors(to.color, from.color, eased)
+            val alpha = (from.alpha + (to.alpha - from.alpha) * eased).toInt().coerceIn(0, 255)
+            ColorUtils.setAlphaComponent(blendedRgb, alpha)
         }
+
+        val gradientDrawable = android.graphics.drawable.GradientDrawable(
+            android.graphics.drawable.GradientDrawable.Orientation.TOP_BOTTOM,
+            colors
+        )
+        binding.headerGradient?.let { it.background = gradientDrawable }
+
+        applyContrastingForegroundColor(flatBackgroundColor)
     }
 
     // لو اللون المستخرج فاتح (زي خلفية بيضا)، الكلام والأيقونات تتحول لأسود عشان تفضل واضحة،
