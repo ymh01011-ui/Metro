@@ -80,7 +80,6 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
         mainActivity.setSupportActionBar(binding.toolbar)
         binding.toolbar.title = null
         
-        // ربط صورة الهيدر بالانتقال السلس (Transition)
         binding.image.transitionName = (artistId ?: artistName).toString()
         postponeEnterTransition()
         
@@ -92,13 +91,13 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
         }
         setupRecyclerView()
 
-        // أزرار التشغيل والتشغيل العشوائي في التصميم الجديد
-        binding.fragmentArtistContent.playAction.setOnClickListener {
+        // ربط أزرار التشغيل المباشرة في الهيدر الرئيسي
+        binding.playAction.setOnClickListener {
             if (::artist.isInitialized) {
                 MusicPlayerRemote.openQueue(artist.sortedSongs, 0, true)
             }
         }
-        binding.fragmentArtistContent.shuffleAction.setOnClickListener {
+        binding.shuffleAction.setOnClickListener {
             if (::artist.isInitialized) {
                 MusicPlayerRemote.openAndShuffleQueue(artist.songs, true)
             }
@@ -165,15 +164,15 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
         this.artist = artist
         loadArtistImage(artist)
 
-        // عرض اسم الفنان والمعلومات في التصميم الجديد
-        binding.fragmentArtistContent.artistTitle.text = artist.name
-        binding.fragmentArtistContent.text.text = String.format(
+        // اسم الفنان والمؤشرات في الهيدر فوق خلفية الصورة
+        binding.artistTitle.text = artist.name
+        binding.text.text = String.format(
             "%s • %s",
             MusicUtil.getArtistInfoString(requireContext(), artist),
             MusicUtil.getReadableDurationString(MusicUtil.getTotalDuration(artist.songs))
         )
 
-        // إعداد كارت أحدث إصدار (Featured Release Card)
+        // إعداد كارت أحدث إصدار (Featured Release)
         if (artist.albums.isNotEmpty()) {
             val latestAlbum = artist.albums.first()
             binding.fragmentArtistContent.featuredReleaseCard.isVisible = true
@@ -184,12 +183,11 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
                 resources.getQuantityString(R.plurals.albumSongs, latestAlbum.songCount)
             )
 
-            // تحميل غلاف الألبوم المميز
+            // تحميل صورة ألبوم أحدث إصدار
             Glide.with(requireContext())
                 .load(RetroGlideExtension.getSongModel(latestAlbum.safeGetFirstSong()))
                 .into(binding.fragmentArtistContent.featuredImage)
 
-            // عند الضغط على الكارت يتنقل لصفحة تفاصيل الألبوم
             binding.fragmentArtistContent.featuredReleaseCard.setOnClickListener { view ->
                 onAlbumClick(latestAlbum.id, view)
             }
@@ -231,7 +229,7 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
 
     private fun setColors(color: Int) {
         if (_binding != null) {
-            binding.fragmentArtistContent.shuffleAction.applyColor(color)
+            binding.shuffleAction.applyColor(color)
         }
     }
 
