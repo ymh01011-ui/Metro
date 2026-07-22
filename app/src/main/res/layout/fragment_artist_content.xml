@@ -131,10 +131,10 @@
         android:layout_marginBottom="12dp"
         android:paddingStart="16dp"
         android:paddingEnd="16dp"
+        android:text="Singles"
         android:textColor="@android:color/white"
         android:textSize="20sp"
-        android:textStyle="bold"
-        tools:text="Singles" />
+        android:textStyle="bold" />
 
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/singlesRecyclerView"
@@ -153,10 +153,10 @@
         android:layout_marginBottom="12dp"
         android:paddingStart="16dp"
         android:paddingEnd="16dp"
+        android:text="Appears On"
         android:textColor="@android:color/white"
         android:textSize="20sp"
-        android:textStyle="bold"
-        tools:text="Appears On" />
+        android:textStyle="bold" />
 
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/appearsOnRecyclerView"
