@@ -104,7 +104,8 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
         }
 
         setupSongSortButton()
-        binding.appBarLayout.statusBarForeground =
+        // appBarLayout is nullable in the generated binding; use a safe call to avoid compilation errors
+        binding.appBarLayout?.statusBarForeground =
             MaterialShapeDrawable.createWithElevationOverlay(requireContext())
     }
 
@@ -207,8 +208,9 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
         if (_binding != null) {
             // صبغ الخلفيات الأساسية باللون المستخرج
             binding.rootLayout.setBackgroundColor(color)
-            binding.appBarLayout.setBackgroundColor(color)
-            binding.collapsingToolbar.setContentScrimColor(color)
+            // appBarLayout and collapsingToolbar are nullable in the generated binding; use safe calls
+            binding.appBarLayout?.setBackgroundColor(color)
+            binding.collapsingToolbar?.setContentScrimColor(color)
 
             // دمج ناعم (Gradient) من شفاف للون المستخرج أسفل الصورة
             val transparentColor = ColorUtils.setAlphaComponent(color, 0)
@@ -216,7 +218,7 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
                 android.graphics.drawable.GradientDrawable.Orientation.TOP_BOTTOM,
                 intArrayOf(transparentColor, color)
             )
-            binding.headerGradient.background = gradient
+            binding.headerGradient?.let { it.background = gradient }
         }
     }
 
