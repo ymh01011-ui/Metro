@@ -92,12 +92,12 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
         setupRecyclerView()
 
         // ربط أزرار التشغيل المباشرة في الهيدر الرئيسي
-        binding.playAction.setOnClickListener {
+        binding.playAction?.setOnClickListener {
             if (::artist.isInitialized) {
                 MusicPlayerRemote.openQueue(artist.sortedSongs, 0, true)
             }
         }
-        binding.shuffleAction.setOnClickListener {
+        binding.shuffleAction?.setOnClickListener {
             if (::artist.isInitialized) {
                 MusicPlayerRemote.openAndShuffleQueue(artist.songs, true)
             }
@@ -229,7 +229,7 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
 
     private fun setColors(color: Int) {
         if (_binding != null) {
-            binding.shuffleAction.applyColor(color)
+            binding.shuffleAction?.applyColor(color)
         }
     }
 
