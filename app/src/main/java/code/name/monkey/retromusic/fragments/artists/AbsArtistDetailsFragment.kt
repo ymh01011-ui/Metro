@@ -1,6 +1,8 @@
 package code.name.monkey.retromusic.fragments.artists
 
+import android.graphics.Bitmap
 import android.graphics.Color
+import android.graphics.drawable.Drawable
 import android.os.Bundle
 import android.view.Menu
 import android.view.MenuInflater
@@ -16,6 +18,7 @@ import androidx.core.view.isVisible
 import androidx.lifecycle.lifecycleScope
 import androidx.navigation.fragment.FragmentNavigatorExtras
 import androidx.navigation.fragment.findNavController
+import androidx.palette.graphics.Palette
 import androidx.recyclerview.widget.DefaultItemAnimator
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -29,8 +32,6 @@ import code.name.monkey.retromusic.extensions.*
 import code.name.monkey.retromusic.fragments.base.AbsMainActivityFragment
 import code.name.monkey.retromusic.glide.RetroGlideExtension
 import code.name.monkey.retromusic.glide.RetroGlideExtension.artistImageOptions
-import code.name.monkey.retromusic.glide.RetroGlideExtension.asBitmapPalette
-import code.name.monkey.retromusic.glide.SingleColorTarget
 import code.name.monkey.retromusic.helper.MusicPlayerRemote
 import code.name.monkey.retromusic.helper.SortOrder
 import code.name.monkey.retromusic.interfaces.IAlbumClickListener
@@ -39,6 +40,8 @@ import code.name.monkey.retromusic.model.Artist
 import code.name.monkey.retromusic.repository.RealRepository
 import code.name.monkey.retromusic.util.*
 import com.bumptech.glide.Glide
+import com.bumptech.glide.request.target.CustomTarget
+import com.bumptech.glide.request.transition.Transition
 import com.google.android.material.shape.MaterialShapeDrawable
 import com.google.android.material.transition.MaterialContainerTransform
 import kotlinx.coroutines.Dispatchers
@@ -184,26 +187,71 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
         binding.fragmentArtistContent.albumTitle.isVisible = albums.isNotEmpty()
         binding.fragmentArtistContent.albumRecyclerView.isVisible = albums.isNotEmpty()
 
+        // كانت الكلمة مش بتظهر لأنه مفيش نص متحدد وقت التشغيل (tools:text مش بتشتغل غير في الـ preview)
+        binding.fragmentArtistContent.singlesTitle.text = getString(R.string.singles)
         singlesAdapter.swapDataSet(singles)
         binding.fragmentArtistContent.singlesTitle.isVisible = singles.isNotEmpty()
         binding.fragmentArtistContent.singlesRecyclerView.isVisible = singles.isNotEmpty()
 
+        binding.fragmentArtistContent.appearsOnTitle.text = getString(R.string.appears_on)
         appearsOnAdapter.swapDataSet(appearsOn)
         binding.fragmentArtistContent.appearsOnTitle.isVisible = appearsOn.isNotEmpty()
         binding.fragmentArtistContent.appearsOnRecyclerView.isVisible = appearsOn.isNotEmpty()
     }
 
     private fun loadArtistImage(artist: Artist) {
-        Glide.with(requireContext()).asBitmapPalette().artistImageOptions(artist)
-            .load(RetroGlideExtension.getArtistModel(artist)).dontAnimate()
-            .into(object : SingleColorTarget(binding.image) {
-                override fun onColorReady(color: Int) {
-                    setColors(color)
+        Glide.with(requireContext())
+            .asBitmap()
+            .artistImageOptions(artist)
+            .load(RetroGlideExtension.getArtistModel(artist))
+            .dontAnimate()
+            .into(object : CustomTarget<Bitmap>() {
+                override fun onResourceReady(
+                    resource: Bitmap,
+                    transition: Transition<in Bitmap>?
+                ) {
+                    if (_binding != null) {
+                        binding.image.setImageBitmap(resource)
+                    }
+                    extractColorFromBottomEdge(resource)
+                }
+
+                override fun onLoadCleared(placeholder: Drawable?) {
+                    if (_binding != null) {
+                        binding.image.setImageDrawable(placeholder)
+                    }
                 }
             })
     }
 
-    // هنا السحر بتاع أبل ميوزك: الصفحة كلها بتتصبغ باللون وتعمل تدرج متناسق مع الصورة
+    // هنا السحر بتاع أبل ميوزك: بناخد اللون من الحتة السفلية بس من صورة الفنان (مش من الصورة كلها)
+    // عشان اللون يبقى مطابق لحواف الصورة من تحت، زي ما إنت عايز بالظبط
+    private fun extractColorFromBottomEdge(bitmap: Bitmap) {
+        lifecycleScope.launch(Dispatchers.Default) {
+            // نسبة الشريط السفلي اللي هنستخرج اللون منه (٢٢٪ من ارتفاع الصورة)
+            val stripHeightRatio = 0.22f
+            val stripHeight = (bitmap.height * stripHeightRatio).toInt().coerceAtLeast(1)
+            val startY = (bitmap.height - stripHeight).coerceAtLeast(0)
+
+            var bottomStrip: Bitmap? = null
+            val color = try {
+                bottomStrip = Bitmap.createBitmap(bitmap, 0, startY, bitmap.width, stripHeight)
+                val palette = Palette.from(bottomStrip).generate()
+                palette.getDominantColor(palette.getMutedColor(surfaceColor()))
+            } catch (e: Exception) {
+                surfaceColor()
+            } finally {
+                bottomStrip?.recycle()
+            }
+
+            withContext(Dispatchers.Main) {
+                setColors(color)
+            }
+        }
+    }
+
+    // هنا بنلوّن الصفحة باللون المستخرج، لكن بشكل أخف من قبل، وبنأخر بداية التلوين لتحت شوية
+    // عشان الفاصل بين الصورة والعناصر يبقى أوضح ومش حاسس إن التلوين طالع بدري وقوي أوي
     private fun setColors(color: Int) {
         if (_binding != null) {
             // صبغ الخلفيات الأساسية باللون المستخرج
@@ -212,11 +260,20 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
             binding.appBarLayout?.setBackgroundColor(color)
             binding.collapsingToolbar?.setContentScrimColor(color)
 
-            // دمج ناعم (Gradient) من شفاف للون المستخرج أسفل الصورة
+            // اللون النهائي بشفافية أقل من الكامل (كان 255) عشان التأثير يبقى أخف على الصورة
+            val softenedColor = ColorUtils.setAlphaComponent(color, 215)
             val transparentColor = ColorUtils.setAlphaComponent(color, 0)
+
+            // بتكرار اللون الشفاف أكتر من مرة، التدرّج بيفضل شفاف لحد ٦٦٪ من ارتفاع الصورة
+            // وبعدين يبدأ يتحول للون فعلي في الثلث الأخير بس، يعني الفاصل نزل لتحت
             val gradient = android.graphics.drawable.GradientDrawable(
                 android.graphics.drawable.GradientDrawable.Orientation.TOP_BOTTOM,
-                intArrayOf(transparentColor, color)
+                intArrayOf(
+                    transparentColor,
+                    transparentColor,
+                    transparentColor,
+                    softenedColor
+                )
             )
             binding.headerGradient?.let { it.background = gradient }
         }
