@@ -23,6 +23,7 @@ import androidx.annotation.ColorInt;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.core.content.ContextCompat;
+import androidx.core.graphics.ColorUtils;
 import androidx.palette.graphics.Palette;
 
 import org.jetbrains.annotations.NotNull;
@@ -48,7 +49,13 @@ public class RetroColorUtil {
 
   @Nullable
   public static Palette generatePalette(@Nullable Bitmap bitmap) {
-    return bitmap == null ? null : Palette.from(bitmap).clearFilters().generate();
+    if (bitmap == null) {
+      return null;
+    }
+    return new Palette.Builder(bitmap)
+        .clearFilters()
+        .maximumColorCount(32)
+        .generate();
   }
 
   public static int getTextColor(@Nullable Palette palette) {
@@ -226,6 +233,121 @@ public class RetroColorUtil {
       return ContextCompat.getColor(context, code.name.monkey.appthemehelper.R.color.m3_accent_color);
     } else {
       return ThemeStore.Companion.accentColor(context);
+    }
+  }
+
+  // بيمزج بين لونين بنسبة (ratio) عشان الانتقال بين طبقات الـ Gradient يبقى ناعم
+  // من غير حدود واضحة بين كل لون واللي بعده
+  @ColorInt
+  public static int blendColors(@ColorInt int color1, @ColorInt int color2, float ratio) {
+    float clampedRatio = Math.max(0f, Math.min(1f, ratio));
+    float inverseRatio = 1f - clampedRatio;
+    float r = (Color.red(color1) * clampedRatio) + (Color.red(color2) * inverseRatio);
+    float g = (Color.green(color1) * clampedRatio) + (Color.green(color2) * inverseRatio);
+    float b = (Color.blue(color1) * clampedRatio) + (Color.blue(color2) * inverseRatio);
+    return Color.rgb(Math.round(r), Math.round(g), Math.round(b));
+  }
+
+  // لو اللون باهت (Saturation واطية)، بنزوّده شوية من غير مبالغة عشان الخلفية
+  // تبقى حيوية زي أبل ميوزك بدل ما تطلع رمادية
+  @ColorInt
+  public static int boostSaturationIfDull(@ColorInt int color, float minSaturation, float boostAmount) {
+    float[] hsv = new float[3];
+    Color.colorToHSV(color, hsv);
+    if (hsv[1] < minSaturation) {
+      hsv[1] = Math.min(1f, hsv[1] + boostAmount);
+    }
+    return Color.HSVToColor(hsv);
+  }
+
+  public static boolean isLightColor(@ColorInt int color) {
+    return ColorUtils.calculateLuminance(color) > 0.5;
+  }
+
+  public static boolean isVeryDarkColor(@ColorInt int color) {
+    return ColorUtils.calculateLuminance(color) < 0.06;
+  }
+
+  // بندلهن اللون خطوة خطوة لو طلع فاتح أوي، عشان الـ Gradient يبقى أغمق تلقائيًا
+  // على صور الغلاف الفاتحة (Light Artwork)
+  @ColorInt
+  public static int darkenIfLight(@ColorInt int color, float stepAmount) {
+    int result = color;
+    int guard = 0;
+    while (isLightColor(result) && guard < 8) {
+      float[] hsv = new float[3];
+      Color.colorToHSV(result, hsv);
+      hsv[2] = Math.max(0f, hsv[2] - stepAmount);
+      result = Color.HSVToColor(hsv);
+      guard++;
+    }
+    return result;
+  }
+
+  @ColorInt
+  private static int firstAvailableRgb(@ColorInt int fallback, Palette.Swatch... swatches) {
+    for (Palette.Swatch swatch : swatches) {
+      if (swatch != null) {
+        return swatch.getRgb();
+      }
+    }
+    return fallback;
+  }
+
+  /**
+   * بيستخرج مجموعة الألوان اللي بتتبني منها التدرّج السينمائي (Cinematic Gradient)
+   * على طريقة Apple Music: Dominant + Vibrant + Dark Vibrant + Dark Muted، مع تعديل
+   * تلقائي للـ Saturation والسطوع بدل الاعتماد على Swatch واحد بس.
+   */
+  @NonNull
+  public static ArtistGradientColors getArtistGradientColors(
+      @Nullable Palette palette, @ColorInt int fallback) {
+    if (palette == null) {
+      return new ArtistGradientColors(fallback, fallback, fallback, fallback);
+    }
+
+    int dominant =
+        palette.getDominantSwatch() != null ? palette.getDominantSwatch().getRgb() : fallback;
+
+    int vibrant =
+        firstAvailableRgb(dominant, palette.getVibrantSwatch(), palette.getLightVibrantSwatch());
+
+    int darkVibrant = firstAvailableRgb(vibrant, palette.getDarkVibrantSwatch());
+
+    int darkMuted =
+        firstAvailableRgb(darkVibrant, palette.getDarkMutedSwatch(), palette.getMutedSwatch());
+
+    // لو الألوان طالعة باهتة، بنزوّد الـ Saturation شوية بس، من غير ما نبالغ
+    dominant = boostSaturationIfDull(dominant, 0.35f, 0.15f);
+    vibrant = boostSaturationIfDull(vibrant, 0.35f, 0.15f);
+    darkVibrant = boostSaturationIfDull(darkVibrant, 0.3f, 0.12f);
+    darkMuted = boostSaturationIfDull(darkMuted, 0.25f, 0.1f);
+
+    // صورة الغلاف الفاتحة (Light Artwork) بتخلي الـ Gradient أغمق تلقائيًا
+    if (isLightColor(dominant)) {
+      dominant = darkenIfLight(dominant, 0.08f);
+      vibrant = darkenIfLight(vibrant, 0.08f);
+    }
+
+    return new ArtistGradientColors(dominant, vibrant, darkVibrant, darkMuted);
+  }
+
+  /** مجموعة الألوان الأربعة اللي بيتبنى منها التدرّج السينمائي لشاشة تفاصيل الفنان. */
+  public static final class ArtistGradientColors {
+    @ColorInt public final int dominant;
+    @ColorInt public final int vibrant;
+    @ColorInt public final int darkVibrant;
+    @ColorInt public final int darkMuted;
+
+    public ArtistGradientColors(
+        @ColorInt int dominant,
+        @ColorInt int vibrant,
+        @ColorInt int darkVibrant,
+        @ColorInt int darkMuted) {
+      this.dominant = dominant;
+      this.vibrant = vibrant;
+      this.darkVibrant = darkVibrant;
+      this.darkMuted = darkMuted;
     }
   }
 
