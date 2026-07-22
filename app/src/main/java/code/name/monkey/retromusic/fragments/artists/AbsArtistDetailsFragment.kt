@@ -187,13 +187,12 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
         binding.fragmentArtistContent.albumTitle.isVisible = albums.isNotEmpty()
         binding.fragmentArtistContent.albumRecyclerView.isVisible = albums.isNotEmpty()
 
-        // كانت الكلمة مش بتظهر لأنه مفيش نص متحدد وقت التشغيل (tools:text مش بتشتغل غير في الـ preview)
-        binding.fragmentArtistContent.singlesTitle.text = getString(R.string.singles)
+        // الكلمة مكنتش بتظهر لأنه مفيش نص متحدد وقت التشغيل (tools:text بتاعة الـ XML بتشتغل بس وقت المعاينة
+        // في Android Studio، مش وقت تشغيل التطبيق فعليًا). النص الحقيقي دلوقتي متحدد في الـ XML نفسه.
         singlesAdapter.swapDataSet(singles)
         binding.fragmentArtistContent.singlesTitle.isVisible = singles.isNotEmpty()
         binding.fragmentArtistContent.singlesRecyclerView.isVisible = singles.isNotEmpty()
 
-        binding.fragmentArtistContent.appearsOnTitle.text = getString(R.string.appears_on)
         appearsOnAdapter.swapDataSet(appearsOn)
         binding.fragmentArtistContent.appearsOnTitle.isVisible = appearsOn.isNotEmpty()
         binding.fragmentArtistContent.appearsOnRecyclerView.isVisible = appearsOn.isNotEmpty()
