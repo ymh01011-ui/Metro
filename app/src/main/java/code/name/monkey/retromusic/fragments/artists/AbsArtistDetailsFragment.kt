@@ -27,6 +27,7 @@ import code.name.monkey.retromusic.dialogs.AddToPlaylistDialog
 import code.name.monkey.retromusic.extensions.*
 import code.name.monkey.retromusic.fragments.base.AbsMainActivityFragment
 import code.name.monkey.retromusic.glide.RetroGlideExtension
+import code.name.monkey.retromusic.glide.RetroGlideExtension.albumCoverOptions
 import code.name.monkey.retromusic.glide.RetroGlideExtension.artistImageOptions
 import code.name.monkey.retromusic.glide.RetroGlideExtension.asBitmapPalette
 import code.name.monkey.retromusic.glide.SingleColorTarget
@@ -180,6 +181,8 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
 
         val (albums, singles, appearsOn) = categorizeAlbums(artist)
 
+        bindFeaturedAlbum(albums + singles)
+
         val albumText = resources.getQuantityString(
             R.plurals.albums, albums.size, albums.size
         )
@@ -195,6 +198,42 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
         appearsOnAdapter.swapDataSet(appearsOn)
         binding.fragmentArtistContent.appearsOnTitle.isVisible = appearsOn.isNotEmpty()
         binding.fragmentArtistContent.appearsOnRecyclerView.isVisible = appearsOn.isNotEmpty()
+    }
+
+    /**
+     * Picks the most recent primary release (by year) from [candidates] and
+     * binds it into the Featured Album card. Hides the card entirely if
+     * there's nothing to feature (e.g. artist has only "Appears on" credits).
+     */
+    private fun bindFeaturedAlbum(candidates: List<Album>) {
+        val featured = candidates.maxByOrNull { it.year }
+
+        if (featured == null) {
+            binding.fragmentArtistContent.featuredAlbumCard.isVisible = false
+            return
+        }
+
+        binding.fragmentArtistContent.featuredAlbumCard.isVisible = true
+        binding.fragmentArtistContent.featuredAlbumTitle.text = featured.title
+        binding.fragmentArtistContent.featuredAlbumSubtitle.text = resources.getQuantityString(
+            R.plurals.albumSongs, featured.songCount, featured.songCount
+        )
+
+        Glide.with(requireContext())
+            .asDrawable()
+            .albumCoverOptions(featured.safeGetFirstSong())
+            .load(RetroGlideExtension.getSongModel(featured.safeGetFirstSong()))
+            .into(binding.fragmentArtistContent.featuredAlbumImage)
+
+        binding.fragmentArtistContent.featuredAlbumCard.setOnClickListener {
+            findNavController().navigate(
+                R.id.albumDetailsFragment,
+                bundleOf(EXTRA_ALBUM_ID to featured.id)
+            )
+        }
+        binding.fragmentArtistContent.featuredAlbumPlayButton.setOnClickListener {
+            MusicPlayerRemote.openQueue(featured.songs, 0, true)
+        }
     }
 
     private fun loadArtistImage(artist: Artist) {
