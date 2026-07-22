@@ -6,91 +6,77 @@
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:orientation="vertical"
-    android:paddingBottom="@dimen/mini_player_height">
+    android:paddingStart="16dp"
+    android:paddingEnd="16dp"
+    android:paddingBottom="32dp">
 
-    <!-- اسم الفنان والمعلومات -->
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:gravity="center"
-        android:orientation="vertical"
-        android:paddingTop="12dp"
-        android:paddingBottom="16dp">
-
-        <code.name.monkey.retromusic.views.BaselineGridTextView
-            android:id="@+id/artistTitle"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:gravity="center"
-            android:textAppearance="@style/TextViewHeadline4"
-            android:textColor="?android:attr/textColorPrimary"
-            android:textStyle="bold"
-            tools:text="Olivia Rodrigo" />
-
-        <code.name.monkey.retromusic.views.BaselineGridTextView
-            android:id="@+id/text"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:paddingTop="4dp"
-            android:textAppearance="@style/TextViewCaption"
-            android:textColor="?android:attr/textColorSecondary"
-            tools:text="14 Songs • 45 mins" />
-    </LinearLayout>
-
-    <!-- أزرار التحكم الثلاثية (Apple Music Style) -->
+    <!-- أزرار التحكم الثلاثية بأسلوب Liquid Glass والزر الدائري -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:gravity="center"
         android:orientation="horizontal"
-        android:paddingBottom="24dp">
+        android:paddingTop="8dp"
+        android:paddingBottom="20dp">
 
-        <!-- زر التفاصيل / Info -->
+        <!-- زر المعاينة الشفاف الزجاجي -->
         <com.google.android.material.button.MaterialButton
             android:id="@+id/infoAction"
-            style="@style/Widget.Material3.Button.IconButton.Filled.Tonal"
-            android:layout_width="48dp"
-            android:layout_height="48dp"
-            android:layout_marginEnd="20dp"
+            style="@style/Widget.Material3.Button.IconButton"
+            android:layout_width="52dp"
+            android:layout_height="52dp"
+            android:layout_marginEnd="24dp"
+            android:backgroundTint="#33FFFFFF"
+            app:cornerRadius="26dp"
             app:icon="@drawable/ic_info"
             app:iconGravity="textStart"
-            app:iconPadding="0dp" />
+            app:iconPadding="0dp"
+            app:iconTint="@android:color/white"
+            app:strokeColor="#1AFFFFFF"
+            app:strokeWidth="1dp" />
 
-        <!-- زر التشغيل الرئيسي (Play All) -->
+        <!-- زر التشغيل الدائري الكبير -->
         <com.google.android.material.floatingactionbutton.FloatingActionButton
             android:id="@+id/playAction"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             app:backgroundTint="@android:color/white"
             app:tint="@android:color/black"
+            app:shapeAppearanceOverlay="@style/ShapeAppearance.Material3.Corner.Full"
             app:fabCustomSize="64dp"
-            app:iconSize="32dp"
+            app:iconSize="30dp"
             app:srcCompat="@drawable/ic_play_arrow" />
 
-        <!-- زر التشغيل العشوائي / المفضلة -->
+        <!-- زر التشغيل العشوائي الشفاف الزجاجي -->
         <com.google.android.material.button.MaterialButton
             android:id="@+id/shuffleAction"
-            style="@style/Widget.Material3.Button.IconButton.Filled.Tonal"
-            android:layout_width="48dp"
-            android:layout_height="48dp"
-            android:layout_marginStart="20dp"
+            style="@style/Widget.Material3.Button.IconButton"
+            android:layout_width="52dp"
+            android:layout_height="52dp"
+            android:layout_marginStart="24dp"
+            android:backgroundTint="#33FFFFFF"
+            app:cornerRadius="26dp"
             app:icon="@drawable/ic_shuffle"
             app:iconGravity="textStart"
-            app:iconPadding="0dp" />
+            app:iconPadding="0dp"
+            app:iconTint="@android:color/white"
+            app:strokeColor="#1AFFFFFF"
+            app:strokeWidth="1dp" />
 
     </LinearLayout>
 
-    <!-- كارت الإصدار الأحدث / Featured Release -->
+    <!-- كارت أحدث ألبوم (Featured Release) -->
     <com.google.android.material.card.MaterialCardView
         android:id="@+id/featuredReleaseCard"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginHorizontal="16dp"
         android:layout_marginBottom="24dp"
+        android:visibility="gone"
         app:cardBackgroundColor="#1AFFFFFF"
         app:cardCornerRadius="16dp"
         app:cardElevation="0dp"
-        app:strokeWidth="0dp">
+        app:strokeWidth="0dp"
+        tools:visibility="visible">
 
         <LinearLayout
             android:layout_width="match_parent"
@@ -101,8 +87,8 @@
 
             <com.google.android.material.imageview.ShapeableImageView
                 android:id="@+id/featuredImage"
-                android:layout_width="72dp"
-                android:layout_height="72dp"
+                android:layout_width="64dp"
+                android:layout_height="64dp"
                 android:scaleType="centerCrop"
                 app:shapeAppearanceOverlay="@style/ShapeAppearance.Material3.Corner.Medium"
                 tools:srcCompat="@tools:sample/backgrounds/scenic" />
@@ -110,18 +96,17 @@
             <LinearLayout
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
-                android:layout_marginStart="12dp"
+                android:layout_marginStart="16dp"
                 android:layout_weight="1"
                 android:orientation="vertical">
 
                 <TextView
-                    android:id="@+id/featuredSubtitle"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:text="LATEST RELEASE"
+                    android:textColor="#8E8E93"
                     android:textSize="11sp"
-                    android:textStyle="bold"
-                    android:textColor="?android:attr/textColorSecondary" />
+                    android:textStyle="bold" />
 
                 <TextView
                     android:id="@+id/featuredTitle"
@@ -129,105 +114,109 @@
                     android:layout_height="wrap_content"
                     android:ellipsize="end"
                     android:maxLines="1"
-                    android:textColor="?android:attr/textColorPrimary"
-                    android:textSize="15sp"
+                    android:textColor="@android:color/white"
+                    android:textSize="16sp"
                     android:textStyle="bold"
-                    tools:text="you seem pretty sad for a girl" />
+                    tools:text="Album Title" />
 
                 <TextView
                     android:id="@+id/featuredDetails"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:textColor="?android:attr/textColorSecondary"
-                    android:textSize="12sp"
-                    tools:text="Album • 14 songs" />
+                    android:textColor="#B3FFFFFF"
+                    android:textSize="13sp"
+                    tools:text="1 Song" />
             </LinearLayout>
-
         </LinearLayout>
     </com.google.android.material.card.MaterialCardView>
 
-    <!-- عنوان قسم أشهر الأغاني Top Songs -->
-    <LinearLayout
+    <!-- قائمة أفضل الأغاني Top Songs -->
+    <RelativeLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:gravity="center_vertical"
-        android:paddingHorizontal="16dp"
-        android:paddingVertical="8dp">
+        android:layout_marginBottom="8dp">
 
-        <com.google.android.material.textview.MaterialTextView
+        <TextView
             android:id="@+id/songTitle"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:text="Top Songs ›"
-            android:textAppearance="@style/TextViewHeadline6"
-            android:textColor="?android:attr/textColorPrimary"
-            android:textStyle="bold" />
-
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/song_sort_order"
-            style="@style/Widget.Material3.Button.IconButton"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            app:icon="@drawable/ic_sort"
-            app:iconSize="20dp" />
-    </LinearLayout>
+            android:layout_alignParentStart="true"
+            android:layout_centerVertical="true"
+            android:textColor="@android:color/white"
+            android:textSize="20sp"
+            android:textStyle="bold"
+            tools:text="Top Songs ›" />
+
+        <ImageView
+            android:id="@+id/songSortOrder"
+            android:layout_width="32dp"
+            android:layout_height="32dp"
+            android:layout_alignParentEnd="true"
+            android:layout_centerVertical="true"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:padding="4dp"
+            android:src="@drawable/ic_sort"
+            app:tint="@android:color/white" />
+    </RelativeLayout>
 
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/recyclerView"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:nestedScrollingEnabled="false"
-        tools:listitem="@layout/item_song" />
+        android:nestedScrollingEnabled="false" />
 
-    <!-- باقي القوائم: الألبومات، السينجلز... الخ -->
-    <com.google.android.material.textview.MaterialTextView
+    <!-- الألبومات Albums -->
+    <TextView
         android:id="@+id/albumTitle"
-        android:layout_width="match_parent"
+        android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:padding="16dp"
-        android:text="@string/albums"
-        android:textAppearance="@style/TextViewHeadline6"
-        android:textColor="?android:attr/textColorPrimary"
-        android:textStyle="bold" />
+        android:layout_marginTop="24dp"
+        android:layout_marginBottom="12dp"
+        android:textColor="@android:color/white"
+        android:textSize="20sp"
+        android:textStyle="bold"
+        tools:text="Albums" />
 
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/albumRecyclerView"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:nestedScrollingEnabled="false"
-        tools:listitem="@layout/item_album_card" />
+        android:clipToPadding="false" />
 
-    <com.google.android.material.textview.MaterialTextView
+    <!-- الأغاني المنفردة Singles -->
+    <TextView
         android:id="@+id/singlesTitle"
-        android:layout_width="match_parent"
+        android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:padding="16dp"
-        android:text="Singles"
-        android:textAppearance="@style/TextViewHeadline6"
-        android:textColor="?android:attr/textColorPrimary"
-        android:textStyle="bold" />
+        android:layout_marginTop="24dp"
+        android:layout_marginBottom="12dp"
+        android:textColor="@android:color/white"
+        android:textSize="20sp"
+        android:textStyle="bold"
+        tools:text="Singles" />
 
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/singlesRecyclerView"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:nestedScrollingEnabled="false" />
+        android:clipToPadding="false" />
 
-    <com.google.android.material.textview.MaterialTextView
+    <!-- الظهور مع فنانين آخرين Appears On -->
+    <TextView
         android:id="@+id/appearsOnTitle"
-        android:layout_width="match_parent"
+        android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:padding="16dp"
-        android:text="Appears on"
-        android:textAppearance="@style/TextViewHeadline6"
-        android:textColor="?android:attr/textColorPrimary"
-        android:textStyle="bold" />
+        android:layout_marginTop="24dp"
+        android:layout_marginBottom="12dp"
+        android:textColor="@android:color/white"
+        android:textSize="20sp"
+        android:textStyle="bold"
+        tools:text="Appears On" />
 
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/appearsOnRecyclerView"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:nestedScrollingEnabled="false" />
+        android:clipToPadding="false" />
 
 </LinearLayout>
