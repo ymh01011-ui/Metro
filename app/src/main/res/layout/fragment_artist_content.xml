@@ -1,264 +1,233 @@
 <?xml version="1.0" encoding="utf-8"?>
-<code.name.monkey.retromusic.views.insets.InsetsConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<LinearLayout 
+    xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
-    android:layout_height="match_parent"
+    android:layout_height="wrap_content"
     android:orientation="vertical"
     android:paddingBottom="@dimen/mini_player_height">
 
-    <com.google.android.material.button.MaterialButton
-        android:id="@+id/playAction"
-        style="@style/Widget.Material3.Button.OutlinedButton"
-        android:layout_width="0dp"
-        android:layout_height="wrap_content"
-        android:layout_marginStart="16dp"
-        android:layout_marginEnd="4dp"
-        android:paddingVertical="10dp"
-        android:text="@string/action_play_all"
-        android:textAppearance="@style/TextViewButton"
-        android:textColor="?android:attr/textColorPrimary"
-        app:backgroundTint="?attr/colorSurface"
-        app:icon="@drawable/ic_play_arrow"
-        app:layout_constraintEnd_toStartOf="@+id/shuffleAction"
-        app:layout_constraintHorizontal_bias="0.5"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toTopOf="parent" />
-
-    <com.google.android.material.button.MaterialButton
-        android:id="@+id/shuffleAction"
-        style="@style/Widget.Material3.Button.Icon"
-        android:layout_width="0dp"
-        android:layout_height="0dp"
-        android:layout_marginStart="4dp"
-        android:layout_marginEnd="16dp"
-        android:paddingVertical="10dp"
-        android:text="@string/shuffle"
-        android:textAppearance="@style/TextViewButton"
-        app:icon="@drawable/ic_shuffle"
-        app:layout_constraintBottom_toBottomOf="@+id/playAction"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintHorizontal_bias="0.5"
-        app:layout_constraintStart_toEndOf="@+id/playAction"
-        app:layout_constraintTop_toTopOf="@+id/playAction" />
-
-    <!-- Featured Album card, Apple Music style: cover + label + title + song
-         count on the left, a play button on the right. Hidden entirely when
-         the artist has no album to feature. -->
-    <com.google.android.material.card.MaterialCardView
-        android:id="@+id/featuredAlbumCard"
+    <!-- اسم الفنان والمعلومات -->
+    <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginStart="16dp"
-        android:layout_marginTop="20dp"
-        android:layout_marginEnd="16dp"
+        android:gravity="center"
+        android:orientation="vertical"
+        android:paddingTop="12dp"
+        android:paddingBottom="16dp">
+
+        <code.name.monkey.retromusic.views.BaselineGridTextView
+            android:id="@+id/artistTitle"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:gravity="center"
+            android:textAppearance="@style/TextViewHeadline4"
+            android:textColor="?android:attr/textColorPrimary"
+            android:textStyle="bold"
+            tools:text="Olivia Rodrigo" />
+
+        <code.name.monkey.retromusic.views.BaselineGridTextView
+            android:id="@+id/text"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:paddingTop="4dp"
+            android:textAppearance="@style/TextViewCaption"
+            android:textColor="?android:attr/textColorSecondary"
+            tools:text="14 Songs • 45 mins" />
+    </LinearLayout>
+
+    <!-- أزرار التحكم الثلاثية (Apple Music Style) -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center"
+        android:orientation="horizontal"
+        android:paddingBottom="24dp">
+
+        <!-- زر التفاصيل / Info -->
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/infoAction"
+            style="@style/Widget.Material3.Button.IconButton.Filled.Tonal"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:layout_marginEnd="20dp"
+            app:icon="@drawable/ic_info"
+            app:iconGravity="textStart"
+            app:iconPadding="0dp" />
+
+        <!-- زر التشغيل الرئيسي (Play All) -->
+        <com.google.android.material.floatingactionbutton.FloatingActionButton
+            android:id="@+id/playAction"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            app:backgroundTint="@android:color/white"
+            app:tint="@android:color/black"
+            app:fabCustomSize="64dp"
+            app:iconSize="32dp"
+            app:srcCompat="@drawable/ic_play_arrow" />
+
+        <!-- زر التشغيل العشوائي / المفضلة -->
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/shuffleAction"
+            style="@style/Widget.Material3.Button.IconButton.Filled.Tonal"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:layout_marginStart="20dp"
+            app:icon="@drawable/ic_shuffle"
+            app:iconGravity="textStart"
+            app:iconPadding="0dp" />
+
+    </LinearLayout>
+
+    <!-- كارت الإصدار الأحدث / Featured Release -->
+    <com.google.android.material.card.MaterialCardView
+        android:id="@+id/featuredReleaseCard"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginHorizontal="16dp"
+        android:layout_marginBottom="24dp"
+        app:cardBackgroundColor="#1AFFFFFF"
         app:cardCornerRadius="16dp"
         app:cardElevation="0dp"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@id/playAction"
         app:strokeWidth="0dp">
 
-        <androidx.constraintlayout.widget.ConstraintLayout
+        <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
             android:padding="12dp">
 
-            <androidx.appcompat.widget.AppCompatImageView
-                android:id="@+id/featuredAlbumImage"
-                android:layout_width="56dp"
-                android:layout_height="56dp"
+            <com.google.android.material.imageview.ShapeableImageView
+                android:id="@+id/featuredImage"
+                android:layout_width="72dp"
+                android:layout_height="72dp"
                 android:scaleType="centerCrop"
-                app:layout_constraintBottom_toBottomOf="parent"
-                app:layout_constraintStart_toStartOf="parent"
-                app:layout_constraintTop_toTopOf="parent"
-                app:shapeAppearanceOverlay="@style/RoundedCornersSmall"
-                tools:srcCompat="@tools:sample/backgrounds/scenic[1]" />
+                app:shapeAppearanceOverlay="@style/ShapeAppearance.Material3.Corner.Medium"
+                tools:srcCompat="@tools:sample/backgrounds/scenic" />
 
-            <com.google.android.material.textview.MaterialTextView
-                android:id="@+id/featuredAlbumLabel"
+            <LinearLayout
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_marginStart="12dp"
-                android:layout_marginEnd="8dp"
-                android:text="FEATURED ALBUM"
-                android:textAllCaps="true"
-                android:textAppearance="@style/TextViewOverline"
-                android:textColor="?android:attr/textColorSecondary"
-                app:layout_constraintEnd_toStartOf="@id/featuredAlbumPlayButton"
-                app:layout_constraintStart_toEndOf="@id/featuredAlbumImage"
-                app:layout_constraintTop_toTopOf="@id/featuredAlbumImage" />
+                android:layout_weight="1"
+                android:orientation="vertical">
 
-            <com.google.android.material.textview.MaterialTextView
-                android:id="@+id/featuredAlbumTitle"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_marginStart="12dp"
-                android:layout_marginEnd="8dp"
-                android:ellipsize="end"
-                android:maxLines="1"
-                android:textAppearance="@style/TextViewSubtitle1"
-                android:textColor="?android:attr/textColorPrimary"
-                android:textStyle="bold"
-                app:layout_constraintEnd_toStartOf="@id/featuredAlbumPlayButton"
-                app:layout_constraintStart_toEndOf="@id/featuredAlbumImage"
-                app:layout_constraintTop_toBottomOf="@id/featuredAlbumLabel"
-                tools:text="Freedom" />
+                <TextView
+                    android:id="@+id/featuredSubtitle"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="LATEST RELEASE"
+                    android:textSize="11sp"
+                    android:textStyle="bold"
+                    android:textColor="?android:attr/textColorSecondary" />
 
-            <com.google.android.material.textview.MaterialTextView
-                android:id="@+id/featuredAlbumSubtitle"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_marginStart="12dp"
-                android:layout_marginEnd="8dp"
-                android:ellipsize="end"
-                android:maxLines="1"
-                android:textAppearance="@style/TextViewCaption"
-                android:textColor="?android:attr/textColorSecondary"
-                app:layout_constraintBottom_toBottomOf="@id/featuredAlbumImage"
-                app:layout_constraintEnd_toStartOf="@id/featuredAlbumPlayButton"
-                app:layout_constraintStart_toEndOf="@id/featuredAlbumImage"
-                app:layout_constraintTop_toBottomOf="@id/featuredAlbumTitle" />
+                <TextView
+                    android:id="@+id/featuredTitle"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:ellipsize="end"
+                    android:maxLines="1"
+                    android:textColor="?android:attr/textColorPrimary"
+                    android:textSize="15sp"
+                    android:textStyle="bold"
+                    tools:text="you seem pretty sad for a girl" />
 
-            <com.google.android.material.button.MaterialButton
-                android:id="@+id/featuredAlbumPlayButton"
-                style="@style/Widget.Material3.Button.IconButton"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                app:icon="@drawable/ic_play_arrow"
-                app:iconSize="24dp"
-                app:layout_constraintBottom_toBottomOf="parent"
-                app:layout_constraintEnd_toEndOf="parent"
-                app:layout_constraintTop_toTopOf="parent" />
+                <TextView
+                    android:id="@+id/featuredDetails"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:textColor="?android:attr/textColorSecondary"
+                    android:textSize="12sp"
+                    tools:text="Album • 14 songs" />
+            </LinearLayout>
 
-        </androidx.constraintlayout.widget.ConstraintLayout>
+        </LinearLayout>
     </com.google.android.material.card.MaterialCardView>
 
-    <com.google.android.material.textview.MaterialTextView
-        android:id="@+id/albumTitle"
-        android:layout_width="0dp"
-        android:layout_height="wrap_content"
-        android:padding="16dp"
-        android:text="@string/albums"
-        android:textAppearance="@style/TextViewHeadline6"
-        android:textColor="?android:attr/textColorPrimary"
-        android:textStyle="bold"
-        app:layout_constrainedWidth="true"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@id/featuredAlbumCard" />
-
-    <androidx.recyclerview.widget.RecyclerView
-        android:id="@+id/albumRecyclerView"
+    <!-- عنوان قسم أشهر الأغاني Top Songs -->
+    <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:nestedScrollingEnabled="false"
-        android:overScrollMode="@integer/overScrollMode"
-        app:barrierDirection="bottom"
-        app:layoutManager="androidx.recyclerview.widget.GridLayoutManager"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@id/albumTitle"
-        tools:itemCount="3"
-        tools:listitem="@layout/item_album_card"
-        tools:spanCount="3" />
+        android:gravity="center_vertical"
+        android:paddingHorizontal="16dp"
+        android:paddingVertical="8dp">
 
-    <com.google.android.material.textview.MaterialTextView
-        android:id="@+id/singlesTitle"
-        android:layout_width="0dp"
-        android:layout_height="wrap_content"
-        android:padding="16dp"
-        android:text="Singles"
-        android:textAppearance="@style/TextViewHeadline6"
-        android:textColor="?android:attr/textColorPrimary"
-        android:textStyle="bold"
-        app:layout_constrainedWidth="true"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@id/albumRecyclerView" />
+        <com.google.android.material.textview.MaterialTextView
+            android:id="@+id/songTitle"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Top Songs ›"
+            android:textAppearance="@style/TextViewHeadline6"
+            android:textColor="?android:attr/textColorPrimary"
+            android:textStyle="bold" />
 
-    <androidx.recyclerview.widget.RecyclerView
-        android:id="@+id/singlesRecyclerView"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:nestedScrollingEnabled="false"
-        android:overScrollMode="@integer/overScrollMode"
-        app:barrierDirection="bottom"
-        app:layoutManager="androidx.recyclerview.widget.GridLayoutManager"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@id/singlesTitle"
-        tools:itemCount="3"
-        tools:listitem="@layout/item_album_card"
-        tools:spanCount="3" />
-
-    <com.google.android.material.textview.MaterialTextView
-        android:id="@+id/appearsOnTitle"
-        android:layout_width="0dp"
-        android:layout_height="wrap_content"
-        android:padding="16dp"
-        android:text="Appears on"
-        android:textAppearance="@style/TextViewHeadline6"
-        android:textColor="?android:attr/textColorPrimary"
-        android:textStyle="bold"
-        app:layout_constrainedWidth="true"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@id/singlesRecyclerView" />
-
-    <androidx.recyclerview.widget.RecyclerView
-        android:id="@+id/appearsOnRecyclerView"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:nestedScrollingEnabled="false"
-        android:overScrollMode="@integer/overScrollMode"
-        app:barrierDirection="bottom"
-        app:layoutManager="androidx.recyclerview.widget.GridLayoutManager"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@id/appearsOnTitle"
-        tools:itemCount="3"
-        tools:listitem="@layout/item_album_card"
-        tools:spanCount="3" />
-
-    <com.google.android.material.textview.MaterialTextView
-        android:id="@+id/songTitle"
-        android:layout_width="0dp"
-        android:layout_height="wrap_content"
-        android:padding="16dp"
-        android:text="@string/songs"
-        android:textAppearance="@style/TextViewHeadline6"
-        android:textColor="?android:attr/textColorPrimary"
-        android:textStyle="bold"
-        app:layout_constrainedWidth="true"
-        app:layout_constraintEnd_toStartOf="@id/song_sort_order"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@id/appearsOnRecyclerView" />
-
-    <com.google.android.material.button.MaterialButton
-        android:id="@+id/song_sort_order"
-        style="@style/Widget.Material3.Button.IconButton"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_marginEnd="16dp"
-        android:background="?roundSelector"
-        app:icon="@drawable/ic_sort"
-        app:iconSize="24dp"
-        app:iconTint="?colorControlNormal"
-        app:layout_constraintBottom_toBottomOf="@+id/songTitle"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintStart_toEndOf="@id/songTitle"
-        app:layout_constraintTop_toTopOf="@id/songTitle" />
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/song_sort_order"
+            style="@style/Widget.Material3.Button.IconButton"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            app:icon="@drawable/ic_sort"
+            app:iconSize="20dp" />
+    </LinearLayout>
 
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/recyclerView"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:nestedScrollingEnabled="false"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@id/songTitle"
         tools:listitem="@layout/item_song" />
 
-    <Space
+    <!-- باقي القوائم: الألبومات، السينجلز... الخ -->
+    <com.google.android.material.textview.MaterialTextView
+        android:id="@+id/albumTitle"
         android:layout_width="match_parent"
-        android:layout_height="72dp"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@id/recyclerView" />
-</code.name.monkey.retromusic.views.insets.InsetsConstraintLayout>
+        android:layout_height="wrap_content"
+        android:padding="16dp"
+        android:text="@string/albums"
+        android:textAppearance="@style/TextViewHeadline6"
+        android:textColor="?android:attr/textColorPrimary"
+        android:textStyle="bold" />
+
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/albumRecyclerView"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:nestedScrollingEnabled="false"
+        tools:listitem="@layout/item_album_card" />
+
+    <com.google.android.material.textview.MaterialTextView
+        android:id="@+id/singlesTitle"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:padding="16dp"
+        android:text="Singles"
+        android:textAppearance="@style/TextViewHeadline6"
+        android:textColor="?android:attr/textColorPrimary"
+        android:textStyle="bold" />
+
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/singlesRecyclerView"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:nestedScrollingEnabled="false" />
+
+    <com.google.android.material.textview.MaterialTextView
+        android:id="@+id/appearsOnTitle"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:padding="16dp"
+        android:text="Appears on"
+        android:textAppearance="@style/TextViewHeadline6"
+        android:textColor="?android:attr/textColorPrimary"
+        android:textStyle="bold" />
+
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/appearsOnRecyclerView"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:nestedScrollingEnabled="false" />
+
+</LinearLayout>
