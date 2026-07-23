@@ -24,25 +24,14 @@ import kotlin.math.sqrt
  * محرك ألوان مستقل بالكامل، مخصص بس لشاشة تفاصيل الفنان (Artist Details).
  * مش بيلمس ولا بيتشارك أي كود مع [RetroColorUtil] أو أي شاشة تانية في التطبيق،
  * فتعديله أو حتى كسره ميأثرش على أي حتة تانية.
- *
- * ليه محرك منفصل بدل استخدام Palette API زي ما هو؟
- * لأن تصنيفات Palette الجاهزة (Dominant / Vibrant / Muted...) بترجع null كتير على صور
- * حقيقية (خصوصًا صور استوديو فيها خلفية رمادية كبيرة زي الكونكريت)، والاعتماد على
- * fallback من تصنيف لتصنيف بيخلي كل الألوان تنهار على نفس اللون الرمادي الكبير،
- * فالنتيجة النهائية تبقى خلفية رمادية مسطحة بدون أي بصمة حقيقية من الصورة.
- *
- * هنا بدل التصنيفات الجاهزة، بنمشي يدويًا على كل الـ Swatches الخام (لحد 32 لون)،
- * وبنحسب لكل واحد فيهم "Vibrancy Score" = التشبع × جذر نسبة ظهوره في الصورة. كده لون
- * زي جاكيت أحمر صغير المساحة لسه بيتلقط كـ Accent، من غير ما الخلفية الرمادية الكبيرة
- * تطغى عليه — وده أقرب لسلوك Apple Music من الاعتماد المباشر على Palette الخام.
  */
 object ArtistPaletteEngine {
 
     /** الألوان النهائية اللي بيتبنى منها التدرّج السينمائي. */
     data class ArtistColors(
-        @ColorInt val base: Int,   // اللون المحايد الأساسي (رمادي بميل أزرق لو الأصل رمادي فعلاً، وإلا نفس لون الصورة الحقيقي)
+        @ColorInt val base: Int,   // اللون المحايد الأساسي
         @ColorInt val accent: Int, // أقوى لون "حي" في الصورة حتى لو مساحته صغيرة
-        @ColorInt val deep: Int    // الطبقة الأخيرة الغامقة (كحلي لو الأصل رمادي، وإلا نفس الـ Hue بس أغمق)
+        @ColorInt val deep: Int    // الطبقة الأخيرة الغامقة
     )
 
     private const val COOL_HUE = 215f // ميل أزرق بارد للّون المحايد
@@ -73,15 +62,9 @@ object ArtistPaletteEngine {
         // لو الصورة فعلاً شبه أحادية اللون (مفيش أي لون حي حقيقي)، منفتعلش لون مش موجود
         val hasRealAccent = accentSaturation > 0.16f
 
-        // بنحدد الأول: اللون المسيطر في الصورة "محايد فعلاً" (رمادي/بني فاتح باهت زي الحيطة
-        // في صورة NSYNC) ولا "لون حقيقي قوي" (زي الأحمر في صورة Doja Cat)؟ التلوين الأزرق
-        // البارد لازم يتطبق بس على الحالة المحايدة — لو طبقناه على لون قوي أصلاً، هيسحبه
-        // ناحية الموف/البنفسجي ويبوّظ اللون الحقيقي بدل ما يحافظ عليه
         val baseSaturation = saturationOf(baseSwatch.rgb)
         val isNeutralBase = baseSaturation < 0.14f
 
-        // اللون المحايد: لو الأصل رمادي فعلاً، بنديله ميل أزرق بارد خفيف. لو الأصل لون
-        // قوي أصلاً (زي الأحمر)، بنسيبه زي ما هو من غير أي تلوين إضافي
         val base = if (isNeutralBase) {
             tintTowardHue(baseSwatch.rgb, COOL_HUE, hueShiftRatio = 0.22f, minSaturation = 0.10f)
         } else {
@@ -94,8 +77,6 @@ object ArtistPaletteEngine {
             base
         }
 
-        // الطبقة الأخيرة: لو الأصل رمادي، بتميل للكحلي. لو الأصل لون قوي أصلاً، بتفضل
-        // بنفس الـ Hue وبس بتغمق (Value يقل)، عشان الأحمر يفضل أحمر وهو بيغمق مش بيتحول كحلي
         val deepBase = if (isNeutralBase) {
             tintTowardHue(baseSwatch.rgb, NAVY_HUE, hueShiftRatio = 0.35f, minSaturation = 0.14f)
         } else {
@@ -109,29 +90,26 @@ object ArtistPaletteEngine {
 
     /**
      * بيبني مصفوفة الألوان الجاهزة لـ GradientDrawable (Orientation TOP_BOTTOM):
-     * Transparent → Base (رمادي مزرق) → لمسة Accent في النص → Deep (كحلي غامق) → لون خلفية الصفحة.
-     *
-     * الـ Fade بيبدأ من [fadeStart] بس (افتراضيًا 12% من ارتفاع الصورة) عشان الصورة تفضل
-     * واضحة، وكل نقطة بتتحسب بـ Blend ناعم (Smoothstep) بين الكي-فريمات فمفيش حدود واضحة.
+     * بيبدأ شفاف تمامًا فوق، وبيمتزج بنعومة لحد ما ينتهي عند الأسفل بلون خلفية الصفحة
+     * الخالص (Alpha = 255) لضمان اختفاء أي خط فاصل نهائيًا.
      */
     fun buildGradientStops(
         colors: ArtistColors,
         flatBackgroundColor: Int,
-        fadeStart: Float = 0.12f,
+        fadeStart: Float = 0.15f,
         stopCount: Int = 26
     ): IntArray {
-        val endColor = blend(colors.deep, flatBackgroundColor, 0.55f)
+        val targetEndColor = flatBackgroundColor
 
         data class Keyframe(val t: Float, val color: Int, val alpha: Int)
 
         val keyframes = listOf(
             Keyframe(0.00f, colors.base, 0),
             Keyframe(fadeStart, colors.base, 0),
-            Keyframe(0.30f, colors.base, 55),
-            Keyframe(0.45f, blend(colors.base, colors.accent, 0.35f), 120), // لمسة الـ Accent هنا
-            Keyframe(0.62f, blend(colors.base, colors.deep, 0.55f), 185),
-            Keyframe(0.82f, colors.deep, 235),
-            Keyframe(1.00f, endColor, 255)
+            Keyframe(0.35f, colors.accent, 80),
+            Keyframe(0.65f, blend(colors.accent, targetEndColor, 0.5f), 170),
+            Keyframe(0.85f, targetEndColor, 230),
+            Keyframe(1.00f, targetEndColor, 255)
         )
 
         return IntArray(stopCount) { i ->
@@ -150,7 +128,7 @@ object ArtistPaletteEngine {
     }
 
     // ---------------------------------------------------------------------
-    // Color science helpers (كل حاجة هنا محلية للملف ده بس)
+    // Color science helpers
     // ---------------------------------------------------------------------
 
     private fun vibrancyScore(swatch: Palette.Swatch, totalPopulation: Int): Double {
@@ -159,7 +137,6 @@ object ArtistPaletteEngine {
         val saturation = hsv[1].toDouble()
         val value = hsv[2].toDouble()
         val populationRatio = swatch.population.toDouble() / totalPopulation
-        // بنقلّل وزن الألوان القريبة جدًا من الأبيض/الأسود الخام عشان متتحسبش Accent
         val extremeValuePenalty = if (value < 0.15 || value > 0.95) 0.35 else 1.0
         return saturation * sqrt(populationRatio) * extremeValuePenalty
     }
@@ -170,7 +147,6 @@ object ArtistPaletteEngine {
         return hsv[1]
     }
 
-    /** بيقرّب اللون شوية من Hue مستهدف (Cool blue أو Navy) من غير ما يمسح لونه الأصلي بالكامل. */
     @ColorInt
     private fun tintTowardHue(
         @ColorInt color: Int,
@@ -206,7 +182,6 @@ object ArtistPaletteEngine {
         return Color.HSVToColor(hsv)
     }
 
-    /** blend(A, B, ratio): ratio = 0 يرجّع A بالكامل، ratio = 1 يرجّع B بالكامل. */
     @ColorInt
     private fun blend(@ColorInt colorA: Int, @ColorInt colorB: Int, ratio: Float): Int {
         val r = ratio.coerceIn(0f, 1f)
