@@ -49,9 +49,10 @@ import kotlinx.coroutines.withContext
 import org.koin.android.ext.android.get
 import java.util.*
 
-private const val TRANSITION_START_FRACTION = 0.15f
-private const val TRANSITION_BAND_END_FRACTION = 0.32f
-private const val BLUR_END_FRACTION = 0.9f
+// البلور والتدرّج الملوّن يبتدئان من بعد منتصف الصورة (52%) للحفاظ على وضوح الوجه بالكامل
+private const val TRANSITION_START_FRACTION = 0.52f
+private const val TRANSITION_BAND_END_FRACTION = 0.70f
+private const val BLUR_END_FRACTION = 0.98f
 
 abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragment_artist_details),
     IAlbumClickListener {
@@ -209,9 +210,7 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
                     resource: Bitmap,
                     transition: Transition<in Bitmap>?
                 ) {
-                    if (_binding != null) {
-                        binding.image.setImageBitmap(resource)
-                    }
+                    // معالجة الألوان والبلور بشكل فوري جداً لتجنب أي تأخير
                     extractColorsAndApplyGradient(resource)
                 }
 
@@ -225,41 +224,54 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
 
     private fun extractColorsAndApplyGradient(bitmap: Bitmap) {
         lifecycleScope.launch(Dispatchers.Default) {
-            // 1. حساب متوسط لون المنطقة التي يبدأ عندها التمويه (Band)
+            // استخدام صورة مصغرة سريعة جداً للحساب والتمويه لتفادي أي تأخير زمني عند فتح الشاشة
+            val maxDimension = 480
+            val scaledBitmap = if (bitmap.width > maxDimension || bitmap.height > maxDimension) {
+                val scale = maxDimension.toFloat() / maxOf(bitmap.width, bitmap.height)
+                Bitmap.createScaledBitmap(
+                    bitmap,
+                    (bitmap.width * scale).toInt().coerceAtLeast(1),
+                    (bitmap.height * scale).toInt().coerceAtLeast(1),
+                    true
+                )
+            } else {
+                bitmap
+            }
+
+            // 1. حساب متوسط لون شريط التمويه
             val bandColor = try {
                 BitmapBlurUtil.averageBandColor(
-                    bitmap,
+                    scaledBitmap,
                     TRANSITION_START_FRACTION,
                     TRANSITION_BAND_END_FRACTION
                 )
             } catch (e: Exception) {
                 try {
-                    averageEdgeColor(bitmap)
+                    averageEdgeColor(scaledBitmap)
                 } catch (e2: Exception) {
                     surfaceColor()
                 }
             }
 
-            // 2. استخراج الألوان من الباليت لحساب Accent
+            // 2. استخراج الألوان
             val palette = try {
-                ArtistPaletteEngine.generatePalette(bitmap)
+                ArtistPaletteEngine.generatePalette(scaledBitmap)
             } catch (e: Exception) {
                 null
             }
 
             val artistColors = ArtistPaletteEngine.extractColors(palette, bandColor)
 
-            // 3. تحديد لون خلفية الصفحة بحسب اندماج لون شريط التمويه مع Accent
             val flatBackgroundColor = if (artistColors.accent != artistColors.base) {
                 ColorUtils.blendARGB(bandColor, artistColors.accent, 0.35f)
             } else {
                 bandColor
             }
 
-            // 4. تطبيق Progressive Blur على الصورة
+            // 3. تطبيق Progressive Blur بسرعة فائقة على الصورة المصغرة
             val blurredBitmap = try {
                 BitmapBlurUtil.applyProgressiveBlur(
-                    bitmap,
+                    scaledBitmap,
                     blurStartFraction = TRANSITION_START_FRACTION,
                     blurEndFraction = BLUR_END_FRACTION
                 )
@@ -267,7 +279,7 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
                 null
             }
 
-            // 5. بناء التدرّج النهائي المدمج بدون أي خط فاصل
+            // 4. بناء التدرج بدون خط فاصل
             val gradientStops = ArtistPaletteEngine.buildGradientStops(
                 artistColors,
                 flatBackgroundColor,
@@ -275,10 +287,10 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
             )
 
             withContext(Dispatchers.Main) {
-                if (_binding != null && blurredBitmap != null) {
-                    binding.image.setImageBitmap(blurredBitmap)
+                if (_binding != null) {
+                    binding.image.setImageBitmap(blurredBitmap ?: bitmap)
+                    setColors(flatBackgroundColor, gradientStops)
                 }
-                setColors(flatBackgroundColor, gradientStops)
             }
         }
     }
