@@ -49,7 +49,6 @@ import kotlinx.coroutines.withContext
 import org.koin.android.ext.android.get
 import java.util.*
 
-// نقطة بداية تسييح اللون على الصورة (42% من الارتفاع)
 private const val FADE_START_FRACTION = 0.42f
 
 abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragment_artist_details),
@@ -221,26 +220,23 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
 
     private fun extractColorsAndApplyGradient(bitmap: Bitmap) {
         lifecycleScope.launch(Dispatchers.Default) {
-            // 1. أخذ عينة اللون مباشرة من نفس المنطقة التي يبدأ فيها التسييح (بدون تأثير بلور)
-            val sampledColor = ArtistPaletteEngine.sampleImageRegionColor(
+            // 1. سحب أكثر لون متكرر (Dominant Color) من مكان سطر الأغاني والألبومات بالضبط (68% - 78%)
+            val dominantColor = ArtistPaletteEngine.findDominantColorAtSubtitleRegion(
                 bitmap = bitmap,
-                startRatio = 0.45f,
-                endRatio = 0.55f
+                startRatio = 0.68f,
+                endRatio = 0.78f
             )
 
             // 2. إنشاء التدرّج السلس مع الشفافية الانسيابية لتفادي أي خط فاصل
             val gradientStops = ArtistPaletteEngine.buildSeamlessGradient(
-                blendColor = sampledColor,
+                blendColor = dominantColor,
                 fadeStart = FADE_START_FRACTION
             )
 
             withContext(Dispatchers.Main) {
                 if (_binding != null) {
-                    // عرض الصورة الأصلية بدون بلور
                     binding.image.setImageBitmap(bitmap)
-                    
-                    // تطبيق ألوان الخلفية والتدرج المنسجم
-                    setColors(sampledColor, gradientStops)
+                    setColors(dominantColor, gradientStops)
                 }
             }
         }
@@ -298,6 +294,41 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
             android.content.res.ColorStateList.valueOf(subtleOverlay)
         binding.fragmentArtistContent.shuffleAction.strokeColor =
             android.content.res.ColorStateList.valueOf(subtleStroke)
+
+        // إصلاح تلوين عناصر القوائم (الأغاني والألبومات) داخل الـ RecyclerViews
+        updateRecyclerViewItemsColor(foregroundColor, secondaryForegroundColor)
+    }
+
+    /**
+     * تتأكد من تطبيق اللون المتباين على نصوص الأغاني والألبومات ورموز القوائم بالكامل.
+     */
+    private fun updateRecyclerViewItemsColor(primaryColor: Int, secondaryColor: Int) {
+        val lists = listOf(
+            binding.fragmentArtistContent.recyclerView,
+            binding.fragmentArtistContent.albumRecyclerView,
+            binding.fragmentArtistContent.singlesRecyclerView,
+            binding.fragmentArtistContent.appearsOnRecyclerView
+        )
+
+        lists.forEach { recyclerView ->
+            for (i in 0 until recyclerView.childCount) {
+                val holder = recyclerView.findViewHolderForAdapterPosition(i) ?: continue
+                val itemView = holder.itemView
+
+                // تغيير لون العناوين والأسماء داخل العناصر
+                itemView.findViewById<android.widget.TextView>(R.id.title)?.setTextColor(primaryColor)
+                itemView.findViewById<android.widget.TextView>(R.id.text)?.setTextColor(secondaryColor)
+                itemView.findViewById<android.widget.TextView>(R.id.text2)?.setTextColor(secondaryColor)
+
+                // تغيير لون الأيقونات المجاورة للخيارات
+                itemView.findViewById<android.widget.ImageView>(R.id.menu)?.let { menuIcon ->
+                    androidx.core.widget.ImageViewCompat.setImageTintList(
+                        menuIcon,
+                        android.content.res.ColorStateList.valueOf(secondaryColor)
+                    )
+                }
+            }
+        }
     }
 
     private fun tintedDrawable(drawable: Drawable?, color: Int): Drawable? {
