@@ -15,176 +15,71 @@ package code.name.monkey.retromusic.util
 
 import android.graphics.Bitmap
 import android.graphics.Color
-import androidx.annotation.ColorInt
 import androidx.core.graphics.ColorUtils
-import androidx.palette.graphics.Palette
-import kotlin.math.sqrt
 
 /**
- * محرك ألوان مستقل بالكامل، مخصص بس لشاشة تفاصيل الفنان (Artist Details).
+ * محرك استخراج الألوان والتدرّج المنسجم لصفحة الفنان (بدون بلور وباندماج كامل على طريقة Apple Music).
  */
 object ArtistPaletteEngine {
 
-    /** الألوان النهائية اللي بيتبنى منها التدرّج السينمائي. */
-    data class ArtistColors(
-        @ColorInt val base: Int,   // اللون المحايد الأساسي
-        @ColorInt val accent: Int, // أقوى لون "حي" في الصورة حتى لو مساحته صغيرة
-        @ColorInt val deep: Int    // الطبقة الأخيرة الغامقة
-    )
+    /**
+     * يستخرج متوسط اللون من الشريحة الأفقية للصورة في المنطقة التي سيبدأ عندها التدرّج والتسييح.
+     */
+    fun sampleImageRegionColor(
+        bitmap: Bitmap,
+        startRatio: Float = 0.45f,
+        endRatio: Float = 0.55f
+    ): Int {
+        val startY = (bitmap.height * startRatio).toInt().coerceIn(0, bitmap.height - 1)
+        val endY = (bitmap.height * endRatio).toInt().coerceIn(startY + 1, bitmap.height)
 
-    private const val COOL_HUE = 215f // ميل أزرق بارد للّون المحايد
-    private const val NAVY_HUE = 225f // ميل كحلي للطبقة الأخيرة
+        var rSum = 0L
+        var gSum = 0L
+        var bSum = 0L
+        var count = 0L
 
-    /** بيستخرج Palette بأكبر عدد ألوان ممكن (32) بسرعة فائقة. */
-    fun generatePalette(bitmap: Bitmap): Palette =
-        Palette.Builder(bitmap)
-            .clearFilters()
-            .maximumColorCount(32)
-            .generate()
+        // أخذ عينات سريعة بإنكريمنت تفادياً لأي بطء
+        val stepX = maxOf(1, bitmap.width / 80)
+        val stepY = maxOf(1, (endY - startY) / 15)
 
-    fun extractColors(palette: Palette?, fallback: Int): ArtistColors {
-        val swatches = palette?.swatches.orEmpty()
-        if (swatches.isEmpty()) {
-            return ArtistColors(fallback, fallback, fallback)
+        for (y in startY until endY step stepY) {
+            for (x in 0 until bitmap.width step stepX) {
+                val pixel = bitmap.getPixel(x, y)
+                rSum += Color.red(pixel)
+                gSum += Color.green(pixel)
+                bSum += Color.blue(pixel)
+                count++
+            }
         }
 
-        val totalPopulation = swatches.sumOf { it.population }.coerceAtLeast(1)
-
-        val baseSwatch = swatches.maxByOrNull { it.population } ?: swatches.first()
-
-        val accentSwatch = swatches.maxByOrNull { vibrancyScore(it, totalPopulation) } ?: baseSwatch
-        val accentSaturation = saturationOf(accentSwatch.rgb)
-
-        val hasRealAccent = accentSaturation > 0.16f
-
-        val baseSaturation = saturationOf(baseSwatch.rgb)
-        val isNeutralBase = baseSaturation < 0.14f
-
-        val base = if (isNeutralBase) {
-            tintTowardHue(baseSwatch.rgb, COOL_HUE, hueShiftRatio = 0.22f, minSaturation = 0.10f)
+        return if (count > 0) {
+            Color.rgb((rSum / count).toInt(), (gSum / count).toInt(), (bSum / count).toInt())
         } else {
-            baseSwatch.rgb
+            Color.BLACK
         }
-
-        val accent = if (hasRealAccent) {
-            boostSaturation(accentSwatch.rgb, targetMinSaturation = 0.55f)
-        } else {
-            base
-        }
-
-        val deepBase = if (isNeutralBase) {
-            tintTowardHue(baseSwatch.rgb, NAVY_HUE, hueShiftRatio = 0.35f, minSaturation = 0.14f)
-        } else {
-            baseSwatch.rgb
-        }
-        val deepWithAccent = if (hasRealAccent) blend(deepBase, accent, 0.15f) else deepBase
-        val deep = darken(deepWithAccent, targetValue = 0.16f)
-
-        return ArtistColors(base = base, accent = accent, deep = deep)
     }
 
     /**
-     * بيبني مصفوفة الألوان الجاهزة لـ GradientDrawable (Orientation TOP_BOTTOM):
-     * يحسب النقاط ديناميكيًا بناءً على نقطة بداية التمويه (fadeStart) لضمان بقاء الجزء العلوي شفافًا ونقيًا.
+     * يبني تدرجًا لونيًا متدرج الشفافية (Alpha) ناعماً جداً لمنع وجود أي خطوط حادة.
      */
-    fun buildGradientStops(
-        colors: ArtistColors,
-        flatBackgroundColor: Int,
-        fadeStart: Float = 0.52f,
-        stopCount: Int = 26
+    fun buildSeamlessGradient(
+        blendColor: Int,
+        fadeStart: Float = 0.42f,
+        stopCount: Int = 30
     ): IntArray {
-        val targetEndColor = flatBackgroundColor
-
-        data class Keyframe(val t: Float, val color: Int, val alpha: Int)
-
-        val range = (1f - fadeStart).coerceAtLeast(0.1f)
-
-        val keyframes = listOf(
-            Keyframe(0.00f, colors.base, 0),
-            Keyframe(fadeStart, colors.base, 0),                                    // أعلى الصورة صافي 100%
-            Keyframe(fadeStart + range * 0.35f, colors.accent, 90),                 // لمسة الـ Accent
-            Keyframe(fadeStart + range * 0.70f, blend(colors.accent, targetEndColor, 0.5f), 180),
-            Keyframe(0.92f, targetEndColor, 235),
-            Keyframe(1.00f, targetEndColor, 255)                                    // اختفاء كامل بدون أي خط فاصل
-        )
-
         return IntArray(stopCount) { i ->
-            val t = i / (stopCount - 1f)
-            val (from, to) = keyframes.zipWithNext().firstOrNull { (a, b) -> t in a.t..b.t }
-                ?: (keyframes.last() to keyframes.last())
+            val progress = i / (stopCount - 1f) // من 0.0 إلى 1.0
 
-            val span = (to.t - from.t).takeIf { it > 0f } ?: 1f
-            val local = ((t - from.t) / span).coerceIn(0f, 1f)
-            val eased = local * local * (3f - 2f * local) // Smoothstep
+            val alphaProgress = if (progress < fadeStart) {
+                0f
+            } else {
+                val localProgress = (progress - fadeStart) / (1f - fadeStart)
+                // معادلة التنعيم الانسيابي Smoothstep لتسييح أي حواشي حادة
+                localProgress * localProgress * (3f - 2f * localProgress)
+            }
 
-            val rgb = blend(from.color, to.color, eased)
-            val alpha = (from.alpha + (to.alpha - from.alpha) * eased).toInt().coerceIn(0, 255)
-            ColorUtils.setAlphaComponent(rgb, alpha)
+            val alphaInt = (alphaProgress * 255).toInt().coerceIn(0, 255)
+            ColorUtils.setAlphaComponent(blendColor, alphaInt)
         }
-    }
-
-    // ---------------------------------------------------------------------
-    // Color science helpers
-    // ---------------------------------------------------------------------
-
-    private fun vibrancyScore(swatch: Palette.Swatch, totalPopulation: Int): Double {
-        val hsv = FloatArray(3)
-        Color.colorToHSV(swatch.rgb, hsv)
-        val saturation = hsv[1].toDouble()
-        val value = hsv[2].toDouble()
-        val populationRatio = swatch.population.toDouble() / totalPopulation
-        val extremeValuePenalty = if (value < 0.15 || value > 0.95) 0.35 else 1.0
-        return saturation * sqrt(populationRatio) * extremeValuePenalty
-    }
-
-    private fun saturationOf(@ColorInt color: Int): Float {
-        val hsv = FloatArray(3)
-        Color.colorToHSV(color, hsv)
-        return hsv[1]
-    }
-
-    @ColorInt
-    private fun tintTowardHue(
-        @ColorInt color: Int,
-        targetHueDegrees: Float,
-        hueShiftRatio: Float,
-        minSaturation: Float
-    ): Int {
-        val hsv = FloatArray(3)
-        Color.colorToHSV(color, hsv)
-        val hueDiff = ((targetHueDegrees - hsv[0] + 540f) % 360f) - 180f
-        hsv[0] = (hsv[0] + hueDiff * hueShiftRatio + 360f) % 360f
-        hsv[1] = maxOf(hsv[1], minSaturation)
-        return Color.HSVToColor(hsv)
-    }
-
-    @ColorInt
-    private fun boostSaturation(@ColorInt color: Int, targetMinSaturation: Float): Int {
-        val hsv = FloatArray(3)
-        Color.colorToHSV(color, hsv)
-        if (hsv[1] < targetMinSaturation) {
-            hsv[1] = targetMinSaturation
-        }
-        return Color.HSVToColor(hsv)
-    }
-
-    @ColorInt
-    private fun darken(@ColorInt color: Int, targetValue: Float): Int {
-        val hsv = FloatArray(3)
-        Color.colorToHSV(color, hsv)
-        if (hsv[2] > targetValue) {
-            hsv[2] = targetValue
-        }
-        return Color.HSVToColor(hsv)
-    }
-
-    @ColorInt
-    private fun blend(@ColorInt colorA: Int, @ColorInt colorB: Int, ratio: Float): Int {
-        val r = ratio.coerceIn(0f, 1f)
-        val inv = 1f - r
-        val red = Color.red(colorA) * inv + Color.red(colorB) * r
-        val green = Color.green(colorA) * inv + Color.green(colorB) * r
-        val blue = Color.blue(colorA) * inv + Color.blue(colorB) * r
-        return Color.rgb(red.toInt(), green.toInt(), blue.toInt())
     }
 }
