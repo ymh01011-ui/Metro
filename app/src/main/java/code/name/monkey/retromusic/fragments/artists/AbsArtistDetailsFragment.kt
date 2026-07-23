@@ -49,10 +49,8 @@ import kotlinx.coroutines.withContext
 import org.koin.android.ext.android.get
 import java.util.*
 
-// البلور والتدرّج الملوّن يبتدئان من بعد منتصف الصورة (52%) للحفاظ على وضوح الوجه بالكامل
-private const val TRANSITION_START_FRACTION = 0.52f
-private const val TRANSITION_BAND_END_FRACTION = 0.70f
-private const val BLUR_END_FRACTION = 0.98f
+// نقطة بداية تسييح اللون على الصورة (42% من الارتفاع)
+private const val FADE_START_FRACTION = 0.42f
 
 abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragment_artist_details),
     IAlbumClickListener {
@@ -210,7 +208,6 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
                     resource: Bitmap,
                     transition: Transition<in Bitmap>?
                 ) {
-                    // معالجة الألوان والبلور بشكل فوري جداً لتجنب أي تأخير
                     extractColorsAndApplyGradient(resource)
                 }
 
@@ -224,129 +221,37 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
 
     private fun extractColorsAndApplyGradient(bitmap: Bitmap) {
         lifecycleScope.launch(Dispatchers.Default) {
-            // استخدام صورة مصغرة سريعة جداً للحساب والتمويه لتفادي أي تأخير زمني عند فتح الشاشة
-            val maxDimension = 480
-            val scaledBitmap = if (bitmap.width > maxDimension || bitmap.height > maxDimension) {
-                val scale = maxDimension.toFloat() / maxOf(bitmap.width, bitmap.height)
-                Bitmap.createScaledBitmap(
-                    bitmap,
-                    (bitmap.width * scale).toInt().coerceAtLeast(1),
-                    (bitmap.height * scale).toInt().coerceAtLeast(1),
-                    true
-                )
-            } else {
-                bitmap
-            }
+            // 1. أخذ عينة اللون مباشرة من نفس المنطقة التي يبدأ فيها التسييح (بدون تأثير بلور)
+            val sampledColor = ArtistPaletteEngine.sampleImageRegionColor(
+                bitmap = bitmap,
+                startRatio = 0.45f,
+                endRatio = 0.55f
+            )
 
-            // 1. حساب متوسط لون شريط التمويه
-            val bandColor = try {
-                BitmapBlurUtil.averageBandColor(
-                    scaledBitmap,
-                    TRANSITION_START_FRACTION,
-                    TRANSITION_BAND_END_FRACTION
-                )
-            } catch (e: Exception) {
-                try {
-                    averageEdgeColor(scaledBitmap)
-                } catch (e2: Exception) {
-                    surfaceColor()
-                }
-            }
-
-            // 2. استخراج الألوان
-            val palette = try {
-                ArtistPaletteEngine.generatePalette(scaledBitmap)
-            } catch (e: Exception) {
-                null
-            }
-
-            val artistColors = ArtistPaletteEngine.extractColors(palette, bandColor)
-
-            val flatBackgroundColor = if (artistColors.accent != artistColors.base) {
-                ColorUtils.blendARGB(bandColor, artistColors.accent, 0.35f)
-            } else {
-                bandColor
-            }
-
-            // 3. تطبيق Progressive Blur بسرعة فائقة على الصورة المصغرة
-            val blurredBitmap = try {
-                BitmapBlurUtil.applyProgressiveBlur(
-                    scaledBitmap,
-                    blurStartFraction = TRANSITION_START_FRACTION,
-                    blurEndFraction = BLUR_END_FRACTION
-                )
-            } catch (e: Exception) {
-                null
-            }
-
-            // 4. بناء التدرج بدون خط فاصل
-            val gradientStops = ArtistPaletteEngine.buildGradientStops(
-                artistColors,
-                flatBackgroundColor,
-                fadeStart = TRANSITION_START_FRACTION
+            // 2. إنشاء التدرّج السلس مع الشفافية الانسيابية لتفادي أي خط فاصل
+            val gradientStops = ArtistPaletteEngine.buildSeamlessGradient(
+                blendColor = sampledColor,
+                fadeStart = FADE_START_FRACTION
             )
 
             withContext(Dispatchers.Main) {
                 if (_binding != null) {
-                    binding.image.setImageBitmap(blurredBitmap ?: bitmap)
-                    setColors(flatBackgroundColor, gradientStops)
+                    // عرض الصورة الأصلية بدون بلور
+                    binding.image.setImageBitmap(bitmap)
+                    
+                    // تطبيق ألوان الخلفية والتدرج المنسجم
+                    setColors(sampledColor, gradientStops)
                 }
             }
         }
     }
 
-    private fun averageEdgeColor(original: Bitmap): Int {
-        val targetWidth = 100
-        val scale = targetWidth.toFloat() / original.width
-        val targetHeight = (original.height * scale).toInt().coerceAtLeast(1)
-        val scaled = Bitmap.createScaledBitmap(original, targetWidth, targetHeight, true)
-
-        val stripHeightRatio = 0.25f
-        val stripHeight = (scaled.height * stripHeightRatio).toInt().coerceAtLeast(1)
-        val startY = (scaled.height - stripHeight).coerceAtLeast(0)
-
-        val edgeWidthRatio = 0.18f
-        val edgeWidth = (scaled.width * edgeWidthRatio).toInt().coerceAtLeast(1)
-
-        var rSum = 0L
-        var gSum = 0L
-        var bSum = 0L
-        var count = 0L
-
-        for (y in startY until scaled.height) {
-            for (x in 0 until edgeWidth) {
-                val px = scaled.getPixel(x, y)
-                rSum += Color.red(px)
-                gSum += Color.green(px)
-                bSum += Color.blue(px)
-                count++
-            }
-            for (x in (scaled.width - edgeWidth) until scaled.width) {
-                val px = scaled.getPixel(x, y)
-                rSum += Color.red(px)
-                gSum += Color.green(px)
-                bSum += Color.blue(px)
-                count++
-            }
-        }
-
-        if (scaled !== original) {
-            scaled.recycle()
-        }
-
-        return if (count == 0L) {
-            surfaceColor()
-        } else {
-            Color.rgb((rSum / count).toInt(), (gSum / count).toInt(), (bSum / count).toInt())
-        }
-    }
-
-    private fun setColors(flatBackgroundColor: Int, gradientStops: IntArray) {
+    private fun setColors(backgroundColor: Int, gradientStops: IntArray) {
         if (_binding == null) return
 
-        binding.rootLayout.setBackgroundColor(flatBackgroundColor)
-        binding.appBarLayout?.setBackgroundColor(flatBackgroundColor)
-        binding.collapsingToolbar?.setContentScrimColor(flatBackgroundColor)
+        binding.rootLayout.setBackgroundColor(backgroundColor)
+        binding.appBarLayout?.setBackgroundColor(backgroundColor)
+        binding.collapsingToolbar?.setContentScrimColor(backgroundColor)
 
         val gradientDrawable = android.graphics.drawable.GradientDrawable(
             android.graphics.drawable.GradientDrawable.Orientation.TOP_BOTTOM,
@@ -354,7 +259,7 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
         )
         binding.headerGradient?.let { it.background = gradientDrawable }
 
-        applyContrastingForegroundColor(flatBackgroundColor)
+        applyContrastingForegroundColor(backgroundColor)
     }
 
     private fun applyContrastingForegroundColor(backgroundColor: Int) {
