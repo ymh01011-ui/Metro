@@ -18,45 +18,48 @@ import android.graphics.Color
 import androidx.core.graphics.ColorUtils
 
 /**
- * محرك استخراج الألوان والتدرّج المنسجم لصفحة الفنان (بدون بلور وباندماج كامل على طريقة Apple Music).
+ * محرك استخراج الألوان والتدرّج المنسجم لصفحة الفنان (Apple Music Style).
  */
 object ArtistPaletteEngine {
 
     /**
-     * يستخرج متوسط اللون من الشريحة الأفقية للصورة في المنطقة التي سيبدأ عندها التدرّج والتسييح.
+     * بيستخرج "أكثر لون متكرر" (Dominant Color) بدون أي خلط، 
+     * تحديداً من منطقة سطر معلومات الأغاني والألبومات (من 68% إلى 78% من ارتفاع الصورة).
      */
-    fun sampleImageRegionColor(
+    fun findDominantColorAtSubtitleRegion(
         bitmap: Bitmap,
-        startRatio: Float = 0.45f,
-        endRatio: Float = 0.55f
+        startRatio: Float = 0.68f,
+        endRatio: Float = 0.78f
     ): Int {
         val startY = (bitmap.height * startRatio).toInt().coerceIn(0, bitmap.height - 1)
         val endY = (bitmap.height * endRatio).toInt().coerceIn(startY + 1, bitmap.height)
 
-        var rSum = 0L
-        var gSum = 0L
-        var bSum = 0L
-        var count = 0L
+        val colorCountMap = HashMap<Int, Int>()
 
-        // أخذ عينات سريعة بإنكريمنت تفادياً لأي بطء
-        val stepX = maxOf(1, bitmap.width / 80)
-        val stepY = maxOf(1, (endY - startY) / 15)
+        // تسريع الفحص بدون التأثير على الدقة
+        val stepX = maxOf(1, bitmap.width / 100)
+        val stepY = maxOf(1, (endY - startY) / 20)
 
         for (y in startY until endY step stepY) {
             for (x in 0 until bitmap.width step stepX) {
                 val pixel = bitmap.getPixel(x, y)
-                rSum += Color.red(pixel)
-                gSum += Color.green(pixel)
-                bSum += Color.blue(pixel)
-                count++
+                
+                // تجميع الألوان المتقاربة جداً لضمان دقة العد
+                val quantizedColor = Color.rgb(
+                    (Color.red(pixel) / 8) * 8,
+                    (Color.green(pixel) / 8) * 8,
+                    (Color.blue(pixel) / 8) * 8
+                )
+
+                val count = colorCountMap.getOrDefault(quantizedColor, 0) + 1
+                colorCountMap[quantizedColor] = count
             }
         }
 
-        return if (count > 0) {
-            Color.rgb((rSum / count).toInt(), (gSum / count).toInt(), (bSum / count).toInt())
-        } else {
-            Color.BLACK
-        }
+        // أخذ اللون صاحب أعلى تكرار إحصائي (Mode)
+        val dominantQuantized = colorCountMap.maxByOrNull { it.value }?.key ?: Color.BLACK
+
+        return dominantQuantized
     }
 
     /**
@@ -68,14 +71,13 @@ object ArtistPaletteEngine {
         stopCount: Int = 30
     ): IntArray {
         return IntArray(stopCount) { i ->
-            val progress = i / (stopCount - 1f) // من 0.0 إلى 1.0
+            val progress = i / (stopCount - 1f)
 
             val alphaProgress = if (progress < fadeStart) {
                 0f
             } else {
                 val localProgress = (progress - fadeStart) / (1f - fadeStart)
-                // معادلة التنعيم الانسيابي Smoothstep لتسييح أي حواشي حادة
-                localProgress * localProgress * (3f - 2f * localProgress)
+                localProgress * localProgress * (3f - 2f * localProgress) // Smoothstep
             }
 
             val alphaInt = (alphaProgress * 255).toInt().coerceIn(0, 255)
