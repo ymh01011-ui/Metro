@@ -49,9 +49,6 @@ import kotlinx.coroutines.withContext
 import org.koin.android.ext.android.get
 import java.util.*
 
-// النقطة اللي التمويه التدريجي والتدرّج اللوني بيبدأوا يظهروا فيها مع بعض (15% من ارتفاع
-// الصورة)، ونهاية الحتة اللي بناخد منها متوسط اللون (Band) عشان يبقى فيه اتصال حقيقي بين
-// الصورة والتدرّج بدل ما يبقوا حتتين منفصلتين
 private const val TRANSITION_START_FRACTION = 0.15f
 private const val TRANSITION_BAND_END_FRACTION = 0.32f
 private const val BLUR_END_FRACTION = 0.9f
@@ -113,7 +110,6 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
         }
 
         setupSongSortButton()
-        // appBarLayout is nullable in the generated binding; use a safe call to avoid compilation errors
         binding.appBarLayout?.statusBarForeground =
             MaterialShapeDrawable.createWithElevationOverlay(requireContext())
     }
@@ -193,8 +189,6 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
         binding.fragmentArtistContent.albumTitle.isVisible = albums.isNotEmpty()
         binding.fragmentArtistContent.albumRecyclerView.isVisible = albums.isNotEmpty()
 
-        // الكلمة مكنتش بتظهر لأنه مفيش نص متحدد وقت التشغيل (tools:text بتاعة الـ XML بتشتغل بس وقت المعاينة
-        // في Android Studio، مش وقت تشغيل التطبيق فعليًا). النص الحقيقي دلوقتي متحدد في الـ XML نفسه.
         singlesAdapter.swapDataSet(singles)
         binding.fragmentArtistContent.singlesTitle.isVisible = singles.isNotEmpty()
         binding.fragmentArtistContent.singlesRecyclerView.isVisible = singles.isNotEmpty()
@@ -229,30 +223,12 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
             })
     }
 
-    // أهم تعديل هنا: بنبني الصورة المموّهة الأول، وبعدين ناخد متوسط لون الـ Band من
-    // الصورة *بعد* التمويه مش قبله. لو أخدنا اللون من الصورة الأصلية الحادة، هيبقى
-    // فيه فرق طفيف بس محسوس بين لون الـ gradient ولون نفس المنطقة بعد ما تتموّه، وده
-    // اللي كان بيطلع الخط الفاصل الرخم. دلوقتي اللون واللي جوه الصورة بيتاخدوا من
-    // نفس المصدر بالظبط، فبيبقوا حتة واحدة متصلة زي أبل ميوزك
     private fun extractColorsAndApplyGradient(bitmap: Bitmap) {
         lifecycleScope.launch(Dispatchers.Default) {
-            val blurredBitmap = try {
-                BitmapBlurUtil.applyProgressiveBlur(
-                    bitmap,
-                    blurStartFraction = TRANSITION_START_FRACTION,
-                    blurEndFraction = BLUR_END_FRACTION
-                )
-            } catch (e: Exception) {
-                null
-            }
-
-            // بنفضّل ناخد اللون من الصورة المموّهة (نفس اللي هيبان على الشاشة)، ولو
-            // التمويه فشل لأي سبب، بنرجع للصورة الأصلية كـ fallback بس
-            val colorSourceBitmap = blurredBitmap ?: bitmap
-
-            val flatBackgroundColor = try {
+            // 1. حساب متوسط لون المنطقة التي يبدأ عندها التمويه (Band)
+            val bandColor = try {
                 BitmapBlurUtil.averageBandColor(
-                    colorSourceBitmap,
+                    bitmap,
                     TRANSITION_START_FRACTION,
                     TRANSITION_BAND_END_FRACTION
                 )
@@ -264,13 +240,34 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
                 }
             }
 
+            // 2. استخراج الألوان من الباليت لحساب Accent
             val palette = try {
                 ArtistPaletteEngine.generatePalette(bitmap)
             } catch (e: Exception) {
                 null
             }
 
-            val artistColors = ArtistPaletteEngine.extractColors(palette, flatBackgroundColor)
+            val artistColors = ArtistPaletteEngine.extractColors(palette, bandColor)
+
+            // 3. تحديد لون خلفية الصفحة بحسب اندماج لون شريط التمويه مع Accent
+            val flatBackgroundColor = if (artistColors.accent != artistColors.base) {
+                ColorUtils.blendARGB(bandColor, artistColors.accent, 0.35f)
+            } else {
+                bandColor
+            }
+
+            // 4. تطبيق Progressive Blur على الصورة
+            val blurredBitmap = try {
+                BitmapBlurUtil.applyProgressiveBlur(
+                    bitmap,
+                    blurStartFraction = TRANSITION_START_FRACTION,
+                    blurEndFraction = BLUR_END_FRACTION
+                )
+            } catch (e: Exception) {
+                null
+            }
+
+            // 5. بناء التدرّج النهائي المدمج بدون أي خط فاصل
             val gradientStops = ArtistPaletteEngine.buildGradientStops(
                 artistColors,
                 flatBackgroundColor,
@@ -287,18 +284,15 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
     }
 
     private fun averageEdgeColor(original: Bitmap): Int {
-        // بنصغّر الصورة الأول عشان العملية تبقى سريعة (مش محتاجين دقة عالية لمتوسط لون)
         val targetWidth = 100
         val scale = targetWidth.toFloat() / original.width
         val targetHeight = (original.height * scale).toInt().coerceAtLeast(1)
         val scaled = Bitmap.createScaledBitmap(original, targetWidth, targetHeight, true)
 
-        // الجزء السفلي بس (٢٥٪ من ارتفاع الصورة)
         val stripHeightRatio = 0.25f
         val stripHeight = (scaled.height * stripHeightRatio).toInt().coerceAtLeast(1)
         val startY = (scaled.height - stripHeight).coerceAtLeast(0)
 
-        // حواف الصورة بس (١٨٪ من الشمال + ١٨٪ من اليمين)، مش النص عشان نتجنب جسم/هدوم الفنان
         val edgeWidthRatio = 0.18f
         val edgeWidth = (scaled.width * edgeWidthRatio).toInt().coerceAtLeast(1)
 
@@ -335,14 +329,10 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
         }
     }
 
-    // بيصبغ خلفية الصفحة الثابتة، وبيطبّق مصفوفة الألوان الجاهزة اللي بناها ArtistPaletteEngine
-    // (Transparent → رمادي مزرق → لمسة لون حي → كحلي غامق → لون الصفحة) على الـ GradientDrawable
     private fun setColors(flatBackgroundColor: Int, gradientStops: IntArray) {
         if (_binding == null) return
 
-        // خلفية الصفحة الثابتة (اللي بتفضل ظاهرة بعد ما الصورة تختفي مع السكرول)
         binding.rootLayout.setBackgroundColor(flatBackgroundColor)
-        // appBarLayout and collapsingToolbar are nullable in the generated binding; use safe calls
         binding.appBarLayout?.setBackgroundColor(flatBackgroundColor)
         binding.collapsingToolbar?.setContentScrimColor(flatBackgroundColor)
 
@@ -355,8 +345,6 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
         applyContrastingForegroundColor(flatBackgroundColor)
     }
 
-    // لو اللون المستخرج فاتح (زي خلفية بيضا)، الكلام والأيقونات تتحول لأسود عشان تفضل واضحة،
-    // ولو غامق تفضل بيضا زي ما كانت. بنحسب "سطوع" اللون (luminance) ونقارنه بحد وسط.
     private fun applyContrastingForegroundColor(backgroundColor: Int) {
         val isLightBackground = ColorUtils.calculateLuminance(backgroundColor) > 0.5
         val foregroundColor = if (isLightBackground) Color.BLACK else Color.WHITE
