@@ -22,8 +22,6 @@ import kotlin.math.sqrt
 
 /**
  * محرك ألوان مستقل بالكامل، مخصص بس لشاشة تفاصيل الفنان (Artist Details).
- * مش بيلمس ولا بيتشارك أي كود مع [RetroColorUtil] أو أي شاشة تانية في التطبيق،
- * فتعديله أو حتى كسره ميأثرش على أي حتة تانية.
  */
 object ArtistPaletteEngine {
 
@@ -37,7 +35,7 @@ object ArtistPaletteEngine {
     private const val COOL_HUE = 215f // ميل أزرق بارد للّون المحايد
     private const val NAVY_HUE = 225f // ميل كحلي للطبقة الأخيرة
 
-    /** بيستخرج Palette بأكبر عدد ألوان ممكن (32) عشان الـ Accent الصغير زي الجاكيت ميضيعش. */
+    /** بيستخرج Palette بأكبر عدد ألوان ممكن (32) بسرعة فائقة. */
     fun generatePalette(bitmap: Bitmap): Palette =
         Palette.Builder(bitmap)
             .clearFilters()
@@ -52,14 +50,11 @@ object ArtistPaletteEngine {
 
         val totalPopulation = swatches.sumOf { it.population }.coerceAtLeast(1)
 
-        // أكبر مساحة في الصورة (غالبًا الخلفية) بتاخد دور اللون المحايد الأساسي
         val baseSwatch = swatches.maxByOrNull { it.population } ?: swatches.first()
 
-        // أقوى لون "حي" في الصورة حتى لو مساحته صغيرة (زي الجاكيت الأحمر)
         val accentSwatch = swatches.maxByOrNull { vibrancyScore(it, totalPopulation) } ?: baseSwatch
         val accentSaturation = saturationOf(accentSwatch.rgb)
 
-        // لو الصورة فعلاً شبه أحادية اللون (مفيش أي لون حي حقيقي)، منفتعلش لون مش موجود
         val hasRealAccent = accentSaturation > 0.16f
 
         val baseSaturation = saturationOf(baseSwatch.rgb)
@@ -90,26 +85,27 @@ object ArtistPaletteEngine {
 
     /**
      * بيبني مصفوفة الألوان الجاهزة لـ GradientDrawable (Orientation TOP_BOTTOM):
-     * بيبدأ شفاف تمامًا فوق، وبيمتزج بنعومة لحد ما ينتهي عند الأسفل بلون خلفية الصفحة
-     * الخالص (Alpha = 255) لضمان اختفاء أي خط فاصل نهائيًا.
+     * يحسب النقاط ديناميكيًا بناءً على نقطة بداية التمويه (fadeStart) لضمان بقاء الجزء العلوي شفافًا ونقيًا.
      */
     fun buildGradientStops(
         colors: ArtistColors,
         flatBackgroundColor: Int,
-        fadeStart: Float = 0.15f,
+        fadeStart: Float = 0.52f,
         stopCount: Int = 26
     ): IntArray {
         val targetEndColor = flatBackgroundColor
 
         data class Keyframe(val t: Float, val color: Int, val alpha: Int)
 
+        val range = (1f - fadeStart).coerceAtLeast(0.1f)
+
         val keyframes = listOf(
             Keyframe(0.00f, colors.base, 0),
-            Keyframe(fadeStart, colors.base, 0),
-            Keyframe(0.35f, colors.accent, 80),
-            Keyframe(0.65f, blend(colors.accent, targetEndColor, 0.5f), 170),
-            Keyframe(0.85f, targetEndColor, 230),
-            Keyframe(1.00f, targetEndColor, 255)
+            Keyframe(fadeStart, colors.base, 0),                                    // أعلى الصورة صافي 100%
+            Keyframe(fadeStart + range * 0.35f, colors.accent, 90),                 // لمسة الـ Accent
+            Keyframe(fadeStart + range * 0.70f, blend(colors.accent, targetEndColor, 0.5f), 180),
+            Keyframe(0.92f, targetEndColor, 235),
+            Keyframe(1.00f, targetEndColor, 255)                                    // اختفاء كامل بدون أي خط فاصل
         )
 
         return IntArray(stopCount) { i ->
