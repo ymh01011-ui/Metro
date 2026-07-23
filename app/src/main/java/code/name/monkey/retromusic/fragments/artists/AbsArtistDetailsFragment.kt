@@ -49,6 +49,13 @@ import kotlinx.coroutines.withContext
 import org.koin.android.ext.android.get
 import java.util.*
 
+// النقطة اللي التمويه التدريجي والتدرّج اللوني بيبدأوا يظهروا فيها مع بعض (15% من ارتفاع
+// الصورة)، ونهاية الحتة اللي بناخد منها متوسط اللون (Band) عشان يبقى فيه اتصال حقيقي بين
+// الصورة والتدرّج بدل ما يبقوا حتتين منفصلتين
+private const val TRANSITION_START_FRACTION = 0.15f
+private const val TRANSITION_BAND_END_FRACTION = 0.32f
+private const val BLUR_END_FRACTION = 0.9f
+
 abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragment_artist_details),
     IAlbumClickListener {
     private var _binding: FragmentArtistDetailsBinding? = null
@@ -222,20 +229,39 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
             })
     }
 
-    // بدل ما ناخد "أكتر لون متكرر" من الصورة كلها (اللي ممكن يمسك هدوم الفنان في النص)،
-    // بناخد متوسط اللون الفعلي من حواف الصورة بس (يمين وشمال) في الجزء السفلي منها،
-    // عشان نمسك لون خلفية الصفحة الثابتة (اللي بتظهر بعد ما الصورة تختفي مع السكرول)
-    //
-    // وبالتوازي، بنستخدم ArtistPaletteEngine (محرك مستقل بالكامل، مخصص للشاشة دي بس، ومش
-    // بيلمس أي كود مشترك مع باقي التطبيق) عشان يستخرج الألوان الحقيقية من الصورة ويبني
-    // منها تدرّج سينمائي، بدل الاعتماد على تصنيفات Palette الجاهزة اللي بترجع null كتير
-    // وبتخلي النتيجة تنهار على لون رمادي واحد بس
+    // أهم تعديل هنا: بنبني الصورة المموّهة الأول، وبعدين ناخد متوسط لون الـ Band من
+    // الصورة *بعد* التمويه مش قبله. لو أخدنا اللون من الصورة الأصلية الحادة، هيبقى
+    // فيه فرق طفيف بس محسوس بين لون الـ gradient ولون نفس المنطقة بعد ما تتموّه، وده
+    // اللي كان بيطلع الخط الفاصل الرخم. دلوقتي اللون واللي جوه الصورة بيتاخدوا من
+    // نفس المصدر بالظبط، فبيبقوا حتة واحدة متصلة زي أبل ميوزك
     private fun extractColorsAndApplyGradient(bitmap: Bitmap) {
         lifecycleScope.launch(Dispatchers.Default) {
-            val flatBackgroundColor = try {
-                averageEdgeColor(bitmap)
+            val blurredBitmap = try {
+                BitmapBlurUtil.applyProgressiveBlur(
+                    bitmap,
+                    blurStartFraction = TRANSITION_START_FRACTION,
+                    blurEndFraction = BLUR_END_FRACTION
+                )
             } catch (e: Exception) {
-                surfaceColor()
+                null
+            }
+
+            // بنفضّل ناخد اللون من الصورة المموّهة (نفس اللي هيبان على الشاشة)، ولو
+            // التمويه فشل لأي سبب، بنرجع للصورة الأصلية كـ fallback بس
+            val colorSourceBitmap = blurredBitmap ?: bitmap
+
+            val flatBackgroundColor = try {
+                BitmapBlurUtil.averageBandColor(
+                    colorSourceBitmap,
+                    TRANSITION_START_FRACTION,
+                    TRANSITION_BAND_END_FRACTION
+                )
+            } catch (e: Exception) {
+                try {
+                    averageEdgeColor(bitmap)
+                } catch (e2: Exception) {
+                    surfaceColor()
+                }
             }
 
             val palette = try {
@@ -245,9 +271,16 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
             }
 
             val artistColors = ArtistPaletteEngine.extractColors(palette, flatBackgroundColor)
-            val gradientStops = ArtistPaletteEngine.buildGradientStops(artistColors, flatBackgroundColor)
+            val gradientStops = ArtistPaletteEngine.buildGradientStops(
+                artistColors,
+                flatBackgroundColor,
+                fadeStart = TRANSITION_START_FRACTION
+            )
 
             withContext(Dispatchers.Main) {
+                if (_binding != null && blurredBitmap != null) {
+                    binding.image.setImageBitmap(blurredBitmap)
+                }
                 setColors(flatBackgroundColor, gradientStops)
             }
         }
