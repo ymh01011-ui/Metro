@@ -220,14 +220,12 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
 
     private fun extractColorsAndApplyGradient(bitmap: Bitmap) {
         lifecycleScope.launch(Dispatchers.Default) {
-            // 1. سحب أكثر لون متكرر (Dominant Color) من مكان سطر الأغاني والألبومات بالضبط (68% - 78%)
             val dominantColor = ArtistPaletteEngine.findDominantColorAtSubtitleRegion(
                 bitmap = bitmap,
                 startRatio = 0.68f,
                 endRatio = 0.78f
             )
 
-            // 2. إنشاء التدرّج السلس مع الشفافية الانسيابية لتفادي أي خط فاصل
             val gradientStops = ArtistPaletteEngine.buildSeamlessGradient(
                 blendColor = dominantColor,
                 fadeStart = FADE_START_FRACTION
@@ -261,9 +259,9 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
     private fun applyContrastingForegroundColor(backgroundColor: Int) {
         val isLightBackground = ColorUtils.calculateLuminance(backgroundColor) > 0.5
         val foregroundColor = if (isLightBackground) Color.BLACK else Color.WHITE
-        val secondaryForegroundColor = ColorUtils.setAlphaComponent(foregroundColor, 0xB3)
-        val subtleOverlay = ColorUtils.setAlphaComponent(foregroundColor, 0x33)
-        val subtleStroke = ColorUtils.setAlphaComponent(foregroundColor, 0x1A)
+        
+        // زيادة وضوح النص الثانوي (توقيت الأغنية) ليكون 80% شفافية بدلاً من الشفافية القديمة
+        val secondaryForegroundColor = ColorUtils.setAlphaComponent(foregroundColor, 0xCC) 
 
         binding.artistTitle.setTextColor(foregroundColor)
         binding.text.setTextColor(secondaryForegroundColor)
@@ -281,27 +279,22 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
             android.content.res.ColorStateList.valueOf(foregroundColor)
         )
 
+        // إزالة الخطوط والظلال من زر التشغيل ليدمج بسلاسة
+        binding.fragmentArtistContent.playAction.elevation = 0f
+        if (binding.fragmentArtistContent.playAction is com.google.android.material.button.MaterialButton) {
+            (binding.fragmentArtistContent.playAction as com.google.android.material.button.MaterialButton).strokeWidth = 0
+        }
+
+        // تلوين الأيقونات داخل الدوائر فقط دون المساس بلون خلفية الدائرة الأساسية
         binding.fragmentArtistContent.infoAction.iconTint =
             android.content.res.ColorStateList.valueOf(foregroundColor)
-        binding.fragmentArtistContent.infoAction.backgroundTintList =
-            android.content.res.ColorStateList.valueOf(subtleOverlay)
-        binding.fragmentArtistContent.infoAction.strokeColor =
-            android.content.res.ColorStateList.valueOf(subtleStroke)
 
         binding.fragmentArtistContent.shuffleAction.iconTint =
             android.content.res.ColorStateList.valueOf(foregroundColor)
-        binding.fragmentArtistContent.shuffleAction.backgroundTintList =
-            android.content.res.ColorStateList.valueOf(subtleOverlay)
-        binding.fragmentArtistContent.shuffleAction.strokeColor =
-            android.content.res.ColorStateList.valueOf(subtleStroke)
 
-        // إصلاح تلوين عناصر القوائم (الأغاني والألبومات) داخل الـ RecyclerViews
         updateRecyclerViewItemsColor(foregroundColor, secondaryForegroundColor)
     }
 
-    /**
-     * تتأكد من تطبيق اللون المتباين على نصوص الأغاني والألبومات ورموز القوائم بالكامل.
-     */
     private fun updateRecyclerViewItemsColor(primaryColor: Int, secondaryColor: Int) {
         val lists = listOf(
             binding.fragmentArtistContent.recyclerView,
@@ -315,12 +308,10 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
                 val holder = recyclerView.findViewHolderForAdapterPosition(i) ?: continue
                 val itemView = holder.itemView
 
-                // تغيير لون العناوين والأسماء داخل العناصر
                 itemView.findViewById<android.widget.TextView>(R.id.title)?.setTextColor(primaryColor)
                 itemView.findViewById<android.widget.TextView>(R.id.text)?.setTextColor(secondaryColor)
                 itemView.findViewById<android.widget.TextView>(R.id.text2)?.setTextColor(secondaryColor)
 
-                // تغيير لون الأيقونات المجاورة للخيارات
                 itemView.findViewById<android.widget.ImageView>(R.id.menu)?.let { menuIcon ->
                     androidx.core.widget.ImageViewCompat.setImageTintList(
                         menuIcon,
