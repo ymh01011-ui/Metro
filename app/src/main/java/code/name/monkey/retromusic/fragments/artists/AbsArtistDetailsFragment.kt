@@ -257,7 +257,7 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
             android.graphics.drawable.GradientDrawable.Orientation.TOP_BOTTOM,
             gradientStops
         )
-        binding.headerGradient.background = gradientDrawable
+        binding.headerGradient?.background = gradientDrawable
 
         applyContrastingForegroundColor(backgroundColor)
     }
