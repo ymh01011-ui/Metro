@@ -8,22 +8,16 @@ import android.view.Menu
 import android.view.MenuInflater
 import android.view.MenuItem
 import android.view.View
-import android.view.ViewGroup
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.widget.PopupMenu
 import androidx.core.graphics.ColorUtils
 import androidx.core.os.bundleOf
-import androidx.core.view.ViewCompat
-import androidx.core.view.WindowCompat
-import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.doOnPreDraw
 import androidx.core.view.isVisible
-import androidx.core.view.updateLayoutParams
 import androidx.lifecycle.lifecycleScope
 import androidx.navigation.fragment.FragmentNavigatorExtras
 import androidx.navigation.fragment.findNavController
-import androidx.palette.graphics.Palette
 import androidx.recyclerview.widget.DefaultItemAnimator
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -47,12 +41,15 @@ import code.name.monkey.retromusic.util.*
 import com.bumptech.glide.Glide
 import com.bumptech.glide.request.target.CustomTarget
 import com.bumptech.glide.request.transition.Transition
+import com.google.android.material.shape.MaterialShapeDrawable
 import com.google.android.material.transition.MaterialContainerTransform
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.koin.android.ext.android.get
 import java.util.*
+
+private const val FADE_START_FRACTION = 0.42f
 
 abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragment_artist_details),
     IAlbumClickListener {
@@ -88,15 +85,6 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
         mainActivity.setSupportActionBar(binding.toolbar)
         binding.toolbar.title = null
         
-        // ضبط مسافة التولبار من الأعلى لتجنب النوتش وأيقونات شريط الحالة
-        ViewCompat.setOnApplyWindowInsetsListener(binding.toolbar) { toolbarView, insets ->
-            val statusBarHeight = insets.getInsets(WindowInsetsCompat.Type.statusBars()).top
-            toolbarView.updateLayoutParams<ViewGroup.MarginLayoutParams> {
-                topMargin = statusBarHeight
-            }
-            insets
-        }
-
         binding.image.transitionName = (artistId ?: artistName).toString()
         postponeEnterTransition()
         
@@ -120,6 +108,8 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
         }
 
         setupSongSortButton()
+        binding.appBarLayout?.statusBarForeground =
+            MaterialShapeDrawable.createWithElevationOverlay(requireContext())
     }
 
     private fun setupRecyclerView() {
@@ -230,13 +220,15 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
 
     private fun extractColorsAndApplyGradient(bitmap: Bitmap) {
         lifecycleScope.launch(Dispatchers.Default) {
-            val palette = Palette.from(bitmap).generate()
-            val dominantColor = palette.getDominantColor(surfaceColor())
-            
-            val gradientStops = intArrayOf(
-                Color.TRANSPARENT,
-                ColorUtils.setAlphaComponent(dominantColor, 180),
-                dominantColor
+            val dominantColor = ArtistPaletteEngine.findDominantColorAtSubtitleRegion(
+                bitmap = bitmap,
+                startRatio = 0.68f,
+                endRatio = 0.78f
+            )
+
+            val gradientStops = ArtistPaletteEngine.buildSeamlessGradient(
+                blendColor = dominantColor,
+                fadeStart = FADE_START_FRACTION
             )
 
             withContext(Dispatchers.Main) {
@@ -252,12 +244,14 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
         if (_binding == null) return
 
         binding.rootLayout.setBackgroundColor(backgroundColor)
+        binding.appBarLayout?.setBackgroundColor(backgroundColor)
+        binding.collapsingToolbar?.setContentScrimColor(backgroundColor)
 
         val gradientDrawable = android.graphics.drawable.GradientDrawable(
             android.graphics.drawable.GradientDrawable.Orientation.TOP_BOTTOM,
             gradientStops
         )
-        binding.headerGradient?.background = gradientDrawable
+        binding.headerGradient?.let { it.background = gradientDrawable }
 
         applyContrastingForegroundColor(backgroundColor)
     }
@@ -265,12 +259,9 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
     private fun applyContrastingForegroundColor(backgroundColor: Int) {
         val isLightBackground = ColorUtils.calculateLuminance(backgroundColor) > 0.5
         val foregroundColor = if (isLightBackground) Color.BLACK else Color.WHITE
-        val secondaryForegroundColor = ColorUtils.setAlphaComponent(foregroundColor, 0xCC)
-
-        activity?.let {
-            val windowController = WindowCompat.getInsetsController(it.window, it.window.decorView)
-            windowController.isAppearanceLightStatusBars = isLightBackground
-        }
+        
+        // زيادة وضوح النص الثانوي (توقيت الأغنية) ليكون 80% شفافية بدلاً من الشفافية القديمة
+        val secondaryForegroundColor = ColorUtils.setAlphaComponent(foregroundColor, 0xCC) 
 
         binding.artistTitle.setTextColor(foregroundColor)
         binding.text.setTextColor(secondaryForegroundColor)
@@ -288,12 +279,18 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
             android.content.res.ColorStateList.valueOf(foregroundColor)
         )
 
-        binding.fragmentArtistContent.playAction.let { button ->
-            button.elevation = 0f
-            if (button is com.google.android.material.button.MaterialButton) {
-                button.strokeWidth = 0
-            }
+        // إزالة الخطوط والظلال من زر التشغيل ليدمج بسلاسة
+        binding.fragmentArtistContent.playAction.elevation = 0f
+        if (binding.fragmentArtistContent.playAction is com.google.android.material.button.MaterialButton) {
+            (binding.fragmentArtistContent.playAction as com.google.android.material.button.MaterialButton).strokeWidth = 0
         }
+
+        // تلوين الأيقونات داخل الدوائر فقط دون المساس بلون خلفية الدائرة الأساسية
+        binding.fragmentArtistContent.infoAction.iconTint =
+            android.content.res.ColorStateList.valueOf(foregroundColor)
+
+        binding.fragmentArtistContent.shuffleAction.iconTint =
+            android.content.res.ColorStateList.valueOf(foregroundColor)
 
         updateRecyclerViewItemsColor(foregroundColor, secondaryForegroundColor)
     }
