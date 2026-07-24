@@ -13,8 +13,11 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.widget.PopupMenu
 import androidx.core.graphics.ColorUtils
 import androidx.core.os.bundleOf
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.doOnPreDraw
 import androidx.core.view.isVisible
+import androidx.core.view.updatePadding
 import androidx.lifecycle.lifecycleScope
 import androidx.navigation.fragment.FragmentNavigatorExtras
 import androidx.navigation.fragment.findNavController
@@ -84,7 +87,15 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
         mainActivity.addMusicServiceEventListener(detailsViewModel)
         mainActivity.setSupportActionBar(binding.toolbar)
         binding.toolbar.title = null
-        
+
+        // ننزل التولبار تحت الـ status bar بمقدار الـ padding بس، من غير ما نستهلك الـ inset
+        // عشان الـ status bar يفضل شفاف والصورة تكمل وراه زي التصميم الأصلي
+        ViewCompat.setOnApplyWindowInsetsListener(binding.toolbar) { v, insets ->
+            val statusBarInsets = insets.getInsets(WindowInsetsCompat.Type.statusBars())
+            v.updatePadding(top = statusBarInsets.top)
+            insets
+        }
+
         binding.image.transitionName = (artistId ?: artistName).toString()
         postponeEnterTransition()
         
@@ -244,7 +255,6 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
         if (_binding == null) return
 
         binding.rootLayout.setBackgroundColor(backgroundColor)
-        binding.appBarLayout?.setBackgroundColor(backgroundColor)
 
         val gradientDrawable = android.graphics.drawable.GradientDrawable(
             android.graphics.drawable.GradientDrawable.Orientation.TOP_BOTTOM,
