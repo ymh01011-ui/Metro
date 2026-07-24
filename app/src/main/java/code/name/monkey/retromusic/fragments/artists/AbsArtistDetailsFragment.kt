@@ -88,13 +88,31 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
         mainActivity.setSupportActionBar(binding.toolbar)
         binding.toolbar.title = null
 
-        // ننزل التولبار تحت الـ status bar بمقدار الـ padding بس، من غير ما نستهلك الـ inset
-        // عشان الـ status bar يفضل شفاف والصورة تكمل وراه زي التصميم الأصلي
-        ViewCompat.setOnApplyWindowInsetsListener(binding.toolbar) { v, insets ->
+        // 1. السماح للصورة تتمدد ورا الـ Status Bar عشان نلغي الخط الأسود
+        androidx.core.view.WindowCompat.setDecorFitsSystemWindows(requireActivity().window, false)
+
+        // 2. تظبيط مكان العناصر: نعمل Padding للـ AppBarLayout عشان الأزرار تفضل في مكانها المضبوط
+        ViewCompat.setOnApplyWindowInsetsListener(binding.appBarLayout) { v, insets ->
             val statusBarInsets = insets.getInsets(WindowInsetsCompat.Type.statusBars())
             v.updatePadding(top = statusBarInsets.top)
             insets
         }
+
+        // 3. إخفاء التولبار في البداية (لما تكون عند صورة الفنان)
+        binding.appBarLayout.alpha = 0f
+        binding.toolbar.isClickable = false
+
+        // 4. التحكم في ظهور واختفاء التولبار مع السكرول
+        binding.content.setOnScrollChangeListener(androidx.core.widget.NestedScrollView.OnScrollChangeListener { _, _, scrollY, _, _ ->
+            val imageHeight = binding.image.height
+            val triggerPoint = imageHeight - binding.appBarLayout.height
+
+            if (triggerPoint > 0) {
+                val alpha = (scrollY.toFloat() / triggerPoint).coerceIn(0f, 1f)
+                binding.appBarLayout.alpha = alpha
+                binding.toolbar.isClickable = alpha > 0.5f
+            }
+        })
 
         binding.image.transitionName = (artistId ?: artistName).toString()
         postponeEnterTransition()
@@ -255,6 +273,9 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
         if (_binding == null) return
 
         binding.rootLayout.setBackgroundColor(backgroundColor)
+        
+        // إعطاء التولبار لون الخلفية عشان يغطي على العناصر لما تنزل لتحت
+        binding.appBarLayout.setBackgroundColor(backgroundColor)
 
         val gradientDrawable = android.graphics.drawable.GradientDrawable(
             android.graphics.drawable.GradientDrawable.Orientation.TOP_BOTTOM,
@@ -269,7 +290,6 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
         val isLightBackground = ColorUtils.calculateLuminance(backgroundColor) > 0.5
         val foregroundColor = if (isLightBackground) Color.BLACK else Color.WHITE
         
-        // زيادة وضوح النص الثانوي (توقيت الأغنية) ليكون 80% شفافية بدلاً من الشفافية القديمة
         val secondaryForegroundColor = ColorUtils.setAlphaComponent(foregroundColor, 0xCC) 
 
         binding.artistTitle.setTextColor(foregroundColor)
@@ -288,13 +308,11 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
             android.content.res.ColorStateList.valueOf(foregroundColor)
         )
 
-        // إزالة الخطوط والظلال من زر التشغيل ليدمج بسلاسة
         binding.fragmentArtistContent.playAction.elevation = 0f
         if (binding.fragmentArtistContent.playAction is com.google.android.material.button.MaterialButton) {
             (binding.fragmentArtistContent.playAction as com.google.android.material.button.MaterialButton).strokeWidth = 0
         }
 
-        // تلوين الأيقونات داخل الدوائر فقط دون المساس بلون خلفية الدائرة الأساسية
         binding.fragmentArtistContent.infoAction.iconTint =
             android.content.res.ColorStateList.valueOf(foregroundColor)
 
