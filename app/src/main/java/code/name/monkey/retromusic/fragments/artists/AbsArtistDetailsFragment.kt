@@ -8,13 +8,18 @@ import android.view.Menu
 import android.view.MenuInflater
 import android.view.MenuItem
 import android.view.View
+import android.view.ViewGroup
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.widget.PopupMenu
 import androidx.core.graphics.ColorUtils
 import androidx.core.os.bundleOf
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.doOnPreDraw
 import androidx.core.view.isVisible
+import androidx.core.view.updateLayoutParams
 import androidx.lifecycle.lifecycleScope
 import androidx.navigation.fragment.FragmentNavigatorExtras
 import androidx.navigation.fragment.findNavController
@@ -41,7 +46,6 @@ import code.name.monkey.retromusic.util.*
 import com.bumptech.glide.Glide
 import com.bumptech.glide.request.target.CustomTarget
 import com.bumptech.glide.request.transition.Transition
-import com.google.android.material.shape.MaterialShapeDrawable
 import com.google.android.material.transition.MaterialContainerTransform
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -85,6 +89,15 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
         mainActivity.setSupportActionBar(binding.toolbar)
         binding.toolbar.title = null
         
+        // تنزيل زرار الرجوع والنقط تحت شريط حالة النظام (الساعة والبطارية)
+        ViewCompat.setOnApplyWindowInsetsListener(binding.toolbar) { toolbarView, insets ->
+            val statusBarHeight = insets.getInsets(WindowInsetsCompat.Type.statusBars()).top
+            toolbarView.updateLayoutParams<ViewGroup.MarginLayoutParams> {
+                topMargin = statusBarHeight
+            }
+            insets
+        }
+
         binding.image.transitionName = (artistId ?: artistName).toString()
         postponeEnterTransition()
         
@@ -108,8 +121,6 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
         }
 
         setupSongSortButton()
-        binding.appBarLayout?.statusBarForeground =
-            MaterialShapeDrawable.createWithElevationOverlay(requireContext())
     }
 
     private fun setupRecyclerView() {
@@ -244,14 +255,12 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
         if (_binding == null) return
 
         binding.rootLayout.setBackgroundColor(backgroundColor)
-        binding.appBarLayout?.setBackgroundColor(backgroundColor)
-        binding.collapsingToolbar?.setContentScrimColor(backgroundColor)
 
         val gradientDrawable = android.graphics.drawable.GradientDrawable(
             android.graphics.drawable.GradientDrawable.Orientation.TOP_BOTTOM,
             gradientStops
         )
-        binding.headerGradient?.let { it.background = gradientDrawable }
+        binding.headerGradient.background = gradientDrawable
 
         applyContrastingForegroundColor(backgroundColor)
     }
@@ -260,8 +269,14 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
         val isLightBackground = ColorUtils.calculateLuminance(backgroundColor) > 0.5
         val foregroundColor = if (isLightBackground) Color.BLACK else Color.WHITE
         
-        // زيادة وضوح النص الثانوي (توقيت الأغنية) ليكون 80% شفافية بدلاً من الشفافية القديمة
-        val secondaryForegroundColor = ColorUtils.setAlphaComponent(foregroundColor, 0xCC) 
+        // تحسين وضوح النص الثانوي (مثل توقيت الأغنية)
+        val secondaryForegroundColor = ColorUtils.setAlphaComponent(foregroundColor, 0xCC)
+
+        // تحويل ألوان أيقونات الـ Status Bar للأسود في الشاشة الفاتحة والأبيض في الداكنة
+        activity?.let {
+            val windowController = WindowCompat.getInsetsController(it.window, it.window.decorView)
+            windowController.isAppearanceLightStatusBars = isLightBackground
+        }
 
         binding.artistTitle.setTextColor(foregroundColor)
         binding.text.setTextColor(secondaryForegroundColor)
@@ -279,13 +294,13 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
             android.content.res.ColorStateList.valueOf(foregroundColor)
         )
 
-        // إزالة الخطوط والظلال من زر التشغيل ليدمج بسلاسة
+        // إزالة أي إطار أو ظل سفلي من زر التشغيل الرئيسي
         binding.fragmentArtistContent.playAction.elevation = 0f
         if (binding.fragmentArtistContent.playAction is com.google.android.material.button.MaterialButton) {
             (binding.fragmentArtistContent.playAction as com.google.android.material.button.MaterialButton).strokeWidth = 0
         }
 
-        // تلوين الأيقونات داخل الدوائر فقط دون المساس بلون خلفية الدائرة الأساسية
+        // تلوين رموز الدائرتين فقط مع الحفاظ على الخلفية الأصلية
         binding.fragmentArtistContent.infoAction.iconTint =
             android.content.res.ColorStateList.valueOf(foregroundColor)
 
