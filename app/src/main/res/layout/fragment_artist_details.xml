@@ -74,14 +74,13 @@
         </LinearLayout>
     </androidx.core.widget.NestedScrollView>
 
-    <!-- شريط علوي ثابت شفاف، ياخد padding الـ status bar الصح -->
+    <!-- شريط علوي ثابت شفاف (تم إزالة fitsSystemWindows) -->
     <com.google.android.material.appbar.AppBarLayout
         android:id="@+id/appBarLayout"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:background="@android:color/transparent"
-        android:elevation="0dp"
-        android:fitsSystemWindows="true">
+        android:elevation="0dp">
 
         <com.google.android.material.appbar.MaterialToolbar
             android:id="@+id/toolbar"
