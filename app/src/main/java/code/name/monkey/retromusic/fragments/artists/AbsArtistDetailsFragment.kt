@@ -68,6 +68,7 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
     private lateinit var singlesAdapter: HorizontalAlbumAdapter
     private lateinit var appearsOnAdapter: HorizontalAlbumAdapter
     private var forceDownload: Boolean = false
+    private var dominantBackgroundColor: Int = Color.BLACK // لتخزين لون الخلفية المستخرج
 
     private val savedSongSortOrder: String
         get() = PreferenceUtil.artistDetailSongSortOrder
@@ -100,30 +101,28 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
             }
         }
 
-        // 3. الأزرار (الرجوع والنقط) ظاهرة على طول ومش بتختفي
+        // 3. الأزرار (الرجوع والنقط) ظاهرة وقابلة للضغط على طول
         binding.appBarLayout?.alpha = 1f
         binding.toolbar.isClickable = true
-        
-        // نبدأ بخلفية شفافة للـ AppBarLayout تماماً في البداية
-        binding.appBarLayout?.background?.alpha = 0
 
-        // 4. التحكم في ظهور خلفية البار وتدرجها بشكل أسرع بعد تجاوز اسم الفنان
+        // 4. التحكم في ظهور خلفية البار فقط (تبدأ شفافة وتظهر بسرعة بعد تجاوز اسم الفنان)
         binding.content.setOnScrollChangeListener(androidx.core.widget.NestedScrollView.OnScrollChangeListener { _, _, scrollY, _, _ ->
             val imageHeight = binding.image.height
-            val titleTop = binding.artistTitle.top
-            
-            // نقطة البداية تبدأ من عند اسم الفنان، ونطاق ظهور قصير (أسرع)
-            val startFade = titleTop - 100
-            val endFade = titleTop + 50
-            
-            val alphaProgress = when {
-                scrollY <= startFade -> 0f
-                scrollY >= endFade -> 1f
-                else -> (scrollY - startFade).toFloat() / (endFade - startFade)
-            }
+            if (imageHeight > 0) {
+                // نطاق ظهور الخلفية يبدأ وينتهي مباشرة عند منطقة اسم الفنان
+                val startFade = imageHeight - 220
+                val endFade = imageHeight - 60
 
-            // تطبيق الشفافية على خلفية البار فقط مع الحفاظ على الأزرار ظاهرة
-            binding.appBarLayout?.background?.alpha = (alphaProgress * 255).toInt()
+                val alphaProgress = when {
+                    scrollY <= startFade -> 0f
+                    scrollY >= endFade -> 1f
+                    else -> (scrollY - startFade).toFloat() / (endFade - startFade)
+                }
+
+                // تغيير شفافية لون الخلفية فقط مع إبقاء الأزرار ظاهرة بوضوح تام
+                val dynamicColor = ColorUtils.setAlphaComponent(dominantBackgroundColor, (alphaProgress * 255).toInt())
+                binding.appBarLayout?.setBackgroundColor(dynamicColor)
+            }
         })
 
         binding.image.transitionName = (artistId ?: artistName).toString()
@@ -284,10 +283,11 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
     private fun setColors(backgroundColor: Int, gradientStops: IntArray) {
         if (_binding == null) return
 
+        dominantBackgroundColor = backgroundColor // حفظ اللون للاستخدام في السكرول
         binding.rootLayout.setBackgroundColor(backgroundColor)
         
-        // تعيين لون الخلفية للبار (سيتم التحكم في شفافيتها بالـ scroll)
-        binding.appBarLayout?.setBackgroundColor(backgroundColor)
+        // يبدأ البار شفافاً تماماً في البداية عند صورة الفنان
+        binding.appBarLayout?.setBackgroundColor(ColorUtils.setAlphaComponent(backgroundColor, 0))
 
         val gradientDrawable = android.graphics.drawable.GradientDrawable(
             android.graphics.drawable.GradientDrawable.Orientation.TOP_BOTTOM,
