@@ -17,14 +17,11 @@ import android.graphics.Bitmap
 import android.graphics.Color
 import androidx.core.graphics.ColorUtils
 
-/**
- * محرك استخراج الألوان والتدرّج المنسجم لصفحة الفنان (Apple Music Style).
- */
 object ArtistPaletteEngine {
 
     /**
-     * بيستخرج "أكثر لون متكرر" (Dominant Color) بدون أي خلط، 
-     * تحديداً من منطقة سطر معلومات الأغاني والألبومات (من 68% إلى 78% من ارتفاع الصورة).
+     * بيستخرج "أكثر لون متكرر" مع معالجة ذكية للون الأسود:
+     * لو الأسود هو المسيطر بس بنسبة أقل من 40%، بياخد اللون اللي بعده.
      */
     fun findDominantColorAtSubtitleRegion(
         bitmap: Bitmap,
@@ -35,36 +32,44 @@ object ArtistPaletteEngine {
         val endY = (bitmap.height * endRatio).toInt().coerceIn(startY + 1, bitmap.height)
 
         val colorCountMap = HashMap<Int, Int>()
+        var totalPixels = 0
 
-        // تسريع الفحص بدون التأثير على الدقة
         val stepX = maxOf(1, bitmap.width / 100)
         val stepY = maxOf(1, (endY - startY) / 20)
 
         for (y in startY until endY step stepY) {
             for (x in 0 until bitmap.width step stepX) {
                 val pixel = bitmap.getPixel(x, y)
-                
-                // تجميع الألوان المتقاربة جداً لضمان دقة العد
                 val quantizedColor = Color.rgb(
                     (Color.red(pixel) / 8) * 8,
                     (Color.green(pixel) / 8) * 8,
                     (Color.blue(pixel) / 8) * 8
                 )
-
-                val count = colorCountMap.getOrDefault(quantizedColor, 0) + 1
-                colorCountMap[quantizedColor] = count
+                colorCountMap[quantizedColor] = colorCountMap.getOrDefault(quantizedColor, 0) + 1
+                totalPixels++
             }
         }
 
-        // أخذ اللون صاحب أعلى تكرار إحصائي (Mode)
-        val dominantQuantized = colorCountMap.maxByOrNull { it.value }?.key ?: Color.BLACK
+        val sortedColors = colorCountMap.entries.sortedByDescending { it.value }
+        if (sortedColors.isEmpty()) return Color.BLACK
 
-        return dominantQuantized
+        val firstColor = sortedColors[0].key
+        val r = Color.red(firstColor)
+        val g = Color.green(firstColor)
+        val b = Color.blue(firstColor)
+        
+        // التحقق مما إذا كان اللون الأول يميل للسواد
+        val isBlack = r < 35 && g < 35 && b < 35
+        val dominanceRatio = sortedColors[0].value.toFloat() / maxOf(1, totalPixels).toFloat()
+
+        // لو اللون أسود ونسبته أقل من 40% وفي لون تاني موجود، خد التاني
+        if (isBlack && dominanceRatio < 0.40f && sortedColors.size > 1) {
+            return sortedColors[1].key
+        }
+
+        return firstColor
     }
 
-    /**
-     * يبني تدرجًا لونيًا متدرج الشفافية (Alpha) ناعماً جداً لمنع وجود أي خطوط حادة.
-     */
     fun buildSeamlessGradient(
         blendColor: Int,
         fadeStart: Float = 0.42f,
@@ -72,14 +77,12 @@ object ArtistPaletteEngine {
     ): IntArray {
         return IntArray(stopCount) { i ->
             val progress = i / (stopCount - 1f)
-
             val alphaProgress = if (progress < fadeStart) {
                 0f
             } else {
                 val localProgress = (progress - fadeStart) / (1f - fadeStart)
-                localProgress * localProgress * (3f - 2f * localProgress) // Smoothstep
+                localProgress * localProgress * (3f - 2f * localProgress) 
             }
-
             val alphaInt = (alphaProgress * 255).toInt().coerceIn(0, 255)
             ColorUtils.setAlphaComponent(blendColor, alphaInt)
         }
