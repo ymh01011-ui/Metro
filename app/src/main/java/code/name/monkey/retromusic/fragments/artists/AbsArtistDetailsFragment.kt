@@ -23,6 +23,7 @@ import androidx.core.view.updateLayoutParams
 import androidx.lifecycle.lifecycleScope
 import androidx.navigation.fragment.FragmentNavigatorExtras
 import androidx.navigation.fragment.findNavController
+import androidx.palette.graphics.Palette
 import androidx.recyclerview.widget.DefaultItemAnimator
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -52,8 +53,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.koin.android.ext.android.get
 import java.util.*
-
-private const val FADE_START_FRACTION = 0.42f
 
 abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragment_artist_details),
     IAlbumClickListener {
@@ -89,7 +88,7 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
         mainActivity.setSupportActionBar(binding.toolbar)
         binding.toolbar.title = null
         
-        // تنزيل زرار الرجوع والنقط تحت شريط حالة النظام (الساعة والبطارية)
+        // ضبط مسافة التولبار من الأعلى لتجنب النوتش وأيقونات شريط الحالة
         ViewCompat.setOnApplyWindowInsetsListener(binding.toolbar) { toolbarView, insets ->
             val statusBarHeight = insets.getInsets(WindowInsetsCompat.Type.statusBars()).top
             toolbarView.updateLayoutParams<ViewGroup.MarginLayoutParams> {
@@ -231,15 +230,13 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
 
     private fun extractColorsAndApplyGradient(bitmap: Bitmap) {
         lifecycleScope.launch(Dispatchers.Default) {
-            val dominantColor = ArtistPaletteEngine.findDominantColorAtSubtitleRegion(
-                bitmap = bitmap,
-                startRatio = 0.68f,
-                endRatio = 0.78f
-            )
-
-            val gradientStops = ArtistPaletteEngine.buildSeamlessGradient(
-                blendColor = dominantColor,
-                fadeStart = FADE_START_FRACTION
+            val palette = Palette.from(bitmap).generate()
+            val dominantColor = palette.getDominantColor(surfaceColor())
+            
+            val gradientStops = intArrayOf(
+                Color.TRANSPARENT,
+                ColorUtils.setAlphaComponent(dominantColor, 180),
+                dominantColor
             )
 
             withContext(Dispatchers.Main) {
@@ -268,11 +265,8 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
     private fun applyContrastingForegroundColor(backgroundColor: Int) {
         val isLightBackground = ColorUtils.calculateLuminance(backgroundColor) > 0.5
         val foregroundColor = if (isLightBackground) Color.BLACK else Color.WHITE
-        
-        // تحسين وضوح النص الثانوي (مثل توقيت الأغنية)
         val secondaryForegroundColor = ColorUtils.setAlphaComponent(foregroundColor, 0xCC)
 
-        // تحويل ألوان أيقونات الـ Status Bar للأسود في الشاشة الفاتحة والأبيض في الداكنة
         activity?.let {
             val windowController = WindowCompat.getInsetsController(it.window, it.window.decorView)
             windowController.isAppearanceLightStatusBars = isLightBackground
@@ -294,18 +288,12 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
             android.content.res.ColorStateList.valueOf(foregroundColor)
         )
 
-        // إزالة أي إطار أو ظل سفلي من زر التشغيل الرئيسي
-        binding.fragmentArtistContent.playAction.elevation = 0f
-        if (binding.fragmentArtistContent.playAction is com.google.android.material.button.MaterialButton) {
-            (binding.fragmentArtistContent.playAction as com.google.android.material.button.MaterialButton).strokeWidth = 0
+        binding.fragmentArtistContent.playAction.let { button ->
+            button.elevation = 0f
+            if (button is com.google.android.material.button.MaterialButton) {
+                button.strokeWidth = 0
+            }
         }
-
-        // تلوين رموز الدائرتين فقط مع الحفاظ على الخلفية الأصلية
-        binding.fragmentArtistContent.infoAction.iconTint =
-            android.content.res.ColorStateList.valueOf(foregroundColor)
-
-        binding.fragmentArtistContent.shuffleAction.iconTint =
-            android.content.res.ColorStateList.valueOf(foregroundColor)
 
         updateRecyclerViewItemsColor(foregroundColor, secondaryForegroundColor)
     }
