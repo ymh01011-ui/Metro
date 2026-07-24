@@ -88,28 +88,31 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
         mainActivity.setSupportActionBar(binding.toolbar)
         binding.toolbar.title = null
 
-        // 1. السماح للصورة تتمدد ورا الـ Status Bar عشان نلغي الخط الأسود
+        // 1. السماح للصورة تتمدد ورا الـ Status Bar
         androidx.core.view.WindowCompat.setDecorFitsSystemWindows(requireActivity().window, false)
 
-        // 2. تظبيط مكان العناصر: نعمل Padding للـ AppBarLayout عشان الأزرار تفضل في مكانها المضبوط
-        ViewCompat.setOnApplyWindowInsetsListener(binding.appBarLayout) { v, insets ->
-            val statusBarInsets = insets.getInsets(WindowInsetsCompat.Type.statusBars())
-            v.updatePadding(top = statusBarInsets.top)
-            insets
+        // 2. تظبيط مكان العناصر مع استخدام الحماية (let) عشان لو كان null
+        binding.appBarLayout?.let { appBar ->
+            ViewCompat.setOnApplyWindowInsetsListener(appBar) { v, insets ->
+                val statusBarInsets = insets.getInsets(WindowInsetsCompat.Type.statusBars())
+                v.updatePadding(top = statusBarInsets.top)
+                insets
+            }
         }
 
-        // 3. إخفاء التولبار في البداية (لما تكون عند صورة الفنان)
-        binding.appBarLayout.alpha = 0f
+        // 3. إخفاء التولبار في البداية 
+        binding.appBarLayout?.alpha = 0f
         binding.toolbar.isClickable = false
 
-        // 4. التحكم في ظهور واختفاء التولبار مع السكرول
+        // 4. التحكم في ظهور واختفاء التولبار مع السكرول (مع حماية العناصر بعلامة ؟)
         binding.content.setOnScrollChangeListener(androidx.core.widget.NestedScrollView.OnScrollChangeListener { _, _, scrollY, _, _ ->
             val imageHeight = binding.image.height
-            val triggerPoint = imageHeight - binding.appBarLayout.height
+            val appBarHeight = binding.appBarLayout?.height ?: 0
+            val triggerPoint = imageHeight - appBarHeight
 
             if (triggerPoint > 0) {
                 val alpha = (scrollY.toFloat() / triggerPoint).coerceIn(0f, 1f)
-                binding.appBarLayout.alpha = alpha
+                binding.appBarLayout?.alpha = alpha
                 binding.toolbar.isClickable = alpha > 0.5f
             }
         })
@@ -274,8 +277,8 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
 
         binding.rootLayout.setBackgroundColor(backgroundColor)
         
-        // إعطاء التولبار لون الخلفية عشان يغطي على العناصر لما تنزل لتحت
-        binding.appBarLayout.setBackgroundColor(backgroundColor)
+        // استخدام علامة الاستفهام هنا كمان عشان الحماية
+        binding.appBarLayout?.setBackgroundColor(backgroundColor)
 
         val gradientDrawable = android.graphics.drawable.GradientDrawable(
             android.graphics.drawable.GradientDrawable.Orientation.TOP_BOTTOM,
