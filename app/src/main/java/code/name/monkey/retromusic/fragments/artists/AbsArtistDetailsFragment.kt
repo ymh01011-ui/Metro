@@ -245,7 +245,6 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
 
         binding.rootLayout.setBackgroundColor(backgroundColor)
         binding.appBarLayout?.setBackgroundColor(backgroundColor)
-        binding.collapsingToolbar?.setContentScrimColor(backgroundColor)
 
         val gradientDrawable = android.graphics.drawable.GradientDrawable(
             android.graphics.drawable.GradientDrawable.Orientation.TOP_BOTTOM,
