@@ -91,7 +91,7 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
         // 1. السماح للصورة تتمدد ورا الـ Status Bar
         androidx.core.view.WindowCompat.setDecorFitsSystemWindows(requireActivity().window, false)
 
-        // 2. تظبيط مكان العناصر مع استخدام الحماية (let) عشان لو كان null
+        // 2. تظبيط مكان العناصر
         binding.appBarLayout?.let { appBar ->
             ViewCompat.setOnApplyWindowInsetsListener(appBar) { v, insets ->
                 val statusBarInsets = insets.getInsets(WindowInsetsCompat.Type.statusBars())
@@ -100,21 +100,30 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
             }
         }
 
-        // 3. إخفاء التولبار في البداية 
-        binding.appBarLayout?.alpha = 0f
-        binding.toolbar.isClickable = false
+        // 3. الأزرار (الرجوع والنقط) ظاهرة على طول ومش بتختفي
+        binding.appBarLayout?.alpha = 1f
+        binding.toolbar.isClickable = true
+        
+        // نبدأ بخلفية شفافة للـ AppBarLayout تماماً في البداية
+        binding.appBarLayout?.background?.alpha = 0
 
-        // 4. التحكم في ظهور واختفاء التولبار مع السكرول (مع حماية العناصر بعلامة ؟)
+        // 4. التحكم في ظهور خلفية البار وتدرجها بشكل أسرع بعد تجاوز اسم الفنان
         binding.content.setOnScrollChangeListener(androidx.core.widget.NestedScrollView.OnScrollChangeListener { _, _, scrollY, _, _ ->
             val imageHeight = binding.image.height
-            val appBarHeight = binding.appBarLayout?.height ?: 0
-            val triggerPoint = imageHeight - appBarHeight
-
-            if (triggerPoint > 0) {
-                val alpha = (scrollY.toFloat() / triggerPoint).coerceIn(0f, 1f)
-                binding.appBarLayout?.alpha = alpha
-                binding.toolbar.isClickable = alpha > 0.5f
+            val titleTop = binding.artistTitle.top
+            
+            // نقطة البداية تبدأ من عند اسم الفنان، ونطاق ظهور قصير (أسرع)
+            val startFade = titleTop - 100
+            val endFade = titleTop + 50
+            
+            val alphaProgress = when {
+                scrollY <= startFade -> 0f
+                scrollY >= endFade -> 1f
+                else -> (scrollY - startFade).toFloat() / (endFade - startFade)
             }
+
+            // تطبيق الشفافية على خلفية البار فقط مع الحفاظ على الأزرار ظاهرة
+            binding.appBarLayout?.background?.alpha = (alphaProgress * 255).toInt()
         })
 
         binding.image.transitionName = (artistId ?: artistName).toString()
@@ -277,7 +286,7 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
 
         binding.rootLayout.setBackgroundColor(backgroundColor)
         
-        // استخدام علامة الاستفهام هنا كمان عشان الحماية
+        // تعيين لون الخلفية للبار (سيتم التحكم في شفافيتها بالـ scroll)
         binding.appBarLayout?.setBackgroundColor(backgroundColor)
 
         val gradientDrawable = android.graphics.drawable.GradientDrawable(
