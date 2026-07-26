@@ -19,8 +19,9 @@
             android:layout_height="wrap_content"
             android:orientation="vertical">
 
-            <!-- حاوية الصورة والمعلومات -->
+            <!-- تم إضافة ID للحاوية بالكامل لضم الصورة والنص والجرادينت في انيميشن واحد -->
             <FrameLayout
+                android:id="@+id/headerContainer"
                 android:layout_width="match_parent"
                 android:layout_height="380dp">
 
@@ -31,11 +32,12 @@
                     android:scaleType="centerCrop"
                     tools:srcCompat="@tools:sample/backgrounds/scenic" />
 
-                <!-- التدرج الديناميكي -->
+                <!-- تم إضافة خلفية افتراضية لتكون جاهزة فوراً أثناء الانيميشن -->
                 <View
                     android:id="@+id/headerGradient"
                     android:layout_width="match_parent"
-                    android:layout_height="match_parent" />
+                    android:layout_height="match_parent"
+                    android:background="@drawable/bg_default_header_gradient" />
 
                 <LinearLayout
                     android:layout_width="match_parent"
@@ -66,7 +68,6 @@
                 </LinearLayout>
             </FrameLayout>
 
-            <!-- محتوى الأغاني والألبومات يأتي تحت الصورة مباشرة بدون أي تداخل -->
             <include
                 android:id="@+id/fragment_artist_content"
                 layout="@layout/fragment_artist_content" />
@@ -74,7 +75,6 @@
         </LinearLayout>
     </androidx.core.widget.NestedScrollView>
 
-    <!-- شريط علوي ثابت شفاف (تم إزالة fitsSystemWindows) -->
     <com.google.android.material.appbar.AppBarLayout
         android:id="@+id/appBarLayout"
         android:layout_width="match_parent"
