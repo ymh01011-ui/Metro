@@ -41,6 +41,15 @@ jobs:
           if [ -n "$MERGED_DIR" ]; then
             find "$MERGED_DIR" -iname "*gradient*"
           fi
+
+      - name: Diagnostics - Extract actual error from full log
+        run: |
+          echo "===== كل الأسطر اللي فيها error أو FAILED ====="
+          grep -n -i "error\|FAILED" /tmp/full_log.txt | grep -v "^--" | head -50
+          echo ""
+          echo "===== كل الأسطر اللي فيها not found ====="
+          grep -n "not found" /tmp/full_log.txt | head -20
+
       - name: Generate Keystore
         run: |
           keytool -genkey -v \
