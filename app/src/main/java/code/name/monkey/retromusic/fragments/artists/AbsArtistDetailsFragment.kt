@@ -78,8 +78,8 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
         sharedElementEnterTransition = MaterialContainerTransform().apply {
             drawingViewId = R.id.fragment_container
             scrimColor = Color.TRANSPARENT
-            // استخدام لون الواجهة الافتراضي للخلفية لمنع ظهور خطوط سوداء أو شفافية غريبة
-            setAllContainerColors(surfaceColor())
+            // إرجاع خلفية الحاوية شفافة تماماً حسب طلبك
+            setAllContainerColors(Color.TRANSPARENT)
         }
     }
 
@@ -294,16 +294,19 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
     }
 
     private fun applyContrastingForegroundColor(backgroundColor: Int) {
-        val isLightBackground = ColorUtils.calculateLuminance(backgroundColor) > 0.5
+        // تحديد هل الخلفية فاتحة أم غامقة لجعل الأزرار سوداء إذا كانت فاتحة جداً
+        val isLightBackground = ColorUtils.calculateLuminance(backgroundColor) > 0.45f
         val foregroundColor = if (isLightBackground) Color.BLACK else Color.WHITE
-        
         val secondaryForegroundColor = ColorUtils.setAlphaComponent(foregroundColor, 0xCC) 
 
         binding.artistTitle.setTextColor(foregroundColor)
         binding.text.setTextColor(secondaryForegroundColor)
 
-        binding.toolbar.navigationIcon = tintedDrawable(binding.toolbar.navigationIcon, foregroundColor)
-        binding.toolbar.overflowIcon = tintedDrawable(binding.toolbar.overflowIcon, foregroundColor)
+        // تلوين سهم الرجوع والنقط الثلاث ديناميكياً
+        binding.toolbar.setNavigationIconTint(foregroundColor)
+        binding.toolbar.overflowIcon?.let { icon ->
+            binding.toolbar.overflowIcon = tintedDrawable(icon, foregroundColor)
+        }
 
         binding.fragmentArtistContent.songTitle.setTextColor(foregroundColor)
         binding.fragmentArtistContent.albumTitle.setTextColor(foregroundColor)
@@ -488,6 +491,14 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
 
     override fun onCreateMenu(menu: Menu, inflater: MenuInflater) {
         inflater.inflate(R.menu.menu_artist_detail, menu)
+        // التأكد من تطبيق تلوين النقط عند إنشاء القائمة
+        if (::artist.isInitialized) {
+            val isLight = ColorUtils.calculateLuminance(dominantBackgroundColor) > 0.45f
+            val iconColor = if (isLight) Color.BLACK else Color.WHITE
+            binding.toolbar.overflowIcon?.let { icon ->
+                binding.toolbar.overflowIcon = tintedDrawable(icon, iconColor)
+            }
+        }
     }
 
     override fun onDestroyView() {
