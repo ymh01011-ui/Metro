@@ -6,7 +6,7 @@
     android:id="@+id/rootLayout"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@android:color/transparent">
+    android:background="?attr/colorSurface">
 
     <androidx.core.widget.NestedScrollView
         android:id="@+id/content"
@@ -19,7 +19,7 @@
             android:layout_height="wrap_content"
             android:orientation="vertical">
 
-            <!-- تم إضافة ID للحاوية بالكامل لضم الصورة والنص والجرادينت في انيميشن واحد -->
+            <!-- حاوية الهيدر بالكامل تضم الصورة والجرادينت والتولبار والنصوص -->
             <FrameLayout
                 android:id="@+id/headerContainer"
                 android:layout_width="match_parent"
@@ -32,12 +32,30 @@
                     android:scaleType="centerCrop"
                     tools:srcCompat="@tools:sample/backgrounds/scenic" />
 
-                <!-- تم إضافة خلفية افتراضية لتكون جاهزة فوراً أثناء الانيميشن -->
                 <View
                     android:id="@+id/headerGradient"
                     android:layout_width="match_parent"
                     android:layout_height="match_parent"
                     android:background="@drawable/header_gradient_bg" />
+
+                <!-- تم نقل الشريط العلوي ليكون داخل الهيدر ويرسم فوق الصورة أثناء الانيميشن -->
+                <com.google.android.material.appbar.AppBarLayout
+                    android:id="@+id/appBarLayout"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="top"
+                    android:background="@android:color/transparent"
+                    android:elevation="0dp">
+
+                    <com.google.android.material.appbar.MaterialToolbar
+                        android:id="@+id/toolbar"
+                        style="@style/Toolbar"
+                        android:layout_width="match_parent"
+                        android:layout_height="?attr/actionBarSize"
+                        android:background="@android:color/transparent"
+                        app:navigationIcon="@drawable/ic_arrow_back" />
+
+                </com.google.android.material.appbar.AppBarLayout>
 
                 <LinearLayout
                     android:layout_width="match_parent"
@@ -74,22 +92,5 @@
 
         </LinearLayout>
     </androidx.core.widget.NestedScrollView>
-
-    <com.google.android.material.appbar.AppBarLayout
-        android:id="@+id/appBarLayout"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:background="@android:color/transparent"
-        android:elevation="0dp">
-
-        <com.google.android.material.appbar.MaterialToolbar
-            android:id="@+id/toolbar"
-            style="@style/Toolbar"
-            android:layout_width="match_parent"
-            android:layout_height="?attr/actionBarSize"
-            android:background="@android:color/transparent"
-            app:navigationIcon="@drawable/ic_arrow_back" />
-
-    </com.google.android.material.appbar.AppBarLayout>
 
 </FrameLayout>
