@@ -120,7 +120,7 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
         })
 
         // ربط الـ transitionName بالحاوية بالكامل بدلاً من الصورة فقط
-        binding.headerContainer.transitionName = (artistId ?: artistName).toString()
+        binding.headerContainer?.transitionName = (artistId ?: artistName).toString()
         postponeEnterTransition()
         
         detailsViewModel.getArtist().observe(viewLifecycleOwner) {
