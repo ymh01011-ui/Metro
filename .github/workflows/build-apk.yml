@@ -24,6 +24,32 @@ jobs:
       - name: Make gradlew executable
         run: chmod +x gradlew
 
+      - name: Diagnostics - Resource Investigation
+        run: |
+          echo "===== 1. البحث عن أي ملف اسمه قريب من header_gradient_bg ====="
+          find . -iname "*header_gradient*" -o -iname "*gradient_bg*" 2>/dev/null
+          echo ""
+          echo "===== 2. عرض المسار الكامل والصلاحيات للملف ====="
+          find . -path "*/res/drawable*/header_gradient_bg.xml" -exec ls -la {} \;
+          echo ""
+          echo "===== 3. الاسم بالـ hex (كشف أي حروف مخفية) ====="
+          find . -path "*/res/drawable*/header_gradient_bg.xml" -exec bash -c 'echo "File: $1"; basename "$1" | xxd' _ {} \;
+          echo ""
+          echo "===== 4. محتوى الملف بالـ hex أول 200 بايت (كشف BOM أو ترميز غلط) ====="
+          find . -path "*/res/drawable*/header_gradient_bg.xml" -exec bash -c 'xxd "$1" | head -15' _ {} \;
+          echo ""
+          echo "===== 5. كل الأماكن اللي فيها إشارة للاسم في المشروع كله ====="
+          grep -rn "header_gradient_bg" --include="*.xml" --include="*.kt" --include="*.java" . 2>/dev/null
+          echo ""
+          echo "===== 6. كل فولدرات res الموجودة في المشروع ====="
+          find . -maxdepth 4 -type d -iname "res"
+          echo ""
+          echo "===== 7. محتويات فولدر drawable الأساسي بالكامل ====="
+          ls -la app/src/main/res/drawable/ 2>/dev/null
+          echo ""
+          echo "===== 8. فحص ملف الـ layout بالكامل بالـ hex حوالين السطر المطلوب ====="
+          find . -path "*/res/layout*/fragment_artist_details.xml" -exec bash -c 'sed -n "35,42p" "$1"' _ {} \;
+
       - name: Generate Keystore
         run: |
           keytool -genkey -v \
