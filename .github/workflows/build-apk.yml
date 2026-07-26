@@ -24,32 +24,23 @@ jobs:
       - name: Make gradlew executable
         run: chmod +x gradlew
 
-      - name: Diagnostics - Isolated AAPT2 Compile Test
+      - name: Diagnostics - Find SDK paths and merged resources
         run: |
-          echo "===== 1. اختبار AAPT2 لوحده على ملف الـ drawable ====="
-          AAPT2=$(find $ANDROID_HOME/build-tools -name "aapt2" | sort -r | head -1)
-          echo "Using AAPT2 at: $AAPT2"
-          mkdir -p /tmp/aapt2test
-          $AAPT2 compile app/src/main/res/drawable/header_gradient_bg.xml -o /tmp/aapt2test
-          echo "Compile exit code: $?"
-          ls -la /tmp/aapt2test/
+          echo "===== 1. مسارات الـ SDK المتاحة ====="
+          echo "ANDROID_HOME=$ANDROID_HOME"
+          find $ANDROID_HOME/platforms -maxdepth 1 2>/dev/null
           echo ""
-          echo "===== 2. محاولة عمل link بسيط بالملف ده لوحده ====="
-          mkdir -p /tmp/aapt2link
-          $AAPT2 link -o /tmp/aapt2link/test.apk \
-            -I $ANDROID_HOME/platforms/android-33/android.jar \
-            --manifest app/src/main/AndroidManifest.xml \
-            -R /tmp/aapt2test/*.flat \
-            --auto-add-overlay 2>&1
-          echo "Link exit code: $?"
+          echo "===== 2. تشغيل الـ build مع لوج مفصل لخطوة الـ resources بس ====="
+          ./gradlew :app:processDebugResources --stacktrace --info > /tmp/full_log.txt 2>&1 || true
+          echo "===== نهاية الأسطر اللي فيها header_gradient_bg أو bg_default_header_gradient ====="
+          grep -n -i "gradient" /tmp/full_log.txt | head -100
           echo ""
-          echo "===== 3. البحث عن أي ملف styles أو attrs بيعرف نفس الاسم ====="
-          grep -rln "header_gradient_bg" --include="*.xml" . 2>/dev/null
-          echo ""
-          echo "===== 4. فحص هل فيه build cache قديم من نسخة سابقة ====="
-          find app/build -iname "*header_gradient*" 2>/dev/null
-          find . -path "*/intermediates/*" -iname "*header_gradient*" 2>/dev/null
-
+          echo "===== 3. عرض محتوى فولدر الـ merged resources لو موجود ====="
+          find app/build/intermediates -type d -iname "*merged*res*" 2>/dev/null | head -5
+          MERGED_DIR=$(find app/build/intermediates -type d -iname "*merged*res*" 2>/dev/null | head -1)
+          if [ -n "$MERGED_DIR" ]; then
+            find "$MERGED_DIR" -iname "*gradient*"
+          fi
       - name: Generate Keystore
         run: |
           keytool -genkey -v \
