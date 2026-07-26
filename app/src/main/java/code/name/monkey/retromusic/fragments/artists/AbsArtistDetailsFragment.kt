@@ -68,7 +68,7 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
     private lateinit var singlesAdapter: HorizontalAlbumAdapter
     private lateinit var appearsOnAdapter: HorizontalAlbumAdapter
     private var forceDownload: Boolean = false
-    private var dominantBackgroundColor: Int = Color.BLACK // لتخزين لون الخلفية المستخرج
+    private var dominantBackgroundColor: Int = Color.BLACK
 
     private val savedSongSortOrder: String
         get() = PreferenceUtil.artistDetailSongSortOrder
@@ -89,10 +89,8 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
         mainActivity.setSupportActionBar(binding.toolbar)
         binding.toolbar.title = null
 
-        // 1. السماح للصورة تتمدد ورا الـ Status Bar
         androidx.core.view.WindowCompat.setDecorFitsSystemWindows(requireActivity().window, false)
 
-        // 2. تظبيط مكان العناصر
         binding.appBarLayout?.let { appBar ->
             ViewCompat.setOnApplyWindowInsetsListener(appBar) { v, insets ->
                 val statusBarInsets = insets.getInsets(WindowInsetsCompat.Type.statusBars())
@@ -101,15 +99,12 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
             }
         }
 
-        // 3. الأزرار (الرجوع والنقط) ظاهرة وقابلة للضغط على طول
         binding.appBarLayout?.alpha = 1f
         binding.toolbar.isClickable = true
 
-        // 4. التحكم في ظهور خلفية البار فقط (تبدأ شفافة وتظهر بسرعة بعد تجاوز اسم الفنان)
         binding.content.setOnScrollChangeListener(androidx.core.widget.NestedScrollView.OnScrollChangeListener { _, _, scrollY, _, _ ->
             val imageHeight = binding.image.height
             if (imageHeight > 0) {
-                // نطاق ظهور الخلفية يبدأ وينتهي مباشرة عند منطقة اسم الفنان
                 val startFade = imageHeight - 220
                 val endFade = imageHeight - 60
 
@@ -119,13 +114,13 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
                     else -> (scrollY - startFade).toFloat() / (endFade - startFade)
                 }
 
-                // تغيير شفافية لون الخلفية فقط مع إبقاء الأزرار ظاهرة بوضوح تام
                 val dynamicColor = ColorUtils.setAlphaComponent(dominantBackgroundColor, (alphaProgress * 255).toInt())
                 binding.appBarLayout?.setBackgroundColor(dynamicColor)
             }
         })
 
-        binding.image.transitionName = (artistId ?: artistName).toString()
+        // ربط الـ transitionName بالحاوية بالكامل بدلاً من الصورة فقط
+        binding.headerContainer.transitionName = (artistId ?: artistName).toString()
         postponeEnterTransition()
         
         detailsViewModel.getArtist().observe(viewLifecycleOwner) {
@@ -283,10 +278,9 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
     private fun setColors(backgroundColor: Int, gradientStops: IntArray) {
         if (_binding == null) return
 
-        dominantBackgroundColor = backgroundColor // حفظ اللون للاستخدام في السكرول
+        dominantBackgroundColor = backgroundColor
         binding.rootLayout.setBackgroundColor(backgroundColor)
         
-        // يبدأ البار شفافاً تماماً في البداية عند صورة الفنان
         binding.appBarLayout?.setBackgroundColor(ColorUtils.setAlphaComponent(backgroundColor, 0))
 
         val gradientDrawable = android.graphics.drawable.GradientDrawable(
