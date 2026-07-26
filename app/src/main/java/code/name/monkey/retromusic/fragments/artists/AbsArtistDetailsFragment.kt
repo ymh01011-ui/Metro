@@ -79,8 +79,8 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
             drawingViewId = R.id.fragment_container
             scrimColor = Color.TRANSPARENT
             setAllContainerColors(Color.TRANSPARENT)
-            // التعديل هنا: إيقاف الظل الوهمي اللي بيظهر كخط أسود أثناء حركة الانتقال
-            elevationShadowEnabled = false 
+            // استخدام الدالة المباشرة لضمان عدم حدوث خطأ أثناء الكومبايل
+            setElevationShadowEnabled(false) 
         }
     }
 
@@ -304,10 +304,10 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
 
         binding.toolbar.setNavigationIconTint(foregroundColor)
         
-        // التعديل هنا: استخدام دالة post للتأكد من تغيير لون النقط بعد ما يتم رسمها على الشاشة
-        binding.toolbar.post {
-            binding.toolbar.overflowIcon?.let { icon ->
-                binding.toolbar.overflowIcon = tintedDrawable(icon, foregroundColor)
+        // استخدام _binding الآمن لضمان عدم حدوث كراش إذا تم تدمير الفيو قبل تنفيذ الـ post
+        _binding?.toolbar?.post {
+            _binding?.toolbar?.overflowIcon?.let { icon ->
+                _binding?.toolbar?.overflowIcon = tintedDrawable(icon, foregroundColor)
             }
         }
 
@@ -494,13 +494,13 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
 
     override fun onCreateMenu(menu: Menu, inflater: MenuInflater) {
         inflater.inflate(R.menu.menu_artist_detail, menu)
-        // التعديل هنا: إعادة ضبط اللون بمجرد إنشاء القائمة بنجاح واستخدام post أيضاً
         if (::artist.isInitialized) {
             val isLight = ColorUtils.calculateLuminance(dominantBackgroundColor) > 0.45f
             val iconColor = if (isLight) Color.BLACK else Color.WHITE
-            binding.toolbar.post {
-                binding.toolbar.overflowIcon?.let { icon ->
-                    binding.toolbar.overflowIcon = tintedDrawable(icon, iconColor)
+            // استخدام _binding الآمن هنا أيضاً
+            _binding?.toolbar?.post {
+                _binding?.toolbar?.overflowIcon?.let { icon ->
+                    _binding?.toolbar?.overflowIcon = tintedDrawable(icon, iconColor)
                 }
             }
         }
