@@ -24,32 +24,6 @@ jobs:
       - name: Make gradlew executable
         run: chmod +x gradlew
 
-      - name: Diagnostics - Find SDK paths and merged resources
-        run: |
-          echo "===== 1. مسارات الـ SDK المتاحة ====="
-          echo "ANDROID_HOME=$ANDROID_HOME"
-          find $ANDROID_HOME/platforms -maxdepth 1 2>/dev/null
-          echo ""
-          echo "===== 2. تشغيل الـ build مع لوج مفصل لخطوة الـ resources بس ====="
-          ./gradlew :app:processDebugResources --stacktrace --info > /tmp/full_log.txt 2>&1 || true
-          echo "===== نهاية الأسطر اللي فيها header_gradient_bg أو bg_default_header_gradient ====="
-          grep -n -i "gradient" /tmp/full_log.txt | head -100
-          echo ""
-          echo "===== 3. عرض محتوى فولدر الـ merged resources لو موجود ====="
-          find app/build/intermediates -type d -iname "*merged*res*" 2>/dev/null | head -5
-          MERGED_DIR=$(find app/build/intermediates -type d -iname "*merged*res*" 2>/dev/null | head -1)
-          if [ -n "$MERGED_DIR" ]; then
-            find "$MERGED_DIR" -iname "*gradient*"
-          fi
-
-      - name: Diagnostics - Extract actual error from full log
-        run: |
-          echo "===== كل الأسطر اللي فيها error أو FAILED ====="
-          grep -n -i "error\|FAILED" /tmp/full_log.txt | grep -v "^--" | head -50
-          echo ""
-          echo "===== كل الأسطر اللي فيها not found ====="
-          grep -n "not found" /tmp/full_log.txt | head -20
-
       - name: Generate Keystore
         run: |
           keytool -genkey -v \
