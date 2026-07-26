@@ -26,19 +26,29 @@ jobs:
 
       - name: Diagnostics - Isolated AAPT2 Compile Test
         run: |
-          echo "===== 1. لستة كل ملفات fragment_artist_details.xml في المشروع ====="
-          find . -name "fragment_artist_details.xml"
-          echo ""
-          echo "===== 2. اختبار AAPT2 لوحده على ملف الـ drawable ====="
+          echo "===== 1. اختبار AAPT2 لوحده على ملف الـ drawable ====="
           AAPT2=$(find $ANDROID_HOME/build-tools -name "aapt2" | sort -r | head -1)
           echo "Using AAPT2 at: $AAPT2"
           mkdir -p /tmp/aapt2test
-          $AAPT2 compile app/src/main/res/drawable/header_gradient_bg.xml -o /tmp/aapt2test --verbose
-          echo "Exit code: $?"
+          $AAPT2 compile app/src/main/res/drawable/header_gradient_bg.xml -o /tmp/aapt2test
+          echo "Compile exit code: $?"
           ls -la /tmp/aapt2test/
           echo ""
-          echo "===== 3. عرض فولدر app/src/debug/res بالكامل ====="
-          find app/src/debug/res -type f
+          echo "===== 2. محاولة عمل link بسيط بالملف ده لوحده ====="
+          mkdir -p /tmp/aapt2link
+          $AAPT2 link -o /tmp/aapt2link/test.apk \
+            -I $ANDROID_HOME/platforms/android-33/android.jar \
+            --manifest app/src/main/AndroidManifest.xml \
+            -R /tmp/aapt2test/*.flat \
+            --auto-add-overlay 2>&1
+          echo "Link exit code: $?"
+          echo ""
+          echo "===== 3. البحث عن أي ملف styles أو attrs بيعرف نفس الاسم ====="
+          grep -rln "header_gradient_bg" --include="*.xml" . 2>/dev/null
+          echo ""
+          echo "===== 4. فحص هل فيه build cache قديم من نسخة سابقة ====="
+          find app/build -iname "*header_gradient*" 2>/dev/null
+          find . -path "*/intermediates/*" -iname "*header_gradient*" 2>/dev/null
 
       - name: Generate Keystore
         run: |
