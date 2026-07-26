@@ -78,13 +78,18 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
         sharedElementEnterTransition = MaterialContainerTransform().apply {
             drawingViewId = R.id.fragment_container
             scrimColor = Color.TRANSPARENT
-            setAllContainerColors(surfaceColor())
+            // تم التعديل هنا: جعل لون الحاوية الوهمية شفاف لحل مشكلة الخط الأسود
+            setAllContainerColors(Color.TRANSPARENT)
         }
     }
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
         _binding = FragmentArtistDetailsBinding.bind(view)
+
+        // تم التعديل هنا: إجبار شريط الأدوات (الأزرار) ليكون في أعلى طبقة فوق الانيميشن
+        binding.appBarLayout?.translationZ = 100f
+
         mainActivity.addMusicServiceEventListener(detailsViewModel)
         mainActivity.setSupportActionBar(binding.toolbar)
         binding.toolbar.title = null
