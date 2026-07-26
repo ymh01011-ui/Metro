@@ -5,8 +5,7 @@
     xmlns:tools="http://schemas.android.com/tools"
     android:id="@+id/rootLayout"
     android:layout_width="match_parent"
-    android:layout_height="match_parent"
-    android:background="?attr/colorSurface">
+    android:layout_height="match_parent">
 
     <androidx.core.widget.NestedScrollView
         android:id="@+id/content"
@@ -19,7 +18,6 @@
             android:layout_height="wrap_content"
             android:orientation="vertical">
 
-            <!-- حاوية الهيدر بالكامل تضم الصورة والجرادينت والتولبار والنصوص -->
             <FrameLayout
                 android:id="@+id/headerContainer"
                 android:layout_width="match_parent"
@@ -38,7 +36,6 @@
                     android:layout_height="match_parent"
                     android:background="@drawable/header_gradient_bg" />
 
-                <!-- تم نقل الشريط العلوي ليكون داخل الهيدر ويرسم فوق الصورة أثناء الانيميشن -->
                 <com.google.android.material.appbar.AppBarLayout
                     android:id="@+id/appBarLayout"
                     android:layout_width="match_parent"
