@@ -69,6 +69,7 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
     private lateinit var appearsOnAdapter: HorizontalAlbumAdapter
     private var forceDownload: Boolean = false
     private var dominantBackgroundColor: Int = Color.BLACK
+    private var currentForegroundColor: Int = Color.WHITE
 
     private val savedSongSortOrder: String
         get() = PreferenceUtil.artistDetailSongSortOrder
@@ -303,13 +304,9 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
         binding.text.setTextColor(secondaryForegroundColor)
 
         binding.toolbar.setNavigationIconTint(foregroundColor)
-        
-        // استخدام _binding الآمن لضمان عدم حدوث كراش إذا تم تدمير الفيو قبل تنفيذ الـ post
-        _binding?.toolbar?.post {
-            _binding?.toolbar?.overflowIcon?.let { icon ->
-                _binding?.toolbar?.overflowIcon = tintedDrawable(icon, foregroundColor)
-            }
-        }
+
+        currentForegroundColor = foregroundColor
+        tintOverflowIcon(foregroundColor)
 
         binding.fragmentArtistContent.songTitle.setTextColor(foregroundColor)
         binding.fragmentArtistContent.albumTitle.setTextColor(foregroundColor)
@@ -495,14 +492,28 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
     override fun onCreateMenu(menu: Menu, inflater: MenuInflater) {
         inflater.inflate(R.menu.menu_artist_detail, menu)
         if (::artist.isInitialized) {
-            val isLight = ColorUtils.calculateLuminance(dominantBackgroundColor) > 0.45f
-            val iconColor = if (isLight) Color.BLACK else Color.WHITE
-            // استخدام _binding الآمن هنا أيضاً
-            _binding?.toolbar?.post {
-                _binding?.toolbar?.overflowIcon?.let { icon ->
-                    _binding?.toolbar?.overflowIcon = tintedDrawable(icon, iconColor)
-                }
-            }
+            // inflate() يرجّع overflowIcon لشكله الافتراضي (بدون تلوين) في كل مرة
+            // بيتم فيها عمل menu invalidation، فبنعيد تطبيق نفس اللون المحفوظ
+            // فورًا (بدل ما نحسبه من تاني ونعمل post منفصل بيتزاحم مع اللي في
+            // applyContrastingForegroundColor).
+            tintOverflowIcon(currentForegroundColor)
+        }
+    }
+
+    /**
+     * يلوّن أيقونة الـ overflow (التلات نقط) بنفس منطق setNavigationIconTint
+     * الخاص بسهم الرجوع: مصدر واحد بس للتلوين، بيتطبق فورًا لو الأيقونة
+     * جاهزة، ولو لسه مش جاهزة (لسه Toolbar بيعمل layout للـ overflow button)
+     * بيعيد المحاولة على الفريم اللي بعده لحد ما تتلوّن. النتيجة: نفس السلوك
+     * المستقر بتاع السهم، من غير أي "فلاش" أو رجوع للون الافتراضي.
+     */
+    private fun tintOverflowIcon(color: Int) {
+        val toolbar = _binding?.toolbar ?: return
+        val icon = toolbar.overflowIcon
+        if (icon != null) {
+            toolbar.overflowIcon = tintedDrawable(icon, color)
+        } else {
+            toolbar.post { tintOverflowIcon(color) }
         }
     }
 
