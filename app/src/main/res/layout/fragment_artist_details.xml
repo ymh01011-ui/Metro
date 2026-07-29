@@ -44,7 +44,7 @@
                     android:background="@android:color/transparent"
                     android:elevation="0dp">
 
-                    <com.google.android.material.appbar.MaterialToolbar
+                    <code.name.monkey.retromusic.views.TintableToolbar
                         android:id="@+id/toolbar"
                         style="@style/Toolbar"
                         android:layout_width="match_parent"
