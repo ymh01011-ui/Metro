@@ -69,8 +69,6 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
     private lateinit var appearsOnAdapter: HorizontalAlbumAdapter
     private var forceDownload: Boolean = false
     private var dominantBackgroundColor: Int = Color.BLACK
-    private var currentForegroundColor: Int = Color.WHITE
-    private var overflowLayoutListener: android.view.ViewTreeObserver.OnGlobalLayoutListener? = null
 
     private val savedSongSortOrder: String
         get() = PreferenceUtil.artistDetailSongSortOrder
@@ -93,18 +91,6 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
         mainActivity.addMusicServiceEventListener(detailsViewModel)
         mainActivity.setSupportActionBar(binding.toolbar)
         binding.toolbar.title = null
-
-        // AppCompat's Toolbar بيعيد بناء زرار الـ overflow (التلات نقط) في
-        // تمريرة layout لاحقة (غالبًا بعد ما الـ enter transition يخلص)،
-        // وده بيرجّعه للون الافتراضي بتاع الـ theme (أبيض) حتى لو كنا
-        // لوّناه صح قبل كده. عشان كده بنعمل listener يعيد تطبيق اللون
-        // الصح في كل مرة الـ Toolbar يعمل layout جديد، بنفس فلسفة إن
-        // السهم بيفضل صح لوحده لأن Toolbar نفسه بيعيد تطبيق تينت السهم
-        // تلقائيًا.
-        overflowLayoutListener = android.view.ViewTreeObserver.OnGlobalLayoutListener {
-            tintOverflowIcon(currentForegroundColor)
-        }
-        binding.toolbar.viewTreeObserver.addOnGlobalLayoutListener(overflowLayoutListener)
 
         androidx.core.view.WindowCompat.setDecorFitsSystemWindows(requireActivity().window, false)
 
@@ -317,9 +303,7 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
         binding.text.setTextColor(secondaryForegroundColor)
 
         binding.toolbar.setNavigationIconTint(foregroundColor)
-
-        currentForegroundColor = foregroundColor
-        tintOverflowIcon(foregroundColor)
+        binding.toolbar.setOverflowIconTint(foregroundColor)
 
         binding.fragmentArtistContent.songTitle.setTextColor(foregroundColor)
         binding.fragmentArtistContent.albumTitle.setTextColor(foregroundColor)
@@ -370,13 +354,6 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
                 }
             }
         }
-    }
-
-    private fun tintedDrawable(drawable: Drawable?, color: Int): Drawable? {
-        val source = drawable ?: return null
-        val wrapped = androidx.core.graphics.drawable.DrawableCompat.wrap(source.mutate())
-        androidx.core.graphics.drawable.DrawableCompat.setTint(wrapped, color)
-        return wrapped
     }
 
     override fun onAlbumClick(albumId: Long, view: View) {
@@ -504,49 +481,13 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
 
     override fun onCreateMenu(menu: Menu, inflater: MenuInflater) {
         inflater.inflate(R.menu.menu_artist_detail, menu)
-        if (::artist.isInitialized) {
-            // inflate() يرجّع overflowIcon لشكله الافتراضي (بدون تلوين) في كل مرة
-            // بيتم فيها عمل menu invalidation، فبنعيد تطبيق نفس اللون المحفوظ
-            // فورًا (بدل ما نحسبه من تاني ونعمل post منفصل بيتزاحم مع اللي في
-            // applyContrastingForegroundColor).
-            tintOverflowIcon(currentForegroundColor)
-        }
-    }
-
-    /**
-     * يلوّن أيقونة الـ overflow (التلات نقط) بنفس منطق setNavigationIconTint
-     * الخاص بسهم الرجوع: مصدر واحد بس للتلوين، بيتطبق فورًا لو الأيقونة
-     * جاهزة، ولو لسه مش جاهزة (لسه Toolbar بيعمل layout للـ overflow button)
-     * بيعيد المحاولة على الفريم اللي بعده لحد ما تتلوّن. النتيجة: نفس السلوك
-     * المستقر بتاع السهم، من غير أي "فلاش" أو رجوع للون الافتراضي.
-     */
-    private var lastTintedOverflowIcon: Drawable? = null
-    private var lastTintedOverflowColor: Int? = null
-
-    private fun tintOverflowIcon(color: Int) {
-        val toolbar = _binding?.toolbar ?: return
-        val icon = toolbar.overflowIcon
-        if (icon == null) {
-            toolbar.post { tintOverflowIcon(color) }
-            return
-        }
-        // لو الأيقونة الحالية هي نفسها اللي إحنا لوّناها قبل كده بنفس اللون،
-        // مفيش داعي نعيد اللف والتلوين تاني في كل layout pass (أداء أفضل،
-        // ومنع تراكم DrawableWrapper فوق بعضه). لو AppCompat استبدل
-        // الأيقونة بواحدة جديدة (default)، الـ reference هتكون مختلفة
-        // وهنعيد التلوين فورًا.
-        if (icon === lastTintedOverflowIcon && lastTintedOverflowColor == color) return
-        val tinted = tintedDrawable(icon, color)
-        lastTintedOverflowIcon = tinted
-        lastTintedOverflowColor = color
-        toolbar.overflowIcon = tinted
+        // مفيش داعي نلوّن حاجة هنا: TintableToolbar بيحتفظ بآخر تينت
+        // اتحط بـ setOverflowIconTint() ويطبّقه تلقائيًا على أي أيقونة
+        // overflow جديدة (حتى لو النظام هو اللي عمل reset ليها)، بنفس
+        // فلسفة السهم بالظبط.
     }
 
     override fun onDestroyView() {
-        overflowLayoutListener?.let {
-            _binding?.toolbar?.viewTreeObserver?.removeOnGlobalLayoutListener(it)
-        }
-        overflowLayoutListener = null
         super.onDestroyView()
         _binding = null
     }
