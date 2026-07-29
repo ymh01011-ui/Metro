@@ -70,6 +70,7 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
     private var forceDownload: Boolean = false
     private var dominantBackgroundColor: Int = Color.BLACK
     private var currentForegroundColor: Int = Color.WHITE
+    private var overflowLayoutListener: android.view.ViewTreeObserver.OnGlobalLayoutListener? = null
 
     private val savedSongSortOrder: String
         get() = PreferenceUtil.artistDetailSongSortOrder
@@ -92,6 +93,18 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
         mainActivity.addMusicServiceEventListener(detailsViewModel)
         mainActivity.setSupportActionBar(binding.toolbar)
         binding.toolbar.title = null
+
+        // AppCompat's Toolbar بيعيد بناء زرار الـ overflow (التلات نقط) في
+        // تمريرة layout لاحقة (غالبًا بعد ما الـ enter transition يخلص)،
+        // وده بيرجّعه للون الافتراضي بتاع الـ theme (أبيض) حتى لو كنا
+        // لوّناه صح قبل كده. عشان كده بنعمل listener يعيد تطبيق اللون
+        // الصح في كل مرة الـ Toolbar يعمل layout جديد، بنفس فلسفة إن
+        // السهم بيفضل صح لوحده لأن Toolbar نفسه بيعيد تطبيق تينت السهم
+        // تلقائيًا.
+        overflowLayoutListener = android.view.ViewTreeObserver.OnGlobalLayoutListener {
+            tintOverflowIcon(currentForegroundColor)
+        }
+        binding.toolbar.viewTreeObserver.addOnGlobalLayoutListener(overflowLayoutListener)
 
         androidx.core.view.WindowCompat.setDecorFitsSystemWindows(requireActivity().window, false)
 
@@ -148,18 +161,393 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
         setupSongSortButton()
         binding.appBarLayout?.statusBarForeground =
             MaterialShapeDrawable.createWithElevationOverlay(requireContext())
+    }
 
-        // الـ ActionMenuPresenter الداخلي بتاع Toolbar بيعيد بناء زرار الـ
-        // overflow (التلات نقط) في تمريرة layout لاحقة (غالبًا لما الـ enter
-        // transition بتاعة فتح الصفحة تخلص)، وده بيرجّعه للـ drawable
-        // الافتراضي من الـ theme، من غير أي علاقة باللون اللي احنا طبقناه
-        // فعليًا. بعكس السهم اللي عنده navigationIconTintList بيتطبق تلقائيًا
-        // مع كل layout جديد جوه الـ Toolbar نفسه، النقط مفيهاش آلية شبه دي.
-        // عشان كده بنراقب أي layout جديد للـ toolbar ونعيد تطبيق اللون الصح
-        // فورًا كل مرة يحصل فيها.
-        binding.toolbar.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
-            if (::artist.isInitialized) {
-                tintOverflowIcon(currentForegroundColor)
+    private fun setupRecyclerView() {
+        albumAdapter = HorizontalAlbumAdapter(requireActivity(), ArrayList(), this)
+        binding.fragmentArtistContent.albumRecyclerView.apply {
+            itemAnimator = DefaultItemAnimator()
+            layoutManager = GridLayoutManager(this.context, 1, GridLayoutManager.HORIZONTAL, false)
+            adapter = albumAdapter
+        }
+
+        singlesAdapter = HorizontalAlbumAdapter(requireActivity(), ArrayList(), this)
+        binding.fragmentArtistContent.singlesRecyclerView.apply {
+            itemAnimator = DefaultItemAnimator()
+            layoutManager = GridLayoutManager(this.context, 1, GridLayoutManager.HORIZONTAL, false)
+            adapter = singlesAdapter
+        }
+
+        appearsOnAdapter = HorizontalAlbumAdapter(requireActivity(), ArrayList(), this)
+        binding.fragmentArtistContent.appearsOnRecyclerView.apply {
+            itemAnimator = DefaultItemAnimator()
+            layoutManager = GridLayoutManager(this.context, 1, GridLayoutManager.HORIZONTAL, false)
+            adapter = appearsOnAdapter
+        }
+
+        songAdapter = SimpleSongAdapter(requireActivity(), ArrayList(), R.layout.item_song)
+        binding.fragmentArtistContent.recyclerView.apply {
+            itemAnimator = DefaultItemAnimator()
+            layoutManager = LinearLayoutManager(this.context)
+            adapter = songAdapter
+        }
+    }
+
+    private fun categorizeAlbums(artist: Artist): Triple<List<Album>, List<Album>, List<Album>> {
+        val albums = mutableListOf<Album>()
+        val singles = mutableListOf<Album>()
+        val appearsOn = mutableListOf<Album>()
+        for (album in artist.albums) {
+            val albumArtistName = album.albumArtist
+            val albumArtistNames = ArtistTagUtil.splitArtistNames(albumArtistName)
+            val isPrimaryArtist = albumArtistNames.isEmpty() ||
+                    albumArtistNames.any { it.equals(artist.name, ignoreCase = true) }
+            when {
+                !isPrimaryArtist -> appearsOn.add(album)
+                album.songCount <= 1 -> singles.add(album)
+                else -> albums.add(album)
+            }
+        }
+        return Triple(albums, singles, appearsOn)
+    }
+
+    private fun showArtist(artist: Artist) {
+        if (artist.songCount == 0) {
+            findNavController().navigateUp()
+            return
+        }
+        this.artist = artist
+        loadArtistImage(artist)
+
+        binding.artistTitle.text = artist.name
+        binding.text.text = String.format(
+            "%s • %s",
+            MusicUtil.getArtistInfoString(requireContext(), artist),
+            MusicUtil.getReadableDurationString(MusicUtil.getTotalDuration(artist.songs))
+        )
+
+        songAdapter.swapDataSet(artist.sortedSongs)
+
+        val (albums, singles, appearsOn) = categorizeAlbums(artist)
+
+        val albumText = resources.getQuantityString(
+            R.plurals.albums, albums.size, albums.size
+        )
+        binding.fragmentArtistContent.albumTitle.text = albumText
+        albumAdapter.swapDataSet(albums)
+        binding.fragmentArtistContent.albumTitle.isVisible = albums.isNotEmpty()
+        binding.fragmentArtistContent.albumRecyclerView.isVisible = albums.isNotEmpty()
+
+        singlesAdapter.swapDataSet(singles)
+        binding.fragmentArtistContent.singlesTitle.isVisible = singles.isNotEmpty()
+        binding.fragmentArtistContent.singlesRecyclerView.isVisible = singles.isNotEmpty()
+
+        appearsOnAdapter.swapDataSet(appearsOn)
+        binding.fragmentArtistContent.appearsOnTitle.isVisible = appearsOn.isNotEmpty()
+        binding.fragmentArtistContent.appearsOnRecyclerView.isVisible = appearsOn.isNotEmpty()
+    }
+
+    private fun loadArtistImage(artist: Artist) {
+        Glide.with(requireContext())
+            .asBitmap()
+            .artistImageOptions(artist)
+            .load(RetroGlideExtension.getArtistModel(artist))
+            .dontAnimate()
+            .into(object : CustomTarget<Bitmap>() {
+                override fun onResourceReady(
+                    resource: Bitmap,
+                    transition: Transition<in Bitmap>?
+                ) {
+                    extractColorsAndApplyGradient(resource)
+                }
+
+                override fun onLoadCleared(placeholder: Drawable?) {
+                    if (_binding != null) {
+                        binding.image.setImageDrawable(placeholder)
+                    }
+                }
+            })
+    }
+
+    private fun extractColorsAndApplyGradient(bitmap: Bitmap) {
+        lifecycleScope.launch(Dispatchers.Default) {
+            val dominantColor = ArtistPaletteEngine.findDominantColorAtSubtitleRegion(
+                bitmap = bitmap,
+                startRatio = 0.68f,
+                endRatio = 0.78f
+            )
+
+            val gradientStops = ArtistPaletteEngine.buildSeamlessGradient(
+                blendColor = dominantColor,
+                fadeStart = FADE_START_FRACTION
+            )
+
+            withContext(Dispatchers.Main) {
+                if (_binding != null) {
+                    binding.image.setImageBitmap(bitmap)
+                    setColors(dominantColor, gradientStops)
+                }
             }
         }
     }
+
+    private fun setColors(backgroundColor: Int, gradientStops: IntArray) {
+        if (_binding == null) return
+
+        dominantBackgroundColor = backgroundColor
+        binding.rootLayout.setBackgroundColor(backgroundColor)
+        
+        binding.appBarLayout?.setBackgroundColor(ColorUtils.setAlphaComponent(backgroundColor, 0))
+
+        val gradientDrawable = android.graphics.drawable.GradientDrawable(
+            android.graphics.drawable.GradientDrawable.Orientation.TOP_BOTTOM,
+            gradientStops
+        )
+        binding.headerGradient?.let { it.background = gradientDrawable }
+
+        applyContrastingForegroundColor(backgroundColor)
+    }
+
+    private fun applyContrastingForegroundColor(backgroundColor: Int) {
+        val isLightBackground = ColorUtils.calculateLuminance(backgroundColor) > 0.45f
+        val foregroundColor = if (isLightBackground) Color.BLACK else Color.WHITE
+        val secondaryForegroundColor = ColorUtils.setAlphaComponent(foregroundColor, 0xCC) 
+
+        binding.artistTitle.setTextColor(foregroundColor)
+        binding.text.setTextColor(secondaryForegroundColor)
+
+        binding.toolbar.setNavigationIconTint(foregroundColor)
+
+        currentForegroundColor = foregroundColor
+        tintOverflowIcon(foregroundColor)
+
+        binding.fragmentArtistContent.songTitle.setTextColor(foregroundColor)
+        binding.fragmentArtistContent.albumTitle.setTextColor(foregroundColor)
+        binding.fragmentArtistContent.singlesTitle.setTextColor(foregroundColor)
+        binding.fragmentArtistContent.appearsOnTitle.setTextColor(foregroundColor)
+
+        androidx.core.widget.ImageViewCompat.setImageTintList(
+            binding.fragmentArtistContent.songSortOrder,
+            android.content.res.ColorStateList.valueOf(foregroundColor)
+        )
+
+        binding.fragmentArtistContent.playAction.elevation = 0f
+        if (binding.fragmentArtistContent.playAction is com.google.android.material.button.MaterialButton) {
+            (binding.fragmentArtistContent.playAction as com.google.android.material.button.MaterialButton).strokeWidth = 0
+        }
+
+        binding.fragmentArtistContent.infoAction.iconTint =
+            android.content.res.ColorStateList.valueOf(foregroundColor)
+
+        binding.fragmentArtistContent.shuffleAction.iconTint =
+            android.content.res.ColorStateList.valueOf(foregroundColor)
+
+        updateRecyclerViewItemsColor(foregroundColor, secondaryForegroundColor)
+    }
+
+    private fun updateRecyclerViewItemsColor(primaryColor: Int, secondaryColor: Int) {
+        val lists = listOf(
+            binding.fragmentArtistContent.recyclerView,
+            binding.fragmentArtistContent.albumRecyclerView,
+            binding.fragmentArtistContent.singlesRecyclerView,
+            binding.fragmentArtistContent.appearsOnRecyclerView
+        )
+
+        lists.forEach { recyclerView ->
+            for (i in 0 until recyclerView.childCount) {
+                val holder = recyclerView.findViewHolderForAdapterPosition(i) ?: continue
+                val itemView = holder.itemView
+
+                itemView.findViewById<android.widget.TextView>(R.id.title)?.setTextColor(primaryColor)
+                itemView.findViewById<android.widget.TextView>(R.id.text)?.setTextColor(secondaryColor)
+                itemView.findViewById<android.widget.TextView>(R.id.text2)?.setTextColor(secondaryColor)
+
+                itemView.findViewById<android.widget.ImageView>(R.id.menu)?.let { menuIcon ->
+                    androidx.core.widget.ImageViewCompat.setImageTintList(
+                        menuIcon,
+                        android.content.res.ColorStateList.valueOf(secondaryColor)
+                    )
+                }
+            }
+        }
+    }
+
+    private fun tintedDrawable(drawable: Drawable?, color: Int): Drawable? {
+        val source = drawable ?: return null
+        val wrapped = androidx.core.graphics.drawable.DrawableCompat.wrap(source.mutate())
+        androidx.core.graphics.drawable.DrawableCompat.setTint(wrapped, color)
+        return wrapped
+    }
+
+    override fun onAlbumClick(albumId: Long, view: View) {
+        findNavController().navigate(
+            R.id.albumDetailsFragment,
+            bundleOf(EXTRA_ALBUM_ID to albumId),
+            null,
+            FragmentNavigatorExtras(
+                view to albumId.toString()
+            )
+        )
+    }
+
+    override fun onMenuItemSelected(item: MenuItem): Boolean {
+        return handleSortOrderMenuItem(item)
+    }
+
+    private fun handleSortOrderMenuItem(item: MenuItem): Boolean {
+        val songs = artist.songs
+        when (item.itemId) {
+            android.R.id.home -> findNavController().navigateUp()
+            R.id.action_play_next -> {
+                MusicPlayerRemote.playNext(songs)
+                return true
+            }
+
+            R.id.action_add_to_current_playing -> {
+                MusicPlayerRemote.enqueue(songs)
+                return true
+            }
+
+            R.id.action_add_to_playlist -> {
+                lifecycleScope.launch(Dispatchers.IO) {
+                    val playlists = get<RealRepository>().fetchPlaylists()
+                    withContext(Dispatchers.Main) {
+                        AddToPlaylistDialog.create(playlists, songs)
+                            .show(childFragmentManager, "ADD_PLAYLIST")
+                    }
+                }
+                return true
+            }
+
+            R.id.action_set_artist_image -> {
+                selectImageLauncher.launch(
+                    PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                )
+                return true
+            }
+
+            R.id.action_reset_artist_image -> {
+                showToast(resources.getString(R.string.updating))
+                lifecycleScope.launch {
+                    CustomArtistImageUtil.getInstance(requireContext())
+                        .resetCustomArtistImage(artist)
+                }
+                forceDownload = true
+                return true
+            }
+        }
+        return true
+    }
+
+    private fun setupSongSortButton() {
+        binding.fragmentArtistContent.songSortOrder.setOnClickListener {
+            PopupMenu(requireContext(), binding.fragmentArtistContent.songSortOrder).apply {
+                inflate(R.menu.menu_artist_song_sort_order)
+                setUpSortOrderMenu(menu)
+                setOnMenuItemClickListener { item ->
+                    val sortOrder = when (item.itemId) {
+                        R.id.action_sort_order_title -> SortOrder.ArtistSongSortOrder.SONG_A_Z
+                        R.id.action_sort_order_title_desc -> SortOrder.ArtistSongSortOrder.SONG_Z_A
+                        R.id.action_sort_order_album -> SortOrder.ArtistSongSortOrder.SONG_ALBUM
+                        R.id.action_sort_order_year -> SortOrder.ArtistSongSortOrder.SONG_YEAR
+                        R.id.action_sort_order_song_duration -> SortOrder.ArtistSongSortOrder.SONG_DURATION
+                        else -> {
+                            throw IllegalArgumentException("invalid ${item.title}")
+                        }
+                    }
+                    item.isChecked = true
+                    setSaveSortOrder(sortOrder)
+                    return@setOnMenuItemClickListener true
+                }
+                show()
+            }
+        }
+    }
+
+    private fun setSaveSortOrder(sortOrder: String) {
+        PreferenceUtil.artistDetailSongSortOrder = sortOrder
+        songAdapter.swapDataSet(artist.sortedSongs)
+    }
+
+    private fun setUpSortOrderMenu(sortOrder: Menu) {
+        when (savedSongSortOrder) {
+            SortOrder.ArtistSongSortOrder.SONG_A_Z -> sortOrder.findItem(R.id.action_sort_order_title).isChecked =
+                true
+
+            SortOrder.ArtistSongSortOrder.SONG_Z_A -> sortOrder.findItem(R.id.action_sort_order_title_desc).isChecked =
+                true
+
+            SortOrder.ArtistSongSortOrder.SONG_ALBUM -> sortOrder.findItem(R.id.action_sort_order_album).isChecked =
+                true
+
+            SortOrder.ArtistSongSortOrder.SONG_YEAR -> sortOrder.findItem(R.id.action_sort_order_year).isChecked =
+                true
+
+            SortOrder.ArtistSongSortOrder.SONG_DURATION -> sortOrder.findItem(R.id.action_sort_order_song_duration).isChecked =
+                true
+
+            else -> {
+                throw IllegalArgumentException("invalid $savedSongSortOrder")
+            }
+        }
+    }
+
+    private val selectImageLauncher =
+        registerForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
+            lifecycleScope.launch {
+                if (uri != null) {
+                    CustomArtistImageUtil.getInstance(requireContext())
+                        .setCustomArtistImage(artist, uri)
+                }
+            }
+        }
+
+    override fun onCreateMenu(menu: Menu, inflater: MenuInflater) {
+        inflater.inflate(R.menu.menu_artist_detail, menu)
+        if (::artist.isInitialized) {
+            // inflate() يرجّع overflowIcon لشكله الافتراضي (بدون تلوين) في كل مرة
+            // بيتم فيها عمل menu invalidation، فبنعيد تطبيق نفس اللون المحفوظ
+            // فورًا (بدل ما نحسبه من تاني ونعمل post منفصل بيتزاحم مع اللي في
+            // applyContrastingForegroundColor).
+            tintOverflowIcon(currentForegroundColor)
+        }
+    }
+
+    /**
+     * يلوّن أيقونة الـ overflow (التلات نقط) بنفس منطق setNavigationIconTint
+     * الخاص بسهم الرجوع: مصدر واحد بس للتلوين، بيتطبق فورًا لو الأيقونة
+     * جاهزة، ولو لسه مش جاهزة (لسه Toolbar بيعمل layout للـ overflow button)
+     * بيعيد المحاولة على الفريم اللي بعده لحد ما تتلوّن. النتيجة: نفس السلوك
+     * المستقر بتاع السهم، من غير أي "فلاش" أو رجوع للون الافتراضي.
+     */
+    private var lastTintedOverflowIcon: Drawable? = null
+    private var lastTintedOverflowColor: Int? = null
+
+    private fun tintOverflowIcon(color: Int) {
+        val toolbar = _binding?.toolbar ?: return
+        val icon = toolbar.overflowIcon
+        if (icon == null) {
+            toolbar.post { tintOverflowIcon(color) }
+            return
+        }
+        // لو الأيقونة الحالية هي نفسها اللي إحنا لوّناها قبل كده بنفس اللون،
+        // مفيش داعي نعيد اللف والتلوين تاني في كل layout pass (أداء أفضل،
+        // ومنع تراكم DrawableWrapper فوق بعضه). لو AppCompat استبدل
+        // الأيقونة بواحدة جديدة (default)، الـ reference هتكون مختلفة
+        // وهنعيد التلوين فورًا.
+        if (icon === lastTintedOverflowIcon && lastTintedOverflowColor == color) return
+        val tinted = tintedDrawable(icon, color)
+        lastTintedOverflowIcon = tinted
+        lastTintedOverflowColor = color
+        toolbar.overflowIcon = tinted
+    }
+
+    override fun onDestroyView() {
+        overflowLayoutListener?.let {
+            _binding?.toolbar?.viewTreeObserver?.removeOnGlobalLayoutListener(it)
+        }
+        overflowLayoutListener = null
+        super.onDestroyView()
+        _binding = null
+    }
+}
