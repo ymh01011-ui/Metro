@@ -11,6 +11,7 @@ import android.view.View
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.widget.PopupMenu
+import androidx.appcompat.widget.Toolbar
 import androidx.core.graphics.ColorUtils
 import androidx.core.os.bundleOf
 import androidx.core.view.ViewCompat
@@ -70,6 +71,9 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
     private var forceDownload: Boolean = false
     private var dominantBackgroundColor: Int = Color.BLACK
 
+    // Add a typed toolbar reference to avoid View -> Toolbar mismatches
+    private lateinit var toolbar: Toolbar
+
     private val savedSongSortOrder: String
         get() = PreferenceUtil.artistDetailSongSortOrder
 
@@ -89,8 +93,10 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
         _binding = FragmentArtistDetailsBinding.bind(view)
 
         mainActivity.addMusicServiceEventListener(detailsViewModel)
-        mainActivity.setSupportActionBar(binding.toolbar)
-        binding.toolbar.title = null
+        // Cast the binding.toolbar to a proper Toolbar and use it
+        toolbar = binding.toolbar as Toolbar
+        mainActivity.setSupportActionBar(toolbar)
+        toolbar.title = null
 
         androidx.core.view.WindowCompat.setDecorFitsSystemWindows(requireActivity().window, false)
 
@@ -302,8 +308,9 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
         binding.artistTitle.setTextColor(foregroundColor)
         binding.text.setTextColor(secondaryForegroundColor)
 
-        binding.toolbar.setNavigationIconTint(foregroundColor)
-        binding.toolbar.setOverflowIconTint(foregroundColor)
+        // Use toolbar instance and platform-safe tinting for icons
+        toolbar.navigationIcon?.setTint(foregroundColor)
+        toolbar.overflowIcon?.setTint(foregroundColor)
 
         binding.fragmentArtistContent.songTitle.setTextColor(foregroundColor)
         binding.fragmentArtistContent.albumTitle.setTextColor(foregroundColor)
