@@ -11,6 +11,7 @@ import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.widget.PopupMenu
 import androidx.core.graphics.ColorUtils
+import androidx.core.graphics.drawable.DrawableCompat
 import androidx.core.os.bundleOf
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
@@ -40,6 +41,7 @@ import code.name.monkey.retromusic.model.Album
 import code.name.monkey.retromusic.model.Artist
 import code.name.monkey.retromusic.repository.RealRepository
 import code.name.monkey.retromusic.util.*
+import code.name.monkey.retromusic.views.TintableToolbar
 import com.bumptech.glide.Glide
 import com.bumptech.glide.request.target.CustomTarget
 import com.bumptech.glide.request.transition.Transition
@@ -89,12 +91,13 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
         mainActivity.addMusicServiceEventListener(detailsViewModel)
         
         // ربط الـ Toolbar وجعله مستقل تماماً
-        binding.toolbar.title = null
-        binding.toolbar.inflateMenu(R.menu.menu_artist_detail)
-        binding.toolbar.setNavigationOnClickListener {
+        val toolbar = binding.toolbar as TintableToolbar
+        toolbar.title = null
+        toolbar.inflateMenu(R.menu.menu_artist_detail)
+        toolbar.setNavigationOnClickListener {
             findNavController().navigateUp()
         }
-        binding.toolbar.setOnMenuItemClickListener { item ->
+        toolbar.setOnMenuItemClickListener { item ->
             handleSortOrderMenuItem(item)
         }
 
@@ -308,8 +311,15 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
         binding.artistTitle.setTextColor(foregroundColor)
         binding.text.setTextColor(secondaryForegroundColor)
 
-        binding.toolbar.setNavigationIconTint(foregroundColor)
-        binding.toolbar.setOverflowIconTint(foregroundColor)
+        // tint toolbar icons: navigation and overflow
+        val toolbar = binding.toolbar
+        if (toolbar is TintableToolbar) {
+            toolbar.navigationIcon?.let { DrawableCompat.setTint(it, foregroundColor) }
+            toolbar.setOverflowIconTint(foregroundColor)
+        } else if (toolbar is androidx.appcompat.widget.Toolbar) {
+            toolbar.navigationIcon?.let { DrawableCompat.setTint(it, foregroundColor) }
+            toolbar.overflowIcon?.let { DrawableCompat.setTint(it, foregroundColor) }
+        }
 
         binding.fragmentArtistContent.songTitle.setTextColor(foregroundColor)
         binding.fragmentArtistContent.albumTitle.setTextColor(foregroundColor)
