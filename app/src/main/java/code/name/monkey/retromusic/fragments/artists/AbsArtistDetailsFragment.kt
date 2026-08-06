@@ -5,13 +5,11 @@ import android.graphics.Color
 import android.graphics.drawable.Drawable
 import android.os.Bundle
 import android.view.Menu
-import android.view.MenuInflater
 import android.view.MenuItem
 import android.view.View
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.widget.PopupMenu
-import androidx.appcompat.widget.Toolbar
 import androidx.core.graphics.ColorUtils
 import androidx.core.os.bundleOf
 import androidx.core.view.ViewCompat
@@ -71,9 +69,6 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
     private var forceDownload: Boolean = false
     private var dominantBackgroundColor: Int = Color.BLACK
 
-    // Add a typed toolbar reference to avoid View -> Toolbar mismatches
-    private lateinit var toolbar: Toolbar
-
     private val savedSongSortOrder: String
         get() = PreferenceUtil.artistDetailSongSortOrder
 
@@ -83,7 +78,6 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
             drawingViewId = R.id.fragment_container
             scrimColor = Color.TRANSPARENT
             setAllContainerColors(Color.TRANSPARENT)
-            // استخدام الدالة المباشرة لضمان عدم حدوث خطأ أثناء الكومبايل
             setElevationShadowEnabled(false) 
         }
     }
@@ -93,10 +87,16 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
         _binding = FragmentArtistDetailsBinding.bind(view)
 
         mainActivity.addMusicServiceEventListener(detailsViewModel)
-        // Cast the binding.toolbar to a proper Toolbar and use it
-        toolbar = binding.toolbar as Toolbar
-        mainActivity.setSupportActionBar(toolbar)
-        toolbar.title = null
+        
+        // ربط الـ Toolbar وجعله مستقل تماماً
+        binding.toolbar.title = null
+        binding.toolbar.inflateMenu(R.menu.menu_artist_detail)
+        binding.toolbar.setNavigationOnClickListener {
+            findNavController().navigateUp()
+        }
+        binding.toolbar.setOnMenuItemClickListener { item ->
+            handleSortOrderMenuItem(item)
+        }
 
         androidx.core.view.WindowCompat.setDecorFitsSystemWindows(requireActivity().window, false)
 
@@ -308,9 +308,8 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
         binding.artistTitle.setTextColor(foregroundColor)
         binding.text.setTextColor(secondaryForegroundColor)
 
-        // Use toolbar instance and platform-safe tinting for icons
-        toolbar.navigationIcon?.setTint(foregroundColor)
-        toolbar.overflowIcon?.setTint(foregroundColor)
+        binding.toolbar.setNavigationIconTint(foregroundColor)
+        binding.toolbar.setOverflowIconTint(foregroundColor)
 
         binding.fragmentArtistContent.songTitle.setTextColor(foregroundColor)
         binding.fragmentArtistContent.albumTitle.setTextColor(foregroundColor)
@@ -374,14 +373,9 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
         )
     }
 
-    override fun onMenuItemSelected(item: MenuItem): Boolean {
-        return handleSortOrderMenuItem(item)
-    }
-
     private fun handleSortOrderMenuItem(item: MenuItem): Boolean {
         val songs = artist.songs
         when (item.itemId) {
-            android.R.id.home -> findNavController().navigateUp()
             R.id.action_play_next -> {
                 MusicPlayerRemote.playNext(songs)
                 return true
@@ -485,14 +479,6 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
                 }
             }
         }
-
-    override fun onCreateMenu(menu: Menu, inflater: MenuInflater) {
-        inflater.inflate(R.menu.menu_artist_detail, menu)
-        // مفيش داعي نلوّن حاجة هنا: TintableToolbar بيحتفظ بآخر تينت
-        // اتحط بـ setOverflowIconTint() ويطبّقه تلقائيًا على أي أيقونة
-        // overflow جديدة (حتى لو النظام هو اللي عمل reset ليها)، بنفس
-        // فلسفة السهم بالظبط.
-    }
 
     override fun onDestroyView() {
         super.onDestroyView()
