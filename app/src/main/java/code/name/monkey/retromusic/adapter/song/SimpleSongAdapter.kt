@@ -37,20 +37,6 @@ class SimpleSongAdapter(
     }
 
     /**
-     * Appends [songs] to the end of the current dataset with an insert animation
-     * (via the RecyclerView's item animator), instead of a full notifyDataSetChanged.
-     * Used by the artist page's "See all" expansion.
-     */
-    fun appendSongs(songs: List<Song>) {
-        if (songs.isEmpty()) return
-        val startPosition = dataSet.size
-        val updated = dataSet.toMutableList()
-        updated.addAll(songs)
-        this.dataSet = updated
-        notifyItemRangeInserted(startPosition, songs.size)
-    }
-
-    /**
      * Stores the page's current foreground/secondary colors and re-applies them on
      * every bind in onBindViewHolder below — including rows bound later (recycled
      * views, or rows added afterwards via appendSongs) — instead of a one-off pass
