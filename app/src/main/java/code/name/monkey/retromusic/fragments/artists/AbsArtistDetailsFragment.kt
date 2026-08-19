@@ -88,6 +88,13 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
             setAllContainerColors(Color.TRANSPARENT)
             setElevationShadowEnabled(false) 
         }
+        // بيتماشى مع نفس الأنيميشن اللي بتستخدمه ArtistAllSongsFragment وقت الدخول
+        exitTransition = com.google.android.material.transition.MaterialSharedAxis(
+            com.google.android.material.transition.MaterialSharedAxis.X, true
+        )
+        reenterTransition = com.google.android.material.transition.MaterialSharedAxis(
+            com.google.android.material.transition.MaterialSharedAxis.X, false
+        )
     }
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
@@ -168,12 +175,13 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
             }
         }
 
-        // See all: بيضيف باقي أغاني الفنان (بعد أول 6) بأنيميشن، وبيخفي نفسه بعدها
-        binding.fragmentArtistContent.seeAllSongs.setOnClickListener { seeAllView ->
+        // See all: بيفتح صفحة كاملة فيها كل أغاني الفنان بأنيميشن Shared Axis
+        binding.fragmentArtistContent.seeAllSongs.setOnClickListener {
             if (::artist.isInitialized) {
-                val remainingSongs = artist.sortedSongs.drop(SONGS_PREVIEW_COUNT)
-                songAdapter.appendSongs(remainingSongs)
-                seeAllView.isVisible = false
+                findNavController().navigate(
+                    R.id.artistAllSongsFragment,
+                    ArtistAllSongsFragment.createBundle(artist.name, artist.sortedSongs)
+                )
             }
         }
 
@@ -369,7 +377,7 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
         }
 
         binding.fragmentArtistContent.songTitle.setTextColor(foregroundColor)
-        binding.fragmentArtistContent.seeAllSongs.setTextColor(foregroundColor)
+        binding.fragmentArtistContent.seeAllSongs.setTextColor(secondaryForegroundColor)
         binding.fragmentArtistContent.albumTitle.setTextColor(foregroundColor)
         binding.fragmentArtistContent.singlesTitle.setTextColor(foregroundColor)
         binding.fragmentArtistContent.appearsOnTitle.setTextColor(foregroundColor)
