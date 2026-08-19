@@ -55,6 +55,9 @@ import java.util.*
 
 private const val FADE_START_FRACTION = 0.42f
 
+// شفافية دوائر infoAction/shuffleAction لما تاخد لون الخلفية الديناميكي (تأثير زجاجي)
+private const val GLASS_CIRCLE_ALPHA = 0x4D // ~30%
+
 abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragment_artist_details),
     IAlbumClickListener {
     private var _binding: FragmentArtistDetailsBinding? = null
@@ -153,9 +156,27 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
             }
         }
 
+        // infoAction بقى زرار "إضافة كل أغاني الفنان للـ playlist" (علامة +)
+        binding.fragmentArtistContent.infoAction.setOnClickListener {
+            if (::artist.isInitialized) {
+                addArtistSongsToPlaylist()
+            }
+        }
+
         setupSongSortButton()
         binding.appBarLayout?.statusBarForeground =
             MaterialShapeDrawable.createWithElevationOverlay(requireContext())
+    }
+
+    private fun addArtistSongsToPlaylist() {
+        lifecycleScope.launch(Dispatchers.IO) {
+            val playlists = get<RealRepository>().fetchPlaylists()
+            withContext(Dispatchers.Main) {
+                if (_binding == null) return@withContext
+                AddToPlaylistDialog.create(playlists, artist.songs)
+                    .show(childFragmentManager, "ADD_PLAYLIST")
+            }
+        }
     }
 
     private fun setupRecyclerView() {
@@ -336,6 +357,15 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
             (binding.fragmentArtistContent.playAction as com.google.android.material.button.MaterialButton).strokeWidth = 0
         }
 
+        // infoAction (+) و shuffleAction: بدل الدايرة البيضاء الشفافة الثابتة،
+        // خدي نفس لون خلفية الصفحة (backgroundColor) بشفافية، مع الحفاظ على
+        // إطار الدايرة الأبيض (strokeColor) زي ما هو عشان يفضل الإحساس الزجاجي
+        val glassCircleTint = ColorUtils.setAlphaComponent(backgroundColor, GLASS_CIRCLE_ALPHA)
+        binding.fragmentArtistContent.infoAction.backgroundTintList =
+            android.content.res.ColorStateList.valueOf(glassCircleTint)
+        binding.fragmentArtistContent.shuffleAction.backgroundTintList =
+            android.content.res.ColorStateList.valueOf(glassCircleTint)
+
         binding.fragmentArtistContent.infoAction.iconTint =
             android.content.res.ColorStateList.valueOf(foregroundColor)
 
@@ -361,6 +391,9 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
                 itemView.findViewById<android.widget.TextView>(R.id.title)?.setTextColor(primaryColor)
                 itemView.findViewById<android.widget.TextView>(R.id.text)?.setTextColor(secondaryColor)
                 itemView.findViewById<android.widget.TextView>(R.id.text2)?.setTextColor(secondaryColor)
+                // كان ناقص: توقيت الأغنية (R.id.time) مكنش بياخد لون متباين مع الخلفية
+                // فكان بيختفي في الشاشات الفاتحة. دلوقتي بياخد نفس secondaryColor.
+                itemView.findViewById<android.widget.TextView>(R.id.time)?.setTextColor(secondaryColor)
 
                 itemView.findViewById<android.widget.ImageView>(R.id.menu)?.let { menuIcon ->
                     androidx.core.widget.ImageViewCompat.setImageTintList(
