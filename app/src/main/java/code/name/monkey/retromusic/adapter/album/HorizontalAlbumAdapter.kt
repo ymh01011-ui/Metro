@@ -36,15 +36,47 @@ class HorizontalAlbumAdapter(
     activity, dataSet, HorizontalAdapterHelper.LAYOUT_RES, albumClickListener
 ) {
 
+    private var dynamicPrimaryTextColor: Int? = null
+    private var dynamicSecondaryTextColor: Int? = null
+
+    /**
+     * Called by the artist page whenever its dynamic background color changes.
+     * Unlike before, this color is now stored on the adapter itself and reapplied
+     * on every bind (see onBindViewHolder/setColors below) — so items scrolled
+     * into view later, which go through Android's normal ViewHolder recycling,
+     * no longer fall back to the item layout's static default text color.
+     */
+    fun setDynamicTextColors(primaryColor: Int, secondaryColor: Int) {
+        dynamicPrimaryTextColor = primaryColor
+        dynamicSecondaryTextColor = secondaryColor
+        notifyDataSetChanged()
+    }
+
     override fun createViewHolder(view: View, viewType: Int): ViewHolder {
         val params = view.layoutParams as ViewGroup.MarginLayoutParams
         HorizontalAdapterHelper.applyMarginToLayoutParams(activity, params, viewType)
         return ViewHolder(view)
     }
 
+    override fun onBindViewHolder(holder: ViewHolder, position: Int) {
+        super.onBindViewHolder(holder, position)
+        // Apply immediately on bind so the color is correct even before the
+        // album cover's async palette callback (setColors below) has fired.
+        applyDynamicTextColors(holder)
+    }
+
     override fun setColors(color: MediaNotificationProcessor, holder: ViewHolder) {
-        // holder.title?.setTextColor(ATHUtil.resolveColor(activity, android.R.attr.textColorPrimary))
-        // holder.text?.setTextColor(ATHUtil.resolveColor(activity, android.R.attr.textColorSecondary))
+        // The artist page's dynamic background color always wins over the
+        // album's own per-cover palette color, so every row stays consistent
+        // with the page regardless of when this async callback lands.
+        applyDynamicTextColors(holder)
+    }
+
+    private fun applyDynamicTextColors(holder: ViewHolder) {
+        val primary = dynamicPrimaryTextColor ?: return
+        val secondary = dynamicSecondaryTextColor ?: return
+        holder.title?.setTextColor(primary)
+        holder.text?.setTextColor(secondary)
     }
 
     override fun loadAlbumCover(album: Album, holder: ViewHolder) {
