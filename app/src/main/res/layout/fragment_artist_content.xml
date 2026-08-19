@@ -86,16 +86,25 @@
             android:textSize="20sp"
             android:textStyle="bold" />
 
-        <ImageView
-            android:id="@+id/songSortOrder"
-            android:layout_width="32dp"
-            android:layout_height="32dp"
+        <!--
+            محل أيقونة الترتيب (اتنقلت لقايمة الثلاث نقاط باسم "Sort by").
+            نص "See all" ثابت (hardcoded) هنا برضه — يفضل ينتقل لـ strings.xml.
+            visibility=gone افتراضيًا، وبتتحكم فيه AbsArtistDetailsFragment.kt
+            حسب عدد أغاني الفنان (بتظهر لو أكتر من 6).
+        -->
+        <com.google.android.material.textview.MaterialTextView
+            android:id="@+id/seeAllSongs"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
             android:layout_alignParentEnd="true"
             android:layout_centerVertical="true"
             android:background="?attr/selectableItemBackgroundBorderless"
             android:padding="4dp"
-            android:src="@drawable/ic_sort"
-            app:tint="@android:color/white" />
+            android:text="See all"
+            android:textColor="@android:color/white"
+            android:textStyle="bold"
+            android:visibility="gone"
+            tools:visibility="visible" />
     </RelativeLayout>
 
     <androidx.recyclerview.widget.RecyclerView
