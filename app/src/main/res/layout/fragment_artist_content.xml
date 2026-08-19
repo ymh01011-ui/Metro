@@ -19,6 +19,12 @@
         android:paddingStart="16dp"
         android:paddingEnd="16dp">
 
+        <!--
+            backgroundTint هنا قيمة افتراضية بس (fallback) قبل ما الصورة تتحمل.
+            بعد استخراج اللون، الكود في AbsArtistDetailsFragment.kt بيغيّرها
+            لنفس لون خلفية الصفحة بشفافية، مع الحفاظ على strokeColor الأبيض
+            زي ما هو عشان يدي تأثير زجاجي (glass).
+        -->
         <com.google.android.material.button.MaterialButton
             android:id="@+id/infoAction"
             style="@style/Widget.Material3.Button.IconButton"
@@ -27,7 +33,7 @@
             android:layout_marginEnd="24dp"
             android:backgroundTint="#33FFFFFF"
             app:cornerRadius="26dp"
-            app:icon="@drawable/ic_info"
+            app:icon="@drawable/ic_add"
             app:iconGravity="textStart"
             app:iconPadding="0dp"
             app:iconTint="@android:color/white"
