@@ -14,8 +14,10 @@
  */
 package code.name.monkey.retromusic.adapter.song
 
+import android.content.res.ColorStateList
 import android.view.LayoutInflater
 import android.view.ViewGroup
+import androidx.core.widget.ImageViewCompat
 import androidx.fragment.app.FragmentActivity
 import code.name.monkey.retromusic.model.Song
 import code.name.monkey.retromusic.util.MusicUtil
@@ -26,8 +28,37 @@ class SimpleSongAdapter(
     layoutRes: Int
 ) : SongAdapter(context, songs, layoutRes) {
 
+    private var dynamicPrimaryTextColor: Int? = null
+    private var dynamicSecondaryTextColor: Int? = null
+
     override fun swapDataSet(dataSet: List<Song>) {
         this.dataSet = dataSet.toMutableList()
+        notifyDataSetChanged()
+    }
+
+    /**
+     * Appends [songs] to the end of the current dataset with an insert animation
+     * (via the RecyclerView's item animator), instead of a full notifyDataSetChanged.
+     * Used by the artist page's "See all" expansion.
+     */
+    fun appendSongs(songs: List<Song>) {
+        if (songs.isEmpty()) return
+        val startPosition = dataSet.size
+        val updated = dataSet.toMutableList()
+        updated.addAll(songs)
+        this.dataSet = updated
+        notifyItemRangeInserted(startPosition, songs.size)
+    }
+
+    /**
+     * Stores the page's current foreground/secondary colors and re-applies them on
+     * every bind in onBindViewHolder below — including rows bound later (recycled
+     * views, or rows added afterwards via appendSongs) — instead of a one-off pass
+     * over whatever happens to be visible at the moment the color is extracted.
+     */
+    fun setDynamicTextColors(primaryColor: Int, secondaryColor: Int) {
+        dynamicPrimaryTextColor = primaryColor
+        dynamicSecondaryTextColor = secondaryColor
         notifyDataSetChanged()
     }
 
@@ -37,12 +68,20 @@ class SimpleSongAdapter(
 
     override fun onBindViewHolder(holder: ViewHolder, position: Int) {
         super.onBindViewHolder(holder, position)
-        val fixedTrackNumber = MusicUtil.getFixedTrackNumber(dataSet[position].trackNumber)
-        val trackAndTime = (if (fixedTrackNumber > 0) "$fixedTrackNumber | " else "") +
-                MusicUtil.getReadableDurationString(dataSet[position].duration)
 
-        holder.time?.text = trackAndTime
+        // Track number removed — only the duration is shown now.
+        holder.time?.text = MusicUtil.getReadableDurationString(dataSet[position].duration)
         holder.text2?.text = dataSet[position].artistName
+
+        dynamicPrimaryTextColor?.let { holder.title?.setTextColor(it) }
+        dynamicSecondaryTextColor?.let { color ->
+            holder.text?.setTextColor(color)
+            holder.text2?.setTextColor(color)
+            holder.time?.setTextColor(color)
+            holder.menu?.let { menuView ->
+                ImageViewCompat.setImageTintList(menuView, ColorStateList.valueOf(color))
+            }
+        }
     }
 
     override fun getItemCount(): Int {
