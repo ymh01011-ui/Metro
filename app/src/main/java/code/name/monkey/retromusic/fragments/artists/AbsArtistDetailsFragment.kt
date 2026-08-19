@@ -58,6 +58,9 @@ private const val FADE_START_FRACTION = 0.42f
 // شفافية دوائر infoAction/shuffleAction لما تاخد لون الخلفية الديناميكي (تأثير زجاجي)
 private const val GLASS_CIRCLE_ALPHA = 0x4D // ~30%
 
+// شفافية نص "See all" — أعلى من شفافية النصوص التانية عمدًا
+private const val SEE_ALL_ALPHA = 0x99 // ~60%
+
 // عدد الأغاني اللي بتتعرض قبل ما يظهر زرار "See all"
 private const val SONGS_PREVIEW_COUNT = 6
 
@@ -377,7 +380,9 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
         }
 
         binding.fragmentArtistContent.songTitle.setTextColor(foregroundColor)
-        binding.fragmentArtistContent.seeAllSongs.setTextColor(secondaryForegroundColor)
+        binding.fragmentArtistContent.seeAllSongs.setTextColor(
+            ColorUtils.setAlphaComponent(foregroundColor, SEE_ALL_ALPHA)
+        )
         binding.fragmentArtistContent.albumTitle.setTextColor(foregroundColor)
         binding.fragmentArtistContent.singlesTitle.setTextColor(foregroundColor)
         binding.fragmentArtistContent.appearsOnTitle.setTextColor(foregroundColor)
