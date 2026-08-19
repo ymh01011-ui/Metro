@@ -24,7 +24,6 @@ import code.name.monkey.retromusic.glide.RetroMusicColoredTarget
 import code.name.monkey.retromusic.helper.HorizontalAdapterHelper
 import code.name.monkey.retromusic.interfaces.IAlbumClickListener
 import code.name.monkey.retromusic.model.Album
-import code.name.monkey.retromusic.util.MusicUtil
 import code.name.monkey.retromusic.util.color.MediaNotificationProcessor
 import com.bumptech.glide.Glide
 
@@ -90,10 +89,6 @@ class HorizontalAlbumAdapter(
                     setColors(colors, holder)
                 }
             })
-    }
-
-    override fun getAlbumText(album: Album): String {
-        return MusicUtil.getYearString(album.year)
     }
 
     override fun getItemViewType(position: Int): Int {
