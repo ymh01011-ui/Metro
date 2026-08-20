@@ -172,21 +172,13 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
         }
 
         // See all: بيفتح صفحة كاملة فيها كل أغاني الفنان
-        // استخدام NavOptions مع الأنيميشنات الصحيحة من Material Design
+        // استخدام NavOptions مع أنيميشن Slide Up الجديد
         binding.fragmentArtistContent.seeAllSongs.setOnClickListener {
             if (::artist.isInitialized) {
-                val navOptions = androidx.navigation.navOptions {
-                    anim {
-                        enter = android.R.anim.fade_in
-                        exit = android.R.anim.fade_out
-                        popEnter = android.R.anim.fade_in
-                        popExit = android.R.anim.fade_out
-                    }
-                }
                 findNavController().navigate(
                     R.id.artistAllSongsFragment,
                     ArtistAllSongsFragment.createBundle(artist.name, artist.sortedSongs),
-                    navOptions
+                    slideUpNavOptions
                 )
             }
         }
