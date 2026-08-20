@@ -38,7 +38,10 @@ import code.name.monkey.retromusic.model.Song
  *
  * The toolbar draws edge-to-edge (extends behind the status bar) to match the
  * artist details screen above it, instead of leaving a separate dark status-bar
- * strip above a lighter toolbar.
+ * strip above a lighter toolbar. The window-inset padding is applied to
+ * appBarLayout (not the toolbar directly) because Toolbar has a fixed
+ * actionBarSize height and would get visually compressed by extra top padding;
+ * AppBarLayout is wrap_content, so it grows to absorb the inset instead.
  */
 class ArtistAllSongsFragment : AbsMainActivityFragment(R.layout.fragment_artist_all_songs) {
 
@@ -51,10 +54,12 @@ class ArtistAllSongsFragment : AbsMainActivityFragment(R.layout.fragment_artist_
         super.onViewCreated(view, savedInstanceState)
         _binding = FragmentArtistAllSongsBinding.bind(view)
 
-        // اجعل الشاشة تمتد خلف الـ status bar، والـ toolbar نفسه ياخد
-        // padding يساوي ارتفاع الـ status bar بدل ما يفضل شريط منفصل فوقه
+        // اجعل الشاشة تمتد خلف الـ status bar. الـ padding بيتحط على
+        // appBarLayout (مش على toolbar) لأن الـ AppBarLayout ارتفاعه
+        // wrap_content فبيكبر براحته ليستوعب البادينج، بعكس الـ Toolbar
+        // اللي ارتفاعه ثابت (actionBarSize) وكان بيتقلّص بدل ما يكبر.
         WindowCompat.setDecorFitsSystemWindows(requireActivity().window, false)
-        ViewCompat.setOnApplyWindowInsetsListener(binding.toolbar) { v, insets ->
+        ViewCompat.setOnApplyWindowInsetsListener(binding.appBarLayout) { v, insets ->
             val statusBarInsets = insets.getInsets(WindowInsetsCompat.Type.statusBars())
             v.updatePadding(top = statusBarInsets.top)
             insets
