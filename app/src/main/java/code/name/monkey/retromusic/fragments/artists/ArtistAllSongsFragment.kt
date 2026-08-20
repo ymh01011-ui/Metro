@@ -3,6 +3,10 @@ package code.name.monkey.retromusic.fragments.artists
 import android.os.Bundle
 import android.view.View
 import androidx.core.os.bundleOf
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.updatePadding
 import androidx.navigation.fragment.findNavController
 import androidx.recyclerview.widget.DefaultItemAnimator
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -31,6 +35,10 @@ import code.name.monkey.retromusic.model.Song
  * pop anim resources instead (see AbsArtistDetailsFragment's navigate() call),
  * the same simple animation family used for ordinary destination navigation
  * elsewhere in the app (e.g. Home ↔ Songs).
+ *
+ * The toolbar draws edge-to-edge (extends behind the status bar) to match the
+ * artist details screen above it, instead of leaving a separate dark status-bar
+ * strip above a lighter toolbar.
  */
 class ArtistAllSongsFragment : AbsMainActivityFragment(R.layout.fragment_artist_all_songs) {
 
@@ -42,6 +50,15 @@ class ArtistAllSongsFragment : AbsMainActivityFragment(R.layout.fragment_artist_
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
         _binding = FragmentArtistAllSongsBinding.bind(view)
+
+        // اجعل الشاشة تمتد خلف الـ status bar، والـ toolbar نفسه ياخد
+        // padding يساوي ارتفاع الـ status bar بدل ما يفضل شريط منفصل فوقه
+        WindowCompat.setDecorFitsSystemWindows(requireActivity().window, false)
+        ViewCompat.setOnApplyWindowInsetsListener(binding.toolbar) { v, insets ->
+            val statusBarInsets = insets.getInsets(WindowInsetsCompat.Type.statusBars())
+            v.updatePadding(top = statusBarInsets.top)
+            insets
+        }
 
         val artistName = arguments?.getString(EXTRA_ARTIST_NAME).orEmpty()
 
