@@ -11,7 +11,6 @@ import code.name.monkey.retromusic.adapter.song.SimpleSongAdapter
 import code.name.monkey.retromusic.databinding.FragmentArtistAllSongsBinding
 import code.name.monkey.retromusic.fragments.base.AbsMainActivityFragment
 import code.name.monkey.retromusic.model.Song
-import com.google.android.material.transition.MaterialSharedAxis
 
 /**
  * Full song list for an artist, opened from the "See all" control on
@@ -35,9 +34,10 @@ class ArtistAllSongsFragment : AbsMainActivityFragment(R.layout.fragment_artist_
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        // انتقال احترافي (Material Shared Axis) بدل ما الشاشة تظهر فجأة
-        enterTransition = MaterialSharedAxis(MaterialSharedAxis.X, true)
-        returnTransition = MaterialSharedAxis(MaterialSharedAxis.X, false)
+        // أنيميشن أبسط: دخول بس (Slide من اليمين)، من غير أي أنيميشن مخصص للرجوع
+        enterTransition = androidx.transition.Slide(android.view.Gravity.END).apply {
+            duration = 220
+        }
     }
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
