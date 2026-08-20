@@ -91,13 +91,6 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
             setAllContainerColors(Color.TRANSPARENT)
             setElevationShadowEnabled(false) 
         }
-        // بيتماشى مع نفس الأنيميشن اللي بتستخدمه ArtistAllSongsFragment وقت الدخول
-        exitTransition = com.google.android.material.transition.MaterialSharedAxis(
-            com.google.android.material.transition.MaterialSharedAxis.X, true
-        )
-        reenterTransition = com.google.android.material.transition.MaterialSharedAxis(
-            com.google.android.material.transition.MaterialSharedAxis.X, false
-        )
     }
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
