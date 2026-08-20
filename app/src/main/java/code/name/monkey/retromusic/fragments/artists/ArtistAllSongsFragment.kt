@@ -24,6 +24,13 @@ import code.name.monkey.retromusic.model.Song
  * to work). If Song is not Parcelable in this project, swap EXTRA_SONGS for just
  * passing the artist id/name and fetching via the existing ArtistDetailsViewModel
  * pattern instead.
+ *
+ * No custom Fragment transition is set here on purpose — a custom Slide/shared-axis
+ * transition caused the previous screen's background to render underneath/overlap
+ * during the pop animation. Navigation uses the library's own default enter/exit/
+ * pop anim resources instead (see AbsArtistDetailsFragment's navigate() call),
+ * the same simple animation family used for ordinary destination navigation
+ * elsewhere in the app (e.g. Home ↔ Songs).
  */
 class ArtistAllSongsFragment : AbsMainActivityFragment(R.layout.fragment_artist_all_songs) {
 
@@ -31,14 +38,6 @@ class ArtistAllSongsFragment : AbsMainActivityFragment(R.layout.fragment_artist_
     private val binding get() = _binding!!
 
     private lateinit var songAdapter: SimpleSongAdapter
-
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        // أنيميشن أبسط: دخول بس (Slide من اليمين)، من غير أي أنيميشن مخصص للرجوع
-        enterTransition = androidx.transition.Slide(android.view.Gravity.END).apply {
-            duration = 220
-        }
-    }
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
