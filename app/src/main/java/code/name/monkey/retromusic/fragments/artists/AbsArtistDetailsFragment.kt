@@ -179,10 +179,10 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
             if (::artist.isInitialized) {
                 val navOptions = androidx.navigation.navOptions {
                     anim(
-                        enter = R.animator.nav_default_enter_anim,
-                        exit = R.animator.nav_default_exit_anim,
-                        popEnter = R.animator.nav_default_pop_enter_anim,
-                        popExit = R.animator.nav_default_pop_exit_anim
+                        enterAnim = R.animator.nav_default_enter_anim,
+                        exitAnim = R.animator.nav_default_exit_anim,
+                        popEnterAnim = R.animator.nav_default_pop_enter_anim,
+                        popExitAnim = R.animator.nav_default_pop_exit_anim
                     )
                 }
                 findNavController().navigate(
