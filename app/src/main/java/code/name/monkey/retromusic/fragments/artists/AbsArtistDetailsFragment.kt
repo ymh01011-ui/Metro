@@ -171,12 +171,24 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
             }
         }
 
-        // See all: بيفتح صفحة كاملة فيها كل أغاني الفنان بأنيميشن Shared Axis
+        // See all: بيفتح صفحة كاملة فيها كل أغاني الفنان.
+        // مفيش أنيميشن مخصص هنا عمدًا — استخدمت الـ default anims بتاعة
+        // مكتبة الـ Navigation نفسها، وهي نفس عيلة الأنيميشن البسيطة
+        // المستخدمة في التنقل العادي بين الصفحات (زي Home ↔ Songs).
         binding.fragmentArtistContent.seeAllSongs.setOnClickListener {
             if (::artist.isInitialized) {
+                val navOptions = androidx.navigation.navOptions {
+                    anim {
+                        enter = R.animator.nav_default_enter_anim
+                        exit = R.animator.nav_default_exit_anim
+                        popEnter = R.animator.nav_default_pop_enter_anim
+                        popExit = R.animator.nav_default_pop_exit_anim
+                    }
+                }
                 findNavController().navigate(
                     R.id.artistAllSongsFragment,
-                    ArtistAllSongsFragment.createBundle(artist.name, artist.sortedSongs)
+                    ArtistAllSongsFragment.createBundle(artist.name, artist.sortedSongs),
+                    navOptions
                 )
             }
         }
