@@ -171,19 +171,17 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
             }
         }
 
-        // See all: بيفتح صفحة كاملة فيها كل أغاني الفنان.
-        // مفيش أنيميشن مخصص هنا عمدًا — استخدمت الـ default anims بتاعة
-        // مكتبة الـ Navigation نفسها، وهي نفس عيلة الأنيميشن البسيطة
-        // المستخدمة في التنقل العادي بين الصفحات (زي Home ↔ Songs).
+        // See all: بيفتح صفحة كاملة فيها كل أغاني الفنان
+        // استخدام NavOptions مع الأنيميشنات الصحيحة من Material Design
         binding.fragmentArtistContent.seeAllSongs.setOnClickListener {
             if (::artist.isInitialized) {
                 val navOptions = androidx.navigation.navOptions {
-                    anim(
-                        enterAnim = R.animator.nav_default_enter_anim,
-                        exitAnim = R.animator.nav_default_exit_anim,
-                        popEnterAnim = R.animator.nav_default_pop_enter_anim,
-                        popExitAnim = R.animator.nav_default_pop_exit_anim
-                    )
+                    anim {
+                        enter = android.R.anim.fade_in
+                        exit = android.R.anim.fade_out
+                        popEnter = android.R.anim.fade_in
+                        popExit = android.R.anim.fade_out
+                    }
                 }
                 findNavController().navigate(
                     R.id.artistAllSongsFragment,
