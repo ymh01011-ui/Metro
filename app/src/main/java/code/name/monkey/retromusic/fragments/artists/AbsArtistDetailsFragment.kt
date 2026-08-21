@@ -18,7 +18,6 @@ import androidx.core.view.doOnPreDraw
 import androidx.core.view.isVisible
 import androidx.core.view.updatePadding
 import androidx.lifecycle.lifecycleScope
-import androidx.navigation.fragment.FragmentNavigatorExtras
 import androidx.navigation.fragment.findNavController
 import androidx.recyclerview.widget.DefaultItemAnimator
 import androidx.recyclerview.widget.GridLayoutManager
@@ -54,14 +53,8 @@ import org.koin.android.ext.android.get
 import java.util.*
 
 private const val FADE_START_FRACTION = 0.42f
-
-// شفافية دوائر infoAction/shuffleAction لما تاخد لون الخلفية الديناميكي (تأثير زجاجي)
 private const val GLASS_CIRCLE_ALPHA = 0x4D // ~30%
-
-// شفافية نص "See all" — أعلى من شفافية النصوص التانية عمدًا
 private const val SEE_ALL_ALPHA = 0x99 // ~60%
-
-// عدد الأغاني اللي بتتعرض قبل ما يظهر زرار "See all"
 private const val SONGS_PREVIEW_COUNT = 6
 
 abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragment_artist_details),
@@ -89,7 +82,7 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
             drawingViewId = R.id.fragment_container
             scrimColor = Color.TRANSPARENT
             setAllContainerColors(Color.TRANSPARENT)
-            setElevationShadowEnabled(false) 
+            setElevationShadowEnabled(false)
         }
     }
 
@@ -98,12 +91,10 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
         _binding = FragmentArtistDetailsBinding.bind(view)
 
         mainActivity.addMusicServiceEventListener(detailsViewModel)
-        
-        // ربط الـ Toolbar وجعله مستقل تماماً
+
         val toolbar = binding.toolbar as TintableToolbar
         toolbar.title = null
         toolbar.inflateMenu(R.menu.menu_artist_detail)
-        // يحدد أي عنصر ترتيب مُختار حاليًا جوه sub-menu "Sort by"
         setUpSortOrderMenu(toolbar.menu)
         toolbar.setNavigationOnClickListener {
             findNavController().navigateUp()
@@ -143,13 +134,20 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
         })
 
         binding.headerContainer?.transitionName = (artistId ?: artistName).toString()
-        postponeEnterTransition()
-        
+
+        // تأجيل الانتقال يحدث فقط عند الفتح لأول مرة لتجنب الـ Lag والريفرش عند الرجوع
+        if (!::artist.isInitialized) {
+            postponeEnterTransition()
+        }
+
         detailsViewModel.getArtist().observe(viewLifecycleOwner) {
-            view.doOnPreDraw {
-                startPostponedEnterTransition()
-            }
+            val isFirstLoad = !::artist.isInitialized
             showArtist(it)
+            if (isFirstLoad) {
+                view.doOnPreDraw {
+                    startPostponedEnterTransition()
+                }
+            }
         }
         setupRecyclerView()
 
@@ -164,27 +162,18 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
             }
         }
 
-        // infoAction بقى زرار "إضافة كل أغاني الفنان للـ playlist" (علامة +)
         binding.fragmentArtistContent.infoAction.setOnClickListener {
             if (::artist.isInitialized) {
                 addArtistSongsToPlaylist()
             }
         }
 
-        // See all: بيفتح صفحة كاملة فيها كل أغاني الفنان
-        // Container Transform: ربط الترانزيت بزرار seeAllSongs مباشرة لتتمدد الشاشة منه بسلاسة
+        // الانتقال لصفحة See All بسلاسة وبدون Shared Element لتجنب الـ Lag عند العودة
         binding.fragmentArtistContent.seeAllSongs.setOnClickListener {
             if (::artist.isInitialized) {
-                val transitionName = "see_all_transform_${artistId ?: artistName}"
-                binding.fragmentArtistContent.seeAllSongs.transitionName = transitionName
-                val extras = FragmentNavigatorExtras(
-                    binding.fragmentArtistContent.seeAllSongs to transitionName
-                )
                 findNavController().navigate(
                     R.id.artistAllSongsFragment,
-                    ArtistAllSongsFragment.createBundle(artist, artist.sortedSongs, transitionName),
-                    null,
-                    extras
+                    ArtistAllSongsFragment.createBundle(artist, artist.sortedSongs, (artistId ?: artistName).toString())
                 )
             }
         }
@@ -257,8 +246,14 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
             findNavController().navigateUp()
             return
         }
+
+        val isAlreadyLoaded = ::artist.isInitialized
         this.artist = artist
-        loadArtistImage(artist)
+
+        // إعادة تحميل الصورة والـ Palette تتم فقط أول مرة لتجنب الوميض والريفرش المزعج عند الرجوع
+        if (!isAlreadyLoaded) {
+            loadArtistImage(artist)
+        }
 
         binding.artistTitle.text = artist.name
         binding.text.text = String.format(
@@ -288,11 +283,6 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
         binding.fragmentArtistContent.appearsOnRecyclerView.isVisible = appearsOn.isNotEmpty()
     }
 
-    /**
-     * Shows only the first [SONGS_PREVIEW_COUNT] songs and toggles the "See all"
-     * control's visibility accordingly. Used on initial load and whenever the
-     * sort order changes (so the list collapses back to a preview each time).
-     */
     private fun applySongsPreview(sortedSongs: List<Song>) {
         val hasMoreSongs = sortedSongs.size > SONGS_PREVIEW_COUNT
         songAdapter.swapDataSet(
@@ -365,12 +355,11 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
     private fun applyContrastingForegroundColor(backgroundColor: Int) {
         val isLightBackground = ColorUtils.calculateLuminance(backgroundColor) > 0.45f
         val foregroundColor = if (isLightBackground) Color.BLACK else Color.WHITE
-        val secondaryForegroundColor = ColorUtils.setAlphaComponent(foregroundColor, 0xCC) 
+        val secondaryForegroundColor = ColorUtils.setAlphaComponent(foregroundColor, 0xCC)
 
         binding.artistTitle.setTextColor(foregroundColor)
         binding.text.setTextColor(secondaryForegroundColor)
 
-        // tint toolbar icons: navigation and overflow
         val toolbar = binding.toolbar
         if (toolbar is TintableToolbar) {
             toolbar.navigationIcon?.let { DrawableCompat.setTint(it, foregroundColor) }
@@ -393,9 +382,6 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
             (binding.fragmentArtistContent.playAction as com.google.android.material.button.MaterialButton).strokeWidth = 0
         }
 
-        // infoAction (+) و shuffleAction: بدل الدايرة البيضاء الشفافة الثابتة،
-        // خدي نفس لون خلفية الصفحة (backgroundColor) بشفافية، مع الحفاظ على
-        // إطار الدايرة الأبيض (strokeColor) زي ما هو عشان يفضل الإحساس الزجاجي
         val glassCircleTint = ColorUtils.setAlphaComponent(backgroundColor, GLASS_CIRCLE_ALPHA)
         binding.fragmentArtistContent.infoAction.backgroundTintList =
             android.content.res.ColorStateList.valueOf(glassCircleTint)
@@ -408,9 +394,6 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
         binding.fragmentArtistContent.shuffleAction.iconTint =
             android.content.res.ColorStateList.valueOf(foregroundColor)
 
-        // بدل ما نلف على الـ views الظاهرة دلوقتي بس (كان بيسيب أي عنصر يتلف
-        // عليه بعدين، زي الألبومات وانت بتسحب، من غير لون)، اللون بقى متخزن
-        // جوه كل adapter وبيتطبق تلقائي في onBindViewHolder لأي عنصر جديد.
         songAdapter.setDynamicTextColors(foregroundColor, secondaryForegroundColor)
         albumAdapter.setDynamicTextColors(foregroundColor, secondaryForegroundColor)
         singlesAdapter.setDynamicTextColors(foregroundColor, secondaryForegroundColor)
@@ -469,8 +452,6 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
                 return true
             }
 
-            // خيارات الترتيب، منقولة من الـ PopupMenu القديم لجوه sub-menu
-            // "Sort by" في قايمة الثلاث نقاط
             R.id.action_sort_order_title -> {
                 item.isChecked = true
                 setSaveSortOrder(SortOrder.ArtistSongSortOrder.SONG_A_Z)
@@ -506,8 +487,6 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
 
     private fun setSaveSortOrder(sortOrder: String) {
         PreferenceUtil.artistDetailSongSortOrder = sortOrder
-        // بعد تغيير الترتيب، اللستة بترجع تتقفل على أول 6 أغاني تاني
-        // (زي أول تحميل للصفحة)، وSee all بتظهر لو لسه فيه أكتر من 6.
         applySongsPreview(artist.sortedSongs)
     }
 
