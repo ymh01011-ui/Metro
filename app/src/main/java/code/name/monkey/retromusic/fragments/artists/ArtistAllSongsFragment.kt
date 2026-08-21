@@ -4,7 +4,9 @@ import android.graphics.Bitmap
 import android.graphics.Color
 import android.graphics.drawable.Drawable
 import android.os.Bundle
+import android.view.Gravity
 import android.view.View
+import android.view.animation.AnimationUtils
 import androidx.core.graphics.ColorUtils
 import androidx.core.graphics.drawable.DrawableCompat
 import androidx.core.os.BundleCompat
@@ -12,7 +14,6 @@ import androidx.core.os.bundleOf
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
-import androidx.core.view.doOnPreDraw
 import androidx.core.view.updatePadding
 import androidx.lifecycle.lifecycleScope
 import androidx.navigation.fragment.findNavController
@@ -30,7 +31,6 @@ import code.name.monkey.retromusic.util.ArtistPaletteEngine
 import com.bumptech.glide.Glide
 import com.bumptech.glide.request.target.CustomTarget
 import com.bumptech.glide.request.transition.Transition
-import com.google.android.material.transition.MaterialContainerTransform
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -45,12 +45,20 @@ class ArtistAllSongsFragment : AbsMainActivityFragment(R.layout.fragment_artist_
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        sharedElementEnterTransition = MaterialContainerTransform().apply {
-            drawingViewId = R.id.fragment_container
-            scrimColor = Color.TRANSPARENT
-            setAllContainerColors(Color.TRANSPARENT)
-            setElevationShadowEnabled(false)
-            duration = 300L // مدة الأنيميشن للتحكم في السلاسة
+        // أنيميشن الخروج من الأسفل والعودة للأسفل بسلاسة
+        enterTransition = android.transition.Slide(Gravity.BOTTOM).apply {
+            duration = 280L
+            interpolator = AnimationUtils.loadInterpolator(
+                context,
+                android.R.interpolator.fast_out_slow_in
+            )
+        }
+        returnTransition = android.transition.Slide(Gravity.BOTTOM).apply {
+            duration = 220L
+            interpolator = AnimationUtils.loadInterpolator(
+                context,
+                android.R.interpolator.fast_out_linear_in
+            )
         }
     }
 
@@ -66,20 +74,12 @@ class ArtistAllSongsFragment : AbsMainActivityFragment(R.layout.fragment_artist_
         val songs: ArrayList<Song> =
             arguments?.getParcelableArrayList(EXTRA_SONGS) ?: arrayListOf()
 
-        // ربط الـ transitionName بالـ rootLayout لتتحول الشاشة بالكامل انطلاقًا من زر See All
-        val transitionName = arguments?.getString(EXTRA_TRANSITION_NAME).orEmpty()
-        binding.rootLayout.transitionName = transitionName
-
-        postponeEnterTransition()
-        view.doOnPreDraw { startPostponedEnterTransition() }
-
-        // إعداد Edge-To-Edge بشكل دقيق
+        // ضبط الـ Edge-to-Edge بدون تداخل
         WindowCompat.setDecorFitsSystemWindows(requireActivity().window, false)
         ViewCompat.setOnApplyWindowInsetsListener(binding.rootLayout) { _, insets ->
             val statusBarInsets = insets.getInsets(WindowInsetsCompat.Type.statusBars())
             val navBarInsets = insets.getInsets(WindowInsetsCompat.Type.navigationBars())
 
-            // إعطاء مسافة علوية للـ AppBarLayout ومسافة سفلية للـ RecyclerView
             binding.appBarLayout.updatePadding(top = statusBarInsets.top)
             binding.recyclerView.updatePadding(bottom = navBarInsets.bottom)
 
