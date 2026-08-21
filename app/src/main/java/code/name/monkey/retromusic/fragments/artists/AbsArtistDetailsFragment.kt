@@ -172,13 +172,13 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
         }
 
         // See all: بيفتح صفحة كاملة فيها كل أغاني الفنان
-        // Container Transform: صورة الفنان (headerContainer) بتتحول بصريًا
-        // لتبقى هي نفسها الـ Collapsing Toolbar في الصفحة الجديدة
+        // Container Transform: ربط الترانزيت بزرار seeAllSongs مباشرة لتتمدد الشاشة منه بسلاسة
         binding.fragmentArtistContent.seeAllSongs.setOnClickListener {
             if (::artist.isInitialized) {
-                val transitionName = (artistId ?: artistName).toString()
+                val transitionName = "see_all_transform_${artistId ?: artistName}"
+                binding.fragmentArtistContent.seeAllSongs.transitionName = transitionName
                 val extras = FragmentNavigatorExtras(
-                    binding.headerContainer!! to transitionName
+                    binding.fragmentArtistContent.seeAllSongs to transitionName
                 )
                 findNavController().navigate(
                     R.id.artistAllSongsFragment,
