@@ -1,8 +1,5 @@
 package code.name.monkey.retromusic.fragments.artists
 
-import android.animation.Animator
-import android.animation.AnimatorSet
-import android.animation.ObjectAnimator
 import android.graphics.Bitmap
 import android.graphics.Color
 import android.graphics.drawable.Drawable
@@ -10,9 +7,6 @@ import android.os.Bundle
 import android.view.Menu
 import android.view.MenuItem
 import android.view.View
-import android.view.ViewGroup
-import android.view.animation.AccelerateInterpolator
-import android.view.animation.DecelerateInterpolator
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.graphics.ColorUtils
@@ -29,8 +23,6 @@ import androidx.navigation.fragment.findNavController
 import androidx.recyclerview.widget.DefaultItemAnimator
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.LinearLayoutManager
-import androidx.transition.TransitionValues
-import androidx.transition.Visibility
 import code.name.monkey.retromusic.EXTRA_ALBUM_ID
 import code.name.monkey.retromusic.R
 import code.name.monkey.retromusic.adapter.album.HorizontalAlbumAdapter
@@ -62,8 +54,8 @@ import org.koin.android.ext.android.get
 import java.util.*
 
 private const val FADE_START_FRACTION = 0.42f
-private const val GLASS_CIRCLE_ALPHA = 0x4D
-private const val SEE_ALL_ALPHA = 0x99
+private const val GLASS_CIRCLE_ALPHA = 0x4D // ~30%
+private const val SEE_ALL_ALPHA = 0x99 // ~60%
 private const val SONGS_PREVIEW_COUNT = 6
 
 abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragment_artist_details),
@@ -81,6 +73,7 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
     private lateinit var appearsOnAdapter: HorizontalAlbumAdapter
     private var forceDownload: Boolean = false
     
+    // متغيرات لحفظ الصورة والألوان لتجنب اللاج عند الرجوع للصفحة
     private var dominantBackgroundColor: Int = Color.BLACK
     private var cachedBitmap: Bitmap? = null
     private var cachedGradientStops: IntArray? = null
@@ -91,55 +84,12 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        
         sharedElementEnterTransition = MaterialContainerTransform().apply {
             drawingViewId = R.id.fragment_container
             scrimColor = Color.TRANSPARENT
             setAllContainerColors(Color.TRANSPARENT)
             setElevationShadowEnabled(false)
         }
-
-        val slide10PercentTransition = object : Visibility() {
-            override fun onAppear(
-                sceneRoot: ViewGroup,
-                view: View,
-                startValues: TransitionValues?,
-                endValues: TransitionValues?
-            ): Animator {
-                val startY = view.resources.displayMetrics.heightPixels * 0.10f
-                view.translationY = startY
-                view.alpha = 0f
-                
-                val moveAnim = ObjectAnimator.ofFloat(view, View.TRANSLATION_Y, startY, 0f)
-                val alphaAnim = ObjectAnimator.ofFloat(view, View.ALPHA, 0f, 1f)
-                
-                return AnimatorSet().apply {
-                    playTogether(moveAnim, alphaAnim)
-                    interpolator = DecelerateInterpolator()
-                }
-            }
-
-            override fun onDisappear(
-                sceneRoot: ViewGroup,
-                view: View,
-                startValues: TransitionValues?,
-                endValues: TransitionValues?
-            ): Animator {
-                val endY = view.resources.displayMetrics.heightPixels * 0.10f
-                
-                val moveAnim = ObjectAnimator.ofFloat(view, View.TRANSLATION_Y, 0f, endY)
-                val alphaAnim = ObjectAnimator.ofFloat(view, View.ALPHA, 1f, 0f)
-                
-                return AnimatorSet().apply {
-                    playTogether(moveAnim, alphaAnim)
-                    interpolator = AccelerateInterpolator()
-                }
-            }
-        }
-
-        enterTransition = slide10PercentTransition.apply { duration = 350 }
-        returnTransition = slide10PercentTransition.apply { duration = 350 }
-        reenterTransition = slide10PercentTransition.apply { duration = 350 }
     }
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
@@ -191,6 +141,7 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
 
         binding.headerContainer?.transitionName = (artistId ?: artistName).toString()
 
+        // يجب تأجيل الانتقال دائماً لكي تعمل أنيميشن الرجوع من الألبوم
         postponeEnterTransition()
 
         detailsViewModel.getArtist().observe(viewLifecycleOwner) {
@@ -298,6 +249,7 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
 
         this.artist = artist
         
+        // هيتم استدعاء الدالة دائماً، ولكن بداخلها فحص للـ Cache لمنع اللاج
         loadArtistImage(artist)
 
         binding.artistTitle.text = artist.name
@@ -337,6 +289,7 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
     }
 
     private fun loadArtistImage(artist: Artist) {
+        // لو الصورة والألوان محفوظين، استخدمهم فوراً بدون ما تستنى عشان تتجنب اللاج
         if (cachedBitmap != null && hasExtractedColors && cachedGradientStops != null) {
             binding.image.setImageBitmap(cachedBitmap)
             setColors(dominantBackgroundColor, cachedGradientStops!!)
