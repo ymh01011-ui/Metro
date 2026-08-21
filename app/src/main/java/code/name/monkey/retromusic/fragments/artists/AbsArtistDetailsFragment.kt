@@ -72,7 +72,12 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
     private lateinit var singlesAdapter: HorizontalAlbumAdapter
     private lateinit var appearsOnAdapter: HorizontalAlbumAdapter
     private var forceDownload: Boolean = false
+    
+    // متغيرات لحفظ الصورة والألوان لتجنب اللاج عند الرجوع للصفحة
     private var dominantBackgroundColor: Int = Color.BLACK
+    private var cachedBitmap: Bitmap? = null
+    private var cachedGradientStops: IntArray? = null
+    private var hasExtractedColors: Boolean = false
 
     private val savedSongSortOrder: String
         get() = PreferenceUtil.artistDetailSongSortOrder
@@ -136,17 +141,13 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
 
         binding.headerContainer?.transitionName = (artistId ?: artistName).toString()
 
-        if (!::artist.isInitialized) {
-            postponeEnterTransition()
-        }
+        // يجب تأجيل الانتقال دائماً لكي تعمل أنيميشن الرجوع من الألبوم
+        postponeEnterTransition()
 
         detailsViewModel.getArtist().observe(viewLifecycleOwner) {
-            val isFirstLoad = !::artist.isInitialized
             showArtist(it)
-            if (isFirstLoad) {
-                view.doOnPreDraw {
-                    startPostponedEnterTransition()
-                }
+            view.doOnPreDraw {
+                startPostponedEnterTransition()
             }
         }
         setupRecyclerView()
@@ -246,12 +247,10 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
             return
         }
 
-        val isAlreadyLoaded = ::artist.isInitialized
         this.artist = artist
-
-        if (!isAlreadyLoaded) {
-            loadArtistImage(artist)
-        }
+        
+        // هيتم استدعاء الدالة دائماً، ولكن بداخلها فحص للـ Cache لمنع اللاج
+        loadArtistImage(artist)
 
         binding.artistTitle.text = artist.name
         binding.text.text = String.format(
@@ -290,6 +289,13 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
     }
 
     private fun loadArtistImage(artist: Artist) {
+        // لو الصورة والألوان محفوظين، استخدمهم فوراً بدون ما تستنى عشان تتجنب اللاج
+        if (cachedBitmap != null && hasExtractedColors && cachedGradientStops != null) {
+            binding.image.setImageBitmap(cachedBitmap)
+            setColors(dominantBackgroundColor, cachedGradientStops!!)
+            return
+        }
+
         Glide.with(requireContext())
             .asBitmap()
             .artistImageOptions(artist)
@@ -300,6 +306,7 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
                     resource: Bitmap,
                     transition: Transition<in Bitmap>?
                 ) {
+                    cachedBitmap = resource
                     extractColorsAndApplyGradient(resource)
                 }
 
@@ -325,6 +332,10 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
             )
 
             withContext(Dispatchers.Main) {
+                hasExtractedColors = true
+                cachedGradientStops = gradientStops
+                dominantBackgroundColor = dominantColor
+
                 if (_binding != null) {
                     binding.image.setImageBitmap(bitmap)
                     setColors(dominantColor, gradientStops)
@@ -336,7 +347,6 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
     private fun setColors(backgroundColor: Int, gradientStops: IntArray) {
         if (_binding == null) return
 
-        dominantBackgroundColor = backgroundColor
         binding.rootLayout.setBackgroundColor(backgroundColor)
         
         binding.appBarLayout?.setBackgroundColor(ColorUtils.setAlphaComponent(backgroundColor, 0))
@@ -445,6 +455,7 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
                 lifecycleScope.launch {
                     CustomArtistImageUtil.getInstance(requireContext())
                         .resetCustomArtistImage(artist)
+                    clearImageCache()
                 }
                 forceDownload = true
                 return true
@@ -482,6 +493,12 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
         }
         return true
     }
+    
+    private fun clearImageCache() {
+        cachedBitmap = null
+        cachedGradientStops = null
+        hasExtractedColors = false
+    }
 
     private fun setSaveSortOrder(sortOrder: String) {
         PreferenceUtil.artistDetailSongSortOrder = sortOrder
@@ -517,6 +534,7 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
                 if (uri != null) {
                     CustomArtistImageUtil.getInstance(requireContext())
                         .setCustomArtistImage(artist, uri)
+                    clearImageCache()
                 }
             }
         }
