@@ -178,7 +178,7 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
             if (::artist.isInitialized) {
                 val transitionName = (artistId ?: artistName).toString()
                 val extras = FragmentNavigatorExtras(
-                    binding.headerContainer to transitionName
+                    binding.headerContainer!! to transitionName
                 )
                 findNavController().navigate(
                     R.id.artistAllSongsFragment,
