@@ -50,6 +50,7 @@ class ArtistAllSongsFragment : AbsMainActivityFragment(R.layout.fragment_artist_
             scrimColor = Color.TRANSPARENT
             setAllContainerColors(Color.TRANSPARENT)
             setElevationShadowEnabled(false)
+            duration = 300L // مدة الأنيميشن للتحكم في السلاسة
         }
     }
 
@@ -65,19 +66,20 @@ class ArtistAllSongsFragment : AbsMainActivityFragment(R.layout.fragment_artist_
         val songs: ArrayList<Song> =
             arguments?.getParcelableArrayList(EXTRA_SONGS) ?: arrayListOf()
 
-        // ربط الـ transitionName بالـ AppBarLayout لضمان تحول الهيدر بسلاسة بدون صورة
+        // ربط الـ transitionName بالـ rootLayout لتتحول الشاشة بالكامل انطلاقًا من زر See All
         val transitionName = arguments?.getString(EXTRA_TRANSITION_NAME).orEmpty()
-        binding.appBarLayout.transitionName = transitionName
+        binding.rootLayout.transitionName = transitionName
 
         postponeEnterTransition()
         view.doOnPreDraw { startPostponedEnterTransition() }
 
-        // ضبط الـ Edge-to-Edge: مسافة علوية لشريط النظام ومسافة سفلية لشريط التنقل
+        // إعداد Edge-To-Edge بشكل دقيق
         WindowCompat.setDecorFitsSystemWindows(requireActivity().window, false)
         ViewCompat.setOnApplyWindowInsetsListener(binding.rootLayout) { _, insets ->
             val statusBarInsets = insets.getInsets(WindowInsetsCompat.Type.statusBars())
             val navBarInsets = insets.getInsets(WindowInsetsCompat.Type.navigationBars())
 
+            // إعطاء مسافة علوية للـ AppBarLayout ومسافة سفلية للـ RecyclerView
             binding.appBarLayout.updatePadding(top = statusBarInsets.top)
             binding.recyclerView.updatePadding(bottom = navBarInsets.bottom)
 
