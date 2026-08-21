@@ -1,12 +1,12 @@
 package code.name.monkey.retromusic.fragments.artists
 
+import android.graphics.Bitmap
+import android.graphics.Color
+import android.graphics.drawable.Drawable
 import android.os.Bundle
 import android.view.View
 import androidx.core.os.bundleOf
-import androidx.core.view.ViewCompat
-import androidx.core.view.WindowCompat
-import androidx.core.view.WindowInsetsCompat
-import androidx.core.view.updatePadding
+import androidx.core.view.doOnPreDraw
 import androidx.navigation.fragment.findNavController
 import androidx.recyclerview.widget.DefaultItemAnimator
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -14,34 +14,34 @@ import code.name.monkey.retromusic.R
 import code.name.monkey.retromusic.adapter.song.SimpleSongAdapter
 import code.name.monkey.retromusic.databinding.FragmentArtistAllSongsBinding
 import code.name.monkey.retromusic.fragments.base.AbsMainActivityFragment
+import code.name.monkey.retromusic.glide.RetroGlideExtension
+import code.name.monkey.retromusic.glide.RetroGlideExtension.artistImageOptions
+import code.name.monkey.retromusic.model.Artist
 import code.name.monkey.retromusic.model.Song
+import com.bumptech.glide.Glide
+import com.bumptech.glide.request.target.CustomTarget
+import com.bumptech.glide.request.transition.Transition
+import com.google.android.material.transition.MaterialContainerTransform
 
 /**
  * Full song list for an artist, opened from the "See all" control on
- * [AbsArtistDetailsFragment] once there are more than [code.name.monkey.retromusic.fragments.artists.AbsArtistDetailsFragment]'s
- * preview count of songs.
+ * [AbsArtistDetailsFragment] once there are more than that screen's preview
+ * count of songs.
+ *
+ * Uses a Container Transform shared element (headerContainer) so the artist
+ * header image visually morphs from the full-size banner on the details
+ * screen into this screen's Collapsing Toolbar, instead of a plain slide
+ * transition. See AbsArtistDetailsFragment's seeAllSongs click listener for
+ * the FragmentNavigatorExtras that starts the transform. The transitionName
+ * itself is passed explicitly through the bundle (EXTRA_TRANSITION_NAME)
+ * rather than recomputed here, so it's guaranteed to match the source
+ * screen's (artistId ?: artistName) value exactly.
  *
  * The song list is passed directly through the navigation Bundle (EXTRA_SONGS)
- * instead of being re-fetched from the repository, since the caller already has
- * it in memory. This assumes [Song] implements Parcelable (it needs a
- * `@Parcelize` — or equivalent manual implementation — for `getParcelableArrayList`
- * to work). If Song is not Parcelable in this project, swap EXTRA_SONGS for just
- * passing the artist id/name and fetching via the existing ArtistDetailsViewModel
- * pattern instead.
- *
- * No custom Fragment transition is set here on purpose — a custom Slide/shared-axis
- * transition caused the previous screen's background to render underneath/overlap
- * during the pop animation. Navigation uses the library's own default enter/exit/
- * pop anim resources instead (see AbsArtistDetailsFragment's navigate() call),
- * the same simple animation family used for ordinary destination navigation
- * elsewhere in the app (e.g. Home ↔ Songs).
- *
- * The toolbar draws edge-to-edge (extends behind the status bar) to match the
- * artist details screen above it, instead of leaving a separate dark status-bar
- * strip above a lighter toolbar. The window-inset padding is applied to
- * appBarLayout (not the toolbar directly) because Toolbar has a fixed
- * actionBarSize height and would get visually compressed by extra top padding;
- * AppBarLayout is wrap_content, so it grows to absorb the inset instead.
+ * instead of being re-fetched, since the caller already has it sorted in
+ * memory. The Artist itself (EXTRA_ARTIST) is passed too, purely so this
+ * screen can reload the same header image — it assumes [Artist] implements
+ * Parcelable, same assumption already made for [Song] on this screen.
  */
 class ArtistAllSongsFragment : AbsMainActivityFragment(R.layout.fragment_artist_all_songs) {
 
@@ -50,30 +50,39 @@ class ArtistAllSongsFragment : AbsMainActivityFragment(R.layout.fragment_artist_
 
     private lateinit var songAdapter: SimpleSongAdapter
 
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        sharedElementEnterTransition = MaterialContainerTransform().apply {
+            drawingViewId = R.id.fragment_container
+            scrimColor = Color.TRANSPARENT
+            setAllContainerColors(Color.TRANSPARENT)
+            setElevationShadowEnabled(false)
+        }
+    }
+
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
         _binding = FragmentArtistAllSongsBinding.bind(view)
 
-        // اجعل الشاشة تمتد خلف الـ status bar. الـ padding بيتحط على
-        // appBarLayout (مش على toolbar) لأن الـ AppBarLayout ارتفاعه
-        // wrap_content فبيكبر براحته ليستوعب البادينج، بعكس الـ Toolbar
-        // اللي ارتفاعه ثابت (actionBarSize) وكان بيتقلّص بدل ما يكبر.
-        WindowCompat.setDecorFitsSystemWindows(requireActivity().window, false)
-        ViewCompat.setOnApplyWindowInsetsListener(binding.appBarLayout) { v, insets ->
-            val statusBarInsets = insets.getInsets(WindowInsetsCompat.Type.statusBars())
-            v.updatePadding(top = statusBarInsets.top)
-            insets
-        }
-
-        val artistName = arguments?.getString(EXTRA_ARTIST_NAME).orEmpty()
+        @Suppress("DEPRECATION")
+        val artist: Artist? = arguments?.getParcelable(EXTRA_ARTIST)
 
         @Suppress("DEPRECATION")
         val songs: ArrayList<Song> =
             arguments?.getParcelableArrayList(EXTRA_SONGS) ?: arrayListOf()
 
-        binding.toolbar.title = artistName
+        val transitionName = arguments?.getString(EXTRA_TRANSITION_NAME).orEmpty()
+        binding.headerContainer.transitionName = transitionName
+
+        postponeEnterTransition()
+        view.doOnPreDraw { startPostponedEnterTransition() }
+
         binding.toolbar.setNavigationOnClickListener {
             findNavController().navigateUp()
+        }
+
+        if (artist != null) {
+            loadArtistImage(artist)
         }
 
         songAdapter = SimpleSongAdapter(requireActivity(), songs, R.layout.item_song)
@@ -84,18 +93,45 @@ class ArtistAllSongsFragment : AbsMainActivityFragment(R.layout.fragment_artist_
         }
     }
 
+    private fun loadArtistImage(artist: Artist) {
+        Glide.with(requireContext())
+            .asBitmap()
+            .artistImageOptions(artist)
+            .load(RetroGlideExtension.getArtistModel(artist))
+            .dontAnimate()
+            .into(object : CustomTarget<Bitmap>() {
+                override fun onResourceReady(
+                    resource: Bitmap,
+                    transition: Transition<in Bitmap>?
+                ) {
+                    if (_binding != null) {
+                        binding.image.setImageBitmap(resource)
+                    }
+                }
+
+                override fun onLoadCleared(placeholder: Drawable?) {
+                    if (_binding != null) {
+                        binding.image.setImageDrawable(placeholder)
+                    }
+                }
+            })
+    }
+
     override fun onDestroyView() {
         super.onDestroyView()
         _binding = null
     }
 
     companion object {
-        const val EXTRA_ARTIST_NAME = "extra_artist_name"
+        const val EXTRA_ARTIST = "extra_artist"
         const val EXTRA_SONGS = "extra_songs"
+        const val EXTRA_TRANSITION_NAME = "extra_transition_name"
 
-        fun createBundle(artistName: String, songs: List<Song>): Bundle = bundleOf(
-            EXTRA_ARTIST_NAME to artistName,
-            EXTRA_SONGS to ArrayList(songs)
-        )
+        fun createBundle(artist: Artist, songs: List<Song>, transitionName: String): Bundle =
+            bundleOf(
+                EXTRA_ARTIST to artist,
+                EXTRA_SONGS to ArrayList(songs),
+                EXTRA_TRANSITION_NAME to transitionName
+            )
     }
 }
