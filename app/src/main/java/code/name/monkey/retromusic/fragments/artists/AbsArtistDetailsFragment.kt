@@ -226,13 +226,7 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
                     R.id.artistAllSongsFragment,
                     ArtistAllSongsFragment.createBundle(artist, artist.sortedSongs, (artistId ?: artistName).toString())
                 )
-فهمت الفكرة تماماً. في نظام إحداثيات الأندرويد، القمة (أعلى الشاشة) تمثل `0%p`، والقاع (أسفل الشاشة) يمثل `100%p`. 
-
-بناءً على طلبك بأن تبدأ الحركة من "آخر 10% من فوق" وتصعد "لفوق خالص" (أي ما يعادل انتقالك من 90% إلى 100% صعوداً في مخيلتك)، فإننا سنجعل نقطة البداية `10%p` ونقطة النهاية `0%p`. هذا سيعطي واجهة التطبيق التأثير المطلوب بالظهور من مسافة قريبة جداً من الأعلى والاستقرار في القمة.
-
-إليك ملف الأنيميشن كاملاً (يمكنك إنشاؤه في مسار `res/anim/` وتسميته مثلاً `slide_up_from_top_10.xml`). يمكنك نسخه واستخدامه مباشرة:
-
-```xml
+                
 <?xml version="1.0" encoding="utf-8"?>
 <set xmlns:android="[http://schemas.android.com/apk/res/android](http://schemas.android.com/apk/res/android)">
     <translate
