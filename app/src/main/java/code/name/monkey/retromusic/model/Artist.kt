@@ -14,21 +14,30 @@
 
 package code.name.monkey.retromusic.model
 
+import android.os.Parcelable
 import code.name.monkey.retromusic.helper.SortOrder
 import code.name.monkey.retromusic.util.MusicUtil
 import code.name.monkey.retromusic.util.PreferenceUtil
+import kotlinx.parcelize.Parcelize
 import java.text.Collator
 
+@Parcelize
 data class Artist(
     val id: Long,
     val albums: List<Album>,
     val isAlbumArtist: Boolean = false,
     // True when this Artist was built by splitting a combined artist tag
     // (e.g. "A, B feat. C") into individual artists. When true, `name`
-    // uses the value assigned in the secondary constructor as-is instead
-    // of re-deriving it from the raw (un-split) tag on the first song.
-    val isMultiArtist: Boolean = false
-) {
+    // uses [multiArtistName] as-is instead of re-deriving it from the raw
+    // (un-split) tag on the first song.
+    val isMultiArtist: Boolean = false,
+    // Only set (and only used) when isMultiArtist is true. Kept as an
+    // explicit primary-constructor property — rather than assigned onto a
+    // body `var` from the secondary constructor, as before — so it
+    // round-trips correctly through @Parcelize; anything not in the
+    // primary constructor resets to its default when un-parceled.
+    private val multiArtistName: String? = null
+) : Parcelable {
     constructor(
         artistName: String,
         albums: List<Album>,
@@ -44,16 +53,15 @@ data class Artist(
         },
         albums,
         isAlbumArtist,
-        isMultiArtist
-    ) {
-        name = artistName
-    }
+        isMultiArtist,
+        if (isMultiArtist) artistName else null
+    )
 
-    var name: String = "-"
+    val name: String
         get() {
             // Multi-artist entries already carry the correct split name;
             // don't re-derive it from the (un-split) raw tag on the song.
-            if (isMultiArtist) return field
+            if (isMultiArtist) return multiArtistName ?: "-"
 
             val name = if (isAlbumArtist) getAlbumArtistName()
             else getArtistName()
