@@ -65,7 +65,7 @@ class ArtistAllSongsFragment : AbsMainActivityFragment(R.layout.fragment_artist_
         _binding = FragmentArtistAllSongsBinding.bind(view)
 
         @Suppress("DEPRECATION")
-        val artist: Artist? = arguments?.getParcelable(EXTRA_ARTIST)
+        val artist: Artist? = arguments?.getParcelable(EXTRA_ARTIST) as? Artist
 
         @Suppress("DEPRECATION")
         val songs: ArrayList<Song> =
