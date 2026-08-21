@@ -18,6 +18,7 @@ import androidx.core.view.doOnPreDraw
 import androidx.core.view.isVisible
 import androidx.core.view.updatePadding
 import androidx.lifecycle.lifecycleScope
+import androidx.navigation.fragment.FragmentNavigatorExtras
 import androidx.navigation.fragment.findNavController
 import androidx.recyclerview.widget.DefaultItemAnimator
 import androidx.recyclerview.widget.GridLayoutManager
@@ -135,7 +136,6 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
 
         binding.headerContainer?.transitionName = (artistId ?: artistName).toString()
 
-        // تأجيل الانتقال يحدث فقط عند الفتح لأول مرة لتجنب الـ Lag والريفرش عند الرجوع
         if (!::artist.isInitialized) {
             postponeEnterTransition()
         }
@@ -168,7 +168,6 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
             }
         }
 
-        // الانتقال لصفحة See All بسلاسة وبدون Shared Element لتجنب الـ Lag عند العودة
         binding.fragmentArtistContent.seeAllSongs.setOnClickListener {
             if (::artist.isInitialized) {
                 findNavController().navigate(
@@ -250,7 +249,6 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
         val isAlreadyLoaded = ::artist.isInitialized
         this.artist = artist
 
-        // إعادة تحميل الصورة والـ Palette تتم فقط أول مرة لتجنب الوميض والريفرش المزعج عند الرجوع
         if (!isAlreadyLoaded) {
             loadArtistImage(artist)
         }
