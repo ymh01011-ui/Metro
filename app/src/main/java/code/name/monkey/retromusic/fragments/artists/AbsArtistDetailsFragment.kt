@@ -62,8 +62,8 @@ import org.koin.android.ext.android.get
 import java.util.*
 
 private const val FADE_START_FRACTION = 0.42f
-private const val GLASS_CIRCLE_ALPHA = 0x4D // ~30%
-private const val SEE_ALL_ALPHA = 0x99 // ~60%
+private const val GLASS_CIRCLE_ALPHA = 0x4D
+private const val SEE_ALL_ALPHA = 0x99
 private const val SONGS_PREVIEW_COUNT = 6
 
 abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragment_artist_details),
@@ -92,7 +92,6 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         
-        // الأنيميشن الخاص بالعنصر المشترك (Shared Element)
         sharedElementEnterTransition = MaterialContainerTransform().apply {
             drawingViewId = R.id.fragment_container
             scrimColor = Color.TRANSPARENT
@@ -100,7 +99,6 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
             setElevationShadowEnabled(false)
         }
 
-        // الأنيميشن المخصص لظهور باقي الشاشة من آخر 10% إلى 100%
         val slide10PercentTransition = object : Visibility() {
             override fun onAppear(
                 sceneRoot: ViewGroup,
@@ -226,12 +224,370 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
                     R.id.artistAllSongsFragment,
                     ArtistAllSongsFragment.createBundle(artist, artist.sortedSongs, (artistId ?: artistName).toString())
                 )
-                
-<?xml version="1.0" encoding="utf-8"?>
-<set xmlns:android="[http://schemas.android.com/apk/res/android](http://schemas.android.com/apk/res/android)">
-    <translate
-        android:duration="300"
-        android:fromYDelta="10%p"
-        android:toYDelta="0%p"
-        android:interpolator="@android:anim/decelerate_interpolator" />
-</set>
+            }
+        }
+
+        binding.appBarLayout?.statusBarForeground =
+            MaterialShapeDrawable.createWithElevationOverlay(requireContext())
+    }
+
+    private fun addArtistSongsToPlaylist() {
+        lifecycleScope.launch(Dispatchers.IO) {
+            val playlists = get<RealRepository>().fetchPlaylists()
+            withContext(Dispatchers.Main) {
+                if (_binding == null) return@withContext
+                AddToPlaylistDialog.create(playlists, artist.songs)
+                    .show(childFragmentManager, "ADD_PLAYLIST")
+            }
+        }
+    }
+
+    private fun setupRecyclerView() {
+        albumAdapter = HorizontalAlbumAdapter(requireActivity(), ArrayList(), this)
+        binding.fragmentArtistContent.albumRecyclerView.apply {
+            itemAnimator = DefaultItemAnimator()
+            layoutManager = GridLayoutManager(this.context, 1, GridLayoutManager.HORIZONTAL, false)
+            adapter = albumAdapter
+        }
+
+        singlesAdapter = HorizontalAlbumAdapter(requireActivity(), ArrayList(), this)
+        binding.fragmentArtistContent.singlesRecyclerView.apply {
+            itemAnimator = DefaultItemAnimator()
+            layoutManager = GridLayoutManager(this.context, 1, GridLayoutManager.HORIZONTAL, false)
+            adapter = singlesAdapter
+        }
+
+        appearsOnAdapter = HorizontalAlbumAdapter(requireActivity(), ArrayList(), this)
+        binding.fragmentArtistContent.appearsOnRecyclerView.apply {
+            itemAnimator = DefaultItemAnimator()
+            layoutManager = GridLayoutManager(this.context, 1, GridLayoutManager.HORIZONTAL, false)
+            adapter = appearsOnAdapter
+        }
+
+        songAdapter = SimpleSongAdapter(requireActivity(), ArrayList(), R.layout.item_song)
+        binding.fragmentArtistContent.recyclerView.apply {
+            itemAnimator = DefaultItemAnimator()
+            layoutManager = LinearLayoutManager(this.context)
+            adapter = songAdapter
+        }
+    }
+
+    private fun categorizeAlbums(artist: Artist): Triple<List<Album>, List<Album>, List<Album>> {
+        val albums = mutableListOf<Album>()
+        val singles = mutableListOf<Album>()
+        val appearsOn = mutableListOf<Album>()
+        for (album in artist.albums) {
+            val albumArtistName = album.albumArtist
+            val albumArtistNames = ArtistTagUtil.splitArtistNames(albumArtistName)
+            val isPrimaryArtist = albumArtistNames.isEmpty() ||
+                    albumArtistNames.any { it.equals(artist.name, ignoreCase = true) }
+            when {
+                !isPrimaryArtist -> appearsOn.add(album)
+                album.songCount <= 1 -> singles.add(album)
+                else -> albums.add(album)
+            }
+        }
+        return Triple(albums, singles, appearsOn)
+    }
+
+    private fun showArtist(artist: Artist) {
+        if (artist.songCount == 0) {
+            findNavController().navigateUp()
+            return
+        }
+
+        this.artist = artist
+        
+        loadArtistImage(artist)
+
+        binding.artistTitle.text = artist.name
+        binding.text.text = String.format(
+            "%s • %s",
+            MusicUtil.getArtistInfoString(requireContext(), artist),
+            MusicUtil.getReadableDurationString(MusicUtil.getTotalDuration(artist.songs))
+        )
+
+        applySongsPreview(artist.sortedSongs)
+
+        val (albums, singles, appearsOn) = categorizeAlbums(artist)
+
+        val albumText = resources.getQuantityString(
+            R.plurals.albums, albums.size, albums.size
+        )
+        binding.fragmentArtistContent.albumTitle.text = albumText
+        albumAdapter.swapDataSet(albums)
+        binding.fragmentArtistContent.albumTitle.isVisible = albums.isNotEmpty()
+        binding.fragmentArtistContent.albumRecyclerView.isVisible = albums.isNotEmpty()
+
+        singlesAdapter.swapDataSet(singles)
+        binding.fragmentArtistContent.singlesTitle.isVisible = singles.isNotEmpty()
+        binding.fragmentArtistContent.singlesRecyclerView.isVisible = singles.isNotEmpty()
+
+        appearsOnAdapter.swapDataSet(appearsOn)
+        binding.fragmentArtistContent.appearsOnTitle.isVisible = appearsOn.isNotEmpty()
+        binding.fragmentArtistContent.appearsOnRecyclerView.isVisible = appearsOn.isNotEmpty()
+    }
+
+    private fun applySongsPreview(sortedSongs: List<Song>) {
+        val hasMoreSongs = sortedSongs.size > SONGS_PREVIEW_COUNT
+        songAdapter.swapDataSet(
+            if (hasMoreSongs) sortedSongs.take(SONGS_PREVIEW_COUNT) else sortedSongs
+        )
+        binding.fragmentArtistContent.seeAllSongs.isVisible = hasMoreSongs
+    }
+
+    private fun loadArtistImage(artist: Artist) {
+        if (cachedBitmap != null && hasExtractedColors && cachedGradientStops != null) {
+            binding.image.setImageBitmap(cachedBitmap)
+            setColors(dominantBackgroundColor, cachedGradientStops!!)
+            return
+        }
+
+        Glide.with(requireContext())
+            .asBitmap()
+            .artistImageOptions(artist)
+            .load(RetroGlideExtension.getArtistModel(artist))
+            .dontAnimate()
+            .into(object : CustomTarget<Bitmap>() {
+                override fun onResourceReady(
+                    resource: Bitmap,
+                    transition: Transition<in Bitmap>?
+                ) {
+                    cachedBitmap = resource
+                    extractColorsAndApplyGradient(resource)
+                }
+
+                override fun onLoadCleared(placeholder: Drawable?) {
+                    if (_binding != null) {
+                        binding.image.setImageDrawable(placeholder)
+                    }
+                }
+            })
+    }
+
+    private fun extractColorsAndApplyGradient(bitmap: Bitmap) {
+        lifecycleScope.launch(Dispatchers.Default) {
+            val dominantColor = ArtistPaletteEngine.findDominantColorAtSubtitleRegion(
+                bitmap = bitmap,
+                startRatio = 0.68f,
+                endRatio = 0.78f
+            )
+
+            val gradientStops = ArtistPaletteEngine.buildSeamlessGradient(
+                blendColor = dominantColor,
+                fadeStart = FADE_START_FRACTION
+            )
+
+            withContext(Dispatchers.Main) {
+                hasExtractedColors = true
+                cachedGradientStops = gradientStops
+                dominantBackgroundColor = dominantColor
+
+                if (_binding != null) {
+                    binding.image.setImageBitmap(bitmap)
+                    setColors(dominantColor, gradientStops)
+                }
+            }
+        }
+    }
+
+    private fun setColors(backgroundColor: Int, gradientStops: IntArray) {
+        if (_binding == null) return
+
+        binding.rootLayout.setBackgroundColor(backgroundColor)
+        
+        binding.appBarLayout?.setBackgroundColor(ColorUtils.setAlphaComponent(backgroundColor, 0))
+
+        val gradientDrawable = android.graphics.drawable.GradientDrawable(
+            android.graphics.drawable.GradientDrawable.Orientation.TOP_BOTTOM,
+            gradientStops
+        )
+        binding.headerGradient?.let { it.background = gradientDrawable }
+
+        applyContrastingForegroundColor(backgroundColor)
+    }
+
+    private fun applyContrastingForegroundColor(backgroundColor: Int) {
+        val isLightBackground = ColorUtils.calculateLuminance(backgroundColor) > 0.45f
+        val foregroundColor = if (isLightBackground) Color.BLACK else Color.WHITE
+        val secondaryForegroundColor = ColorUtils.setAlphaComponent(foregroundColor, 0xCC)
+
+        binding.artistTitle.setTextColor(foregroundColor)
+        binding.text.setTextColor(secondaryForegroundColor)
+
+        val toolbar = binding.toolbar
+        if (toolbar is TintableToolbar) {
+            toolbar.navigationIcon?.let { DrawableCompat.setTint(it, foregroundColor) }
+            toolbar.setOverflowIconTint(foregroundColor)
+        } else if (toolbar is androidx.appcompat.widget.Toolbar) {
+            toolbar.navigationIcon?.let { DrawableCompat.setTint(it, foregroundColor) }
+            toolbar.overflowIcon?.let { DrawableCompat.setTint(it, foregroundColor) }
+        }
+
+        binding.fragmentArtistContent.songTitle.setTextColor(foregroundColor)
+        binding.fragmentArtistContent.seeAllSongs.setTextColor(
+            ColorUtils.setAlphaComponent(foregroundColor, SEE_ALL_ALPHA)
+        )
+        binding.fragmentArtistContent.albumTitle.setTextColor(foregroundColor)
+        binding.fragmentArtistContent.singlesTitle.setTextColor(foregroundColor)
+        binding.fragmentArtistContent.appearsOnTitle.setTextColor(foregroundColor)
+
+        binding.fragmentArtistContent.playAction.elevation = 0f
+        if (binding.fragmentArtistContent.playAction is com.google.android.material.button.MaterialButton) {
+            (binding.fragmentArtistContent.playAction as com.google.android.material.button.MaterialButton).strokeWidth = 0
+        }
+
+        val glassCircleTint = ColorUtils.setAlphaComponent(backgroundColor, GLASS_CIRCLE_ALPHA)
+        binding.fragmentArtistContent.infoAction.backgroundTintList =
+            android.content.res.ColorStateList.valueOf(glassCircleTint)
+        binding.fragmentArtistContent.shuffleAction.backgroundTintList =
+            android.content.res.ColorStateList.valueOf(glassCircleTint)
+
+        binding.fragmentArtistContent.infoAction.iconTint =
+            android.content.res.ColorStateList.valueOf(foregroundColor)
+
+        binding.fragmentArtistContent.shuffleAction.iconTint =
+            android.content.res.ColorStateList.valueOf(foregroundColor)
+
+        songAdapter.setDynamicTextColors(foregroundColor, secondaryForegroundColor)
+        albumAdapter.setDynamicTextColors(foregroundColor, secondaryForegroundColor)
+        singlesAdapter.setDynamicTextColors(foregroundColor, secondaryForegroundColor)
+        appearsOnAdapter.setDynamicTextColors(foregroundColor, secondaryForegroundColor)
+    }
+
+    override fun onAlbumClick(albumId: Long, view: View) {
+        findNavController().navigate(
+            R.id.albumDetailsFragment,
+            bundleOf(EXTRA_ALBUM_ID to albumId),
+            null,
+            FragmentNavigatorExtras(
+                view to albumId.toString()
+            )
+        )
+    }
+
+    private fun handleSortOrderMenuItem(item: MenuItem): Boolean {
+        val songs = artist.songs
+        when (item.itemId) {
+            R.id.action_play_next -> {
+                MusicPlayerRemote.playNext(songs)
+                return true
+            }
+
+            R.id.action_add_to_current_playing -> {
+                MusicPlayerRemote.enqueue(songs)
+                return true
+            }
+
+            R.id.action_add_to_playlist -> {
+                lifecycleScope.launch(Dispatchers.IO) {
+                    val playlists = get<RealRepository>().fetchPlaylists()
+                    withContext(Dispatchers.Main) {
+                        AddToPlaylistDialog.create(playlists, songs)
+                            .show(childFragmentManager, "ADD_PLAYLIST")
+                    }
+                }
+                return true
+            }
+
+            R.id.action_set_artist_image -> {
+                selectImageLauncher.launch(
+                    PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                )
+                return true
+            }
+
+            R.id.action_reset_artist_image -> {
+                showToast(resources.getString(R.string.updating))
+                lifecycleScope.launch {
+                    CustomArtistImageUtil.getInstance(requireContext())
+                        .resetCustomArtistImage(artist)
+                    clearImageCache()
+                }
+                forceDownload = true
+                return true
+            }
+
+            R.id.action_sort_order_title -> {
+                item.isChecked = true
+                setSaveSortOrder(SortOrder.ArtistSongSortOrder.SONG_A_Z)
+                return true
+            }
+
+            R.id.action_sort_order_title_desc -> {
+                item.isChecked = true
+                setSaveSortOrder(SortOrder.ArtistSongSortOrder.SONG_Z_A)
+                return true
+            }
+
+            R.id.action_sort_order_album -> {
+                item.isChecked = true
+                setSaveSortOrder(SortOrder.ArtistSongSortOrder.SONG_ALBUM)
+                return true
+            }
+
+            R.id.action_sort_order_year -> {
+                item.isChecked = true
+                setSaveSortOrder(SortOrder.ArtistSongSortOrder.SONG_YEAR)
+                return true
+            }
+
+            R.id.action_sort_order_song_duration -> {
+                item.isChecked = true
+                setSaveSortOrder(SortOrder.ArtistSongSortOrder.SONG_DURATION)
+                return true
+            }
+        }
+        return true
+    }
+    
+    private fun clearImageCache() {
+        cachedBitmap = null
+        cachedGradientStops = null
+        hasExtractedColors = false
+    }
+
+    private fun setSaveSortOrder(sortOrder: String) {
+        PreferenceUtil.artistDetailSongSortOrder = sortOrder
+        applySongsPreview(artist.sortedSongs)
+    }
+
+    private fun setUpSortOrderMenu(sortOrder: Menu) {
+        when (savedSongSortOrder) {
+            SortOrder.ArtistSongSortOrder.SONG_A_Z -> sortOrder.findItem(R.id.action_sort_order_title).isChecked =
+                true
+
+            SortOrder.ArtistSongSortOrder.SONG_Z_A -> sortOrder.findItem(R.id.action_sort_order_title_desc).isChecked =
+                true
+
+            SortOrder.ArtistSongSortOrder.SONG_ALBUM -> sortOrder.findItem(R.id.action_sort_order_album).isChecked =
+                true
+
+            SortOrder.ArtistSongSortOrder.SONG_YEAR -> sortOrder.findItem(R.id.action_sort_order_year).isChecked =
+                true
+
+            SortOrder.ArtistSongSortOrder.SONG_DURATION -> sortOrder.findItem(R.id.action_sort_order_song_duration).isChecked =
+                true
+
+            else -> {
+                throw IllegalArgumentException("invalid $savedSongSortOrder")
+            }
+        }
+    }
+
+    private val selectImageLauncher =
+        registerForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
+            lifecycleScope.launch {
+                if (uri != null) {
+                    CustomArtistImageUtil.getInstance(requireContext())
+                        .setCustomArtistImage(artist, uri)
+                    clearImageCache()
+                }
+            }
+        }
+
+    override fun onDestroyView() {
+        super.onDestroyView()
+        _binding = null
+    }
+}
