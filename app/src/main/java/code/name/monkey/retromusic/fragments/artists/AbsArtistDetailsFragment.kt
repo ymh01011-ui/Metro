@@ -172,13 +172,19 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
         }
 
         // See all: بيفتح صفحة كاملة فيها كل أغاني الفنان
-        // استخدام NavOptions مع أنيميشن Slide Up الجديد
+        // Container Transform: صورة الفنان (headerContainer) بتتحول بصريًا
+        // لتبقى هي نفسها الـ Collapsing Toolbar في الصفحة الجديدة
         binding.fragmentArtistContent.seeAllSongs.setOnClickListener {
             if (::artist.isInitialized) {
+                val transitionName = (artistId ?: artistName).toString()
+                val extras = FragmentNavigatorExtras(
+                    binding.headerContainer to transitionName
+                )
                 findNavController().navigate(
                     R.id.artistAllSongsFragment,
-                    ArtistAllSongsFragment.createBundle(artist.name, artist.sortedSongs),
-                    slideUpNavOptions
+                    ArtistAllSongsFragment.createBundle(artist, artist.sortedSongs, transitionName),
+                    null,
+                    extras
                 )
             }
         }
