@@ -5,6 +5,7 @@ import android.graphics.Color
 import android.graphics.drawable.Drawable
 import android.os.Bundle
 import android.view.View
+import androidx.core.os.BundleCompat
 import androidx.core.os.bundleOf
 import androidx.core.view.doOnPreDraw
 import androidx.navigation.fragment.findNavController
@@ -64,8 +65,9 @@ class ArtistAllSongsFragment : AbsMainActivityFragment(R.layout.fragment_artist_
         super.onViewCreated(view, savedInstanceState)
         _binding = FragmentArtistAllSongsBinding.bind(view)
 
-        @Suppress("DEPRECATION")
-        val artist: Artist? = arguments?.getParcelable(EXTRA_ARTIST) as? Artist
+        val artist: Artist? = arguments?.let {
+            BundleCompat.getParcelable(it, EXTRA_ARTIST, Artist::class.java)
+        }
 
         @Suppress("DEPRECATION")
         val songs: ArrayList<Song> =
