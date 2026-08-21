@@ -5,9 +5,16 @@ import android.graphics.Color
 import android.graphics.drawable.Drawable
 import android.os.Bundle
 import android.view.View
+import androidx.core.graphics.ColorUtils
+import androidx.core.graphics.drawable.DrawableCompat
 import androidx.core.os.BundleCompat
 import androidx.core.os.bundleOf
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.doOnPreDraw
+import androidx.core.view.updatePadding
+import androidx.lifecycle.lifecycleScope
 import androidx.navigation.fragment.findNavController
 import androidx.recyclerview.widget.DefaultItemAnimator
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -19,10 +26,14 @@ import code.name.monkey.retromusic.glide.RetroGlideExtension
 import code.name.monkey.retromusic.glide.RetroGlideExtension.artistImageOptions
 import code.name.monkey.retromusic.model.Artist
 import code.name.monkey.retromusic.model.Song
+import code.name.monkey.retromusic.util.ArtistPaletteEngine
 import com.bumptech.glide.Glide
 import com.bumptech.glide.request.target.CustomTarget
 import com.bumptech.glide.request.transition.Transition
 import com.google.android.material.transition.MaterialContainerTransform
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * Full song list for an artist, opened from the "See all" control on
@@ -40,9 +51,18 @@ import com.google.android.material.transition.MaterialContainerTransform
  *
  * The song list is passed directly through the navigation Bundle (EXTRA_SONGS)
  * instead of being re-fetched, since the caller already has it sorted in
- * memory. The Artist itself (EXTRA_ARTIST) is passed too, purely so this
- * screen can reload the same header image — it assumes [Artist] implements
- * Parcelable, same assumption already made for [Song] on this screen.
+ * memory. The Artist itself (EXTRA_ARTIST) is passed too, so this screen can
+ * reload the same header image and re-derive the same dominant color as the
+ * details screen.
+ *
+ * Edge-to-edge + color matching AbsArtistDetailsFragment:
+ * - decorFitsSystemWindows is turned off and only the Toolbar (not the whole
+ *   header) is padded for the status bar inset, so the artist image reaches
+ *   the very top of the screen instead of stopping short with a gap.
+ * - The same ArtistPaletteEngine sampling used on the details screen is
+ *   reused here so the collapsed toolbar scrim, page background, and
+ *   title/icon colors match that screen exactly rather than falling back to
+ *   the static ?attr/colorSurface.
  */
 class ArtistAllSongsFragment : AbsMainActivityFragment(R.layout.fragment_artist_all_songs) {
 
@@ -50,6 +70,7 @@ class ArtistAllSongsFragment : AbsMainActivityFragment(R.layout.fragment_artist_
     private val binding get() = _binding!!
 
     private lateinit var songAdapter: SimpleSongAdapter
+    private var dominantBackgroundColor: Int = Color.BLACK
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -79,11 +100,23 @@ class ArtistAllSongsFragment : AbsMainActivityFragment(R.layout.fragment_artist_
         postponeEnterTransition()
         view.doOnPreDraw { startPostponedEnterTransition() }
 
+        // Edge-to-edge: let content draw behind the status bar so the artist
+        // image reaches the very top of the screen. Only the Toolbar gets
+        // padded down by the status bar inset (not the whole AppBarLayout),
+        // same approach as AbsArtistDetailsFragment.
+        WindowCompat.setDecorFitsSystemWindows(requireActivity().window, false)
+        ViewCompat.setOnApplyWindowInsetsListener(binding.toolbar) { v, insets ->
+            val statusBarInsets = insets.getInsets(WindowInsetsCompat.Type.statusBars())
+            v.updatePadding(top = statusBarInsets.top)
+            insets
+        }
+
         binding.toolbar.setNavigationOnClickListener {
             findNavController().navigateUp()
         }
 
         if (artist != null) {
+            binding.collapsingToolbar.title = artist.name
             loadArtistImage(artist)
         }
 
@@ -109,6 +142,7 @@ class ArtistAllSongsFragment : AbsMainActivityFragment(R.layout.fragment_artist_
                     if (_binding != null) {
                         binding.image.setImageBitmap(resource)
                     }
+                    extractAndApplyDominantColor(resource)
                 }
 
                 override fun onLoadCleared(placeholder: Drawable?) {
@@ -117,6 +151,51 @@ class ArtistAllSongsFragment : AbsMainActivityFragment(R.layout.fragment_artist_
                     }
                 }
             })
+    }
+
+    /**
+     * Samples the same region of the artist image that AbsArtistDetailsFragment
+     * uses, so this screen's scrim, page background, and collapsed
+     * title/icon colors match the details screen exactly instead of using
+     * the static ?attr/colorSurface fallback declared in the layout.
+     */
+    private fun extractAndApplyDominantColor(bitmap: Bitmap) {
+        lifecycleScope.launch(Dispatchers.Default) {
+            val dominantColor = ArtistPaletteEngine.findDominantColorAtSubtitleRegion(
+                bitmap = bitmap,
+                startRatio = 0.68f,
+                endRatio = 0.78f
+            )
+            withContext(Dispatchers.Main) {
+                if (_binding != null) {
+                    applyDynamicColor(dominantColor)
+                }
+            }
+        }
+    }
+
+    private fun applyDynamicColor(backgroundColor: Int) {
+        dominantBackgroundColor = backgroundColor
+        binding.rootLayout.setBackgroundColor(backgroundColor)
+        binding.collapsingToolbar.setContentScrimColor(backgroundColor)
+        binding.collapsingToolbar.setStatusBarScrimColor(backgroundColor)
+
+        val isLightBackground = ColorUtils.calculateLuminance(backgroundColor) > 0.45f
+        val foregroundColor = if (isLightBackground) Color.BLACK else Color.WHITE
+
+        // Collapsed title sits on top of the solid scrim color, so it needs
+        // the dynamic contrast color. Expanded title sits over the image's
+        // own gradient overlay (always dark at that edge), so it stays
+        // white — same reasoning as artistTitle in fragment_artist_details.xml.
+        binding.collapsingToolbar.setCollapsedTitleTextColor(foregroundColor)
+        binding.collapsingToolbar.setExpandedTitleColor(Color.WHITE)
+
+        binding.toolbar.navigationIcon?.let { DrawableCompat.setTint(it, foregroundColor) }
+
+        songAdapter.setDynamicTextColors(
+            foregroundColor,
+            ColorUtils.setAlphaComponent(foregroundColor, 0xCC)
+        )
     }
 
     override fun onDestroyView() {
