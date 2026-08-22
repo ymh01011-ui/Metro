@@ -1,11 +1,15 @@
 package code.name.monkey.retromusic.fragments.artists
 
+import android.animation.Animator
+import android.animation.ObjectAnimator
 import android.graphics.Bitmap
 import android.graphics.Color
 import android.graphics.drawable.Drawable
 import android.os.Bundle
-import android.view.Gravity
+import android.transition.TransitionValues
+import android.transition.Visibility
 import android.view.View
+import android.view.ViewGroup
 import android.view.animation.AnimationUtils
 import androidx.core.graphics.ColorUtils
 import androidx.core.graphics.drawable.DrawableCompat
@@ -35,6 +39,37 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
+/**
+ * ترانزيشن مخصصة: بدل ما الصفحة تدخل من خارج الشاشة بالكامل (100%)،
+ * بتبدأ من نسبة معينة بس (افتراضياً آخر 10% من ارتفاع الشاشة) وتكمل لفوق خالص.
+ * نفس الفكرة بالظبط بتتطبق عكسياً عند الخروج (الرجوع للصفحة اللي قبلها).
+ */
+private class PartialSlideUp(
+    private val fraction: Float = 0.10f
+) : Visibility() {
+
+    override fun onAppear(
+        sceneRoot: ViewGroup,
+        view: View,
+        startValues: TransitionValues?,
+        endValues: TransitionValues?
+    ): Animator {
+        val startTranslationY = sceneRoot.height * fraction
+        view.translationY = startTranslationY
+        return ObjectAnimator.ofFloat(view, View.TRANSLATION_Y, startTranslationY, 0f)
+    }
+
+    override fun onDisappear(
+        sceneRoot: ViewGroup,
+        view: View,
+        startValues: TransitionValues?,
+        endValues: TransitionValues?
+    ): Animator {
+        val endTranslationY = sceneRoot.height * fraction
+        return ObjectAnimator.ofFloat(view, View.TRANSLATION_Y, 0f, endTranslationY)
+    }
+}
+
 class ArtistAllSongsFragment : AbsMainActivityFragment(R.layout.fragment_artist_all_songs) {
 
     private var _binding: FragmentArtistAllSongsBinding? = null
@@ -45,15 +80,16 @@ class ArtistAllSongsFragment : AbsMainActivityFragment(R.layout.fragment_artist_
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        // أنيميشن الخروج من الأسفل والعودة للأسفل بسلاسة
-        enterTransition = android.transition.Slide(Gravity.BOTTOM).apply {
+        // أنيميشن الدخول: بيبدأ من آخر 10% تحت الشاشة بس ويكمل لفوق (90% -> 100%)
+        enterTransition = PartialSlideUp(fraction = 0.10f).apply {
             duration = 280L
             interpolator = AnimationUtils.loadInterpolator(
                 context,
                 android.R.interpolator.fast_out_slow_in
             )
         }
-        returnTransition = android.transition.Slide(Gravity.BOTTOM).apply {
+        // أنيميشن الرجوع: بينزل نفس المسافة (10%) بس تحت
+        returnTransition = PartialSlideUp(fraction = 0.10f).apply {
             duration = 220L
             interpolator = AnimationUtils.loadInterpolator(
                 context,
