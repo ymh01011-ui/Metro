@@ -1,16 +1,10 @@
 package code.name.monkey.retromusic.fragments.artists
 
-import android.animation.Animator
-import android.animation.ObjectAnimator
 import android.graphics.Bitmap
 import android.graphics.Color
 import android.graphics.drawable.Drawable
 import android.os.Bundle
-import android.transition.TransitionValues
-import android.transition.Visibility
 import android.view.View
-import android.view.ViewGroup
-import android.view.animation.AnimationUtils
 import androidx.core.graphics.ColorUtils
 import androidx.core.graphics.drawable.DrawableCompat
 import androidx.core.os.BundleCompat
@@ -35,40 +29,10 @@ import code.name.monkey.retromusic.util.ArtistPaletteEngine
 import com.bumptech.glide.Glide
 import com.bumptech.glide.request.target.CustomTarget
 import com.bumptech.glide.request.transition.Transition
+import com.google.android.material.transition.MaterialFadeThrough
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-
-/**
- * ترانزيشن مخصصة: بدل ما الصفحة تدخل من خارج الشاشة بالكامل (100%)،
- * بتبدأ من نسبة معينة بس (افتراضياً آخر 10% من ارتفاع الشاشة) وتكمل لفوق خالص.
- * نفس الفكرة بالظبط بتتطبق عكسياً عند الخروج (الرجوع للصفحة اللي قبلها).
- */
-private class PartialSlideUp(
-    private val fraction: Float = 0.10f
-) : Visibility() {
-
-    override fun onAppear(
-        sceneRoot: ViewGroup,
-        view: View,
-        startValues: TransitionValues?,
-        endValues: TransitionValues?
-    ): Animator {
-        val startTranslationY = sceneRoot.height * fraction
-        view.translationY = startTranslationY
-        return ObjectAnimator.ofFloat(view, View.TRANSLATION_Y, startTranslationY, 0f)
-    }
-
-    override fun onDisappear(
-        sceneRoot: ViewGroup,
-        view: View,
-        startValues: TransitionValues?,
-        endValues: TransitionValues?
-    ): Animator {
-        val endTranslationY = sceneRoot.height * fraction
-        return ObjectAnimator.ofFloat(view, View.TRANSLATION_Y, 0f, endTranslationY)
-    }
-}
 
 class ArtistAllSongsFragment : AbsMainActivityFragment(R.layout.fragment_artist_all_songs) {
 
@@ -80,21 +44,12 @@ class ArtistAllSongsFragment : AbsMainActivityFragment(R.layout.fragment_artist_
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        // أنيميشن الدخول: بيبدأ من آخر 10% تحت الشاشة بس ويكمل لفوق (90% -> 100%)
-        enterTransition = PartialSlideUp(fraction = 0.10f).apply {
-            duration = 280L
-            interpolator = AnimationUtils.loadInterpolator(
-                context,
-                android.R.interpolator.fast_out_slow_in
-            )
+        // انتقال Fade Through: كروس فيد سريع بدل التزحلق من تحت
+        enterTransition = MaterialFadeThrough().apply {
+            duration = 200L
         }
-        // أنيميشن الرجوع: بينزل نفس المسافة (10%) بس تحت
-        returnTransition = PartialSlideUp(fraction = 0.10f).apply {
-            duration = 220L
-            interpolator = AnimationUtils.loadInterpolator(
-                context,
-                android.R.interpolator.fast_out_linear_in
-            )
+        returnTransition = MaterialFadeThrough().apply {
+            duration = 200L
         }
     }
 
