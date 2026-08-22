@@ -29,7 +29,7 @@ import code.name.monkey.retromusic.util.ArtistPaletteEngine
 import com.bumptech.glide.Glide
 import com.bumptech.glide.request.target.CustomTarget
 import com.bumptech.glide.request.transition.Transition
-import com.google.android.material.transition.MaterialFadeThrough
+import com.google.android.material.transition.MaterialSharedAxis
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -44,12 +44,13 @@ class ArtistAllSongsFragment : AbsMainActivityFragment(R.layout.fragment_artist_
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        // انتقال Fade Through: كروس فيد سريع بدل التزحلق من تحت
-        enterTransition = MaterialFadeThrough().apply {
-            duration = 200L
+        // انتقال Shared Axis (محور Y): فيد + حركة خفيفة بإتجاه رأسي، مع دخول للأمام (forward)
+        enterTransition = MaterialSharedAxis(MaterialSharedAxis.Y, true).apply {
+            duration = 300L
         }
-        returnTransition = MaterialFadeThrough().apply {
-            duration = 200L
+        // عند الرجوع: نفس المحور بس بإتجاه عكسي (forward = false)
+        returnTransition = MaterialSharedAxis(MaterialSharedAxis.Y, false).apply {
+            duration = 300L
         }
     }
 
