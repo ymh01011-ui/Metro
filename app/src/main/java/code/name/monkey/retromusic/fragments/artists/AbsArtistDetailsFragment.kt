@@ -48,6 +48,7 @@ import com.bumptech.glide.request.transition.Transition
 import com.google.android.material.shape.MaterialShapeDrawable
 import com.google.android.material.transition.MaterialContainerTransform
 import com.google.android.material.transition.MaterialSharedAxis
+import com.google.android.material.transition.SlideDistanceProvider
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -96,11 +97,11 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
         val slideDistancePx = (resources.displayMetrics.density * 80).toInt()
         exitTransition = MaterialSharedAxis(MaterialSharedAxis.Y, true).apply {
             duration = 400L
-            slideDistance = slideDistancePx
+            (primaryAnimatorProvider as? SlideDistanceProvider)?.slideDistance = slideDistancePx
         }
         reenterTransition = MaterialSharedAxis(MaterialSharedAxis.Y, false).apply {
             duration = 400L
-            slideDistance = slideDistancePx
+            (primaryAnimatorProvider as? SlideDistanceProvider)?.slideDistance = slideDistancePx
         }
     }
 
