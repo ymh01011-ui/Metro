@@ -45,12 +45,15 @@ class ArtistAllSongsFragment : AbsMainActivityFragment(R.layout.fragment_artist_
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         // انتقال Shared Axis (محور Y): فيد + حركة خفيفة بإتجاه رأسي، مع دخول للأمام (forward)
+        val slideDistancePx = (resources.displayMetrics.density * 80).toInt()
         enterTransition = MaterialSharedAxis(MaterialSharedAxis.Y, true).apply {
-            duration = 300L
+            duration = 400L
+            slideDistance = slideDistancePx
         }
         // عند الرجوع: نفس المحور بس بإتجاه عكسي (forward = false)
         returnTransition = MaterialSharedAxis(MaterialSharedAxis.Y, false).apply {
-            duration = 300L
+            duration = 400L
+            slideDistance = slideDistancePx
         }
     }
 
