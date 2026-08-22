@@ -47,6 +47,7 @@ import com.bumptech.glide.request.target.CustomTarget
 import com.bumptech.glide.request.transition.Transition
 import com.google.android.material.shape.MaterialShapeDrawable
 import com.google.android.material.transition.MaterialContainerTransform
+import com.google.android.material.transition.MaterialFadeThrough
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -89,6 +90,14 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
             scrimColor = Color.TRANSPARENT
             setAllContainerColors(Color.TRANSPARENT)
             setElevationShadowEnabled(false)
+        }
+
+        // انتقال سريع (Fade Through) عند الخروج لصفحة "See All" وعند الرجوع منها
+        exitTransition = MaterialFadeThrough().apply {
+            duration = 200L
+        }
+        reenterTransition = MaterialFadeThrough().apply {
+            duration = 200L
         }
     }
 
