@@ -47,7 +47,7 @@ import com.bumptech.glide.request.target.CustomTarget
 import com.bumptech.glide.request.transition.Transition
 import com.google.android.material.shape.MaterialShapeDrawable
 import com.google.android.material.transition.MaterialContainerTransform
-import com.google.android.material.transition.MaterialFadeThrough
+import com.google.android.material.transition.MaterialSharedAxis
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -92,12 +92,12 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
             setElevationShadowEnabled(false)
         }
 
-        // انتقال سريع (Fade Through) عند الخروج لصفحة "See All" وعند الرجوع منها
-        exitTransition = MaterialFadeThrough().apply {
-            duration = 200L
+        // انتقال Shared Axis (محور Y) عند الخروج لصفحة "See All" (forward) وعند الرجوع منها (backward)
+        exitTransition = MaterialSharedAxis(MaterialSharedAxis.Y, true).apply {
+            duration = 300L
         }
-        reenterTransition = MaterialFadeThrough().apply {
-            duration = 200L
+        reenterTransition = MaterialSharedAxis(MaterialSharedAxis.Y, false).apply {
+            duration = 300L
         }
     }
 
