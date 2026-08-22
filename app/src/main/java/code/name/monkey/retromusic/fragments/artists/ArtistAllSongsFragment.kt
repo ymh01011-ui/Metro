@@ -30,6 +30,7 @@ import com.bumptech.glide.Glide
 import com.bumptech.glide.request.target.CustomTarget
 import com.bumptech.glide.request.transition.Transition
 import com.google.android.material.transition.MaterialSharedAxis
+import com.google.android.material.transition.SlideDistanceProvider
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -44,16 +45,16 @@ class ArtistAllSongsFragment : AbsMainActivityFragment(R.layout.fragment_artist_
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        // انتقال Shared Axis (محور Y): فيد + حركة خفيفة بإتجاه رأسي، مع دخول للأمام (forward)
+        // انتقال Shared Axis (محور Y): فيد + حركة رأسية، مع دخول للأمام (forward)
         val slideDistancePx = (resources.displayMetrics.density * 80).toInt()
         enterTransition = MaterialSharedAxis(MaterialSharedAxis.Y, true).apply {
             duration = 400L
-            slideDistance = slideDistancePx
+            (primaryAnimatorProvider as? SlideDistanceProvider)?.slideDistance = slideDistancePx
         }
         // عند الرجوع: نفس المحور بس بإتجاه عكسي (forward = false)
         returnTransition = MaterialSharedAxis(MaterialSharedAxis.Y, false).apply {
             duration = 400L
-            slideDistance = slideDistancePx
+            (primaryAnimatorProvider as? SlideDistanceProvider)?.slideDistance = slideDistancePx
         }
     }
 
