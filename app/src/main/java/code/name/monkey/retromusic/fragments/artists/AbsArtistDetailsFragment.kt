@@ -163,13 +163,20 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
 
         binding.headerContainer?.transitionName = (artistId ?: artistName).toString()
 
-        // يجب تأجيل الانتقال دائماً لكي تعمل أنيميشن الرجوع من الألبوم
-        postponeEnterTransition()
+        // نأجل الانتقال بس أول مرة الصفحة بتتحمل (عشان أنيميشن الدخول من الألبوم يشتغل صح)
+        // لو البيانات محملة أصلاً (يعني راجعين من صفحة "See All")، منأجلش تاني
+        // عشان منستناش الـ LiveData تبعت تاني فيحصل وقفة لحظية في نص الأنيميشن
+        val isFirstLoad = !::artist.isInitialized
+        if (isFirstLoad) {
+            postponeEnterTransition()
+        }
 
         detailsViewModel.getArtist().observe(viewLifecycleOwner) {
             showArtist(it)
-            view.doOnPreDraw {
-                startPostponedEnterTransition()
+            if (isFirstLoad) {
+                view.doOnPreDraw {
+                    startPostponedEnterTransition()
+                }
             }
         }
         setupRecyclerView()
