@@ -94,13 +94,13 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
         }
 
         // انتقال Shared Axis (محور Y) عند الخروج لصفحة "See All" (forward) وعند الرجوع منها (backward)
-        val slideDistancePx = (resources.displayMetrics.density * 110).toInt()
+        val slideDistancePx = (resources.displayMetrics.density * 150).toInt()
         exitTransition = MaterialSharedAxis(MaterialSharedAxis.Y, true).apply {
-            duration = 200L
+            duration = 300L
             (primaryAnimatorProvider as? SlideDistanceProvider)?.slideDistance = slideDistancePx
         }
         reenterTransition = MaterialSharedAxis(MaterialSharedAxis.Y, false).apply {
-            duration = 200L
+            duration = 300L
             (primaryAnimatorProvider as? SlideDistanceProvider)?.slideDistance = slideDistancePx
         }
     }
