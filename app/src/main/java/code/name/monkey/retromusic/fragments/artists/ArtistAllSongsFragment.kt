@@ -12,7 +12,6 @@ import androidx.core.os.bundleOf
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
-import androidx.core.view.doOnPreDraw
 import androidx.core.view.updatePadding
 import androidx.lifecycle.lifecycleScope
 import androidx.navigation.fragment.findNavController
@@ -36,6 +35,12 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
+private const val TRANSITION_DURATION_MS = 300L
+
+// وقت إضافي بسيط بعد مدة الترانزيشن قبل ما نرجع نفعّل أنيميشن عناصر الـ RecyclerView
+// عشان منخليهاش تتزاحم مع أنيميشن الصفحة نفسها وتسبب تهنيج (jank) وقت الدخول
+private const val ITEM_ANIMATOR_REENABLE_DELAY_MS = TRANSITION_DURATION_MS + 50L
+
 class ArtistAllSongsFragment : AbsMainActivityFragment(R.layout.fragment_artist_all_songs) {
 
     private var _binding: FragmentArtistAllSongsBinding? = null
@@ -51,13 +56,13 @@ class ArtistAllSongsFragment : AbsMainActivityFragment(R.layout.fragment_artist_
         // وما يبانش خلفية الـ container وراها (سبب الوميض الأبيض/الأسود)
         val slideDistancePx = (resources.displayMetrics.density * 150).toInt()
         enterTransition = MaterialSharedAxis(MaterialSharedAxis.Y, true).apply {
-            duration = 300L
+            duration = TRANSITION_DURATION_MS
             secondaryAnimatorProvider = null
             (primaryAnimatorProvider as? SlideDistanceProvider)?.slideDistance = slideDistancePx
         }
         // عند الرجوع: نفس المحور بس بإتجاه عكسي (forward = false)
         returnTransition = MaterialSharedAxis(MaterialSharedAxis.Y, false).apply {
-            duration = 300L
+            duration = TRANSITION_DURATION_MS
             secondaryAnimatorProvider = null
             (primaryAnimatorProvider as? SlideDistanceProvider)?.slideDistance = slideDistancePx
         }
@@ -67,9 +72,11 @@ class ArtistAllSongsFragment : AbsMainActivityFragment(R.layout.fragment_artist_
         allowEnterTransitionOverlap = true
         allowReturnTransitionOverlap = true
 
-        // تأجيل بداية أنيميشن الدخول لحد ما الصفحة تتظبط كاملة قبل أول رسمة
-        // ده مهم عشان يمنع الفلاش/القطع لما الأنيميشن يبدأ قبل ما الفيوهات تتظبط
-        postponeEnterTransition()
+        // ملاحظة: شلنا postponeEnterTransition/doOnPreDraw اللي كانت هنا قبل كده.
+        // الصفحة دي مفيهاش صورة أو داتا async لازم نستناها قبل الأنيميشن، وكل اللي كان بيعمله
+        // التأجيل إنه يستنى أول Layout pass كامل (يعني inflate كل عناصر RecyclerView الأول)
+        // قبل ما أنيميشن الدخول يبدأ - وده بالظبط اللي كان بيسبب التجمد/القفزة اللي شفناها بالفيديو.
+        // من غير التأجيل، MaterialSharedAxis بيبدأ فورًا مع بداية الـ transaction.
     }
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
@@ -107,15 +114,18 @@ class ArtistAllSongsFragment : AbsMainActivityFragment(R.layout.fragment_artist_
 
         songAdapter = SimpleSongAdapter(requireActivity(), songs, R.layout.item_song)
         binding.recyclerView.apply {
+            // بنسيب itemAnimator مطفي لحد ما أنيميشن دخول الصفحة يخلص، عشان الاتنين ميشتغلوش
+            // مع بعض على نفس الـ thread ويسببوا تهنيج/تجمد وقت الدخول
+            itemAnimator = null
             layoutManager = LinearLayoutManager(context)
-            itemAnimator = DefaultItemAnimator()
             adapter = songAdapter
         }
 
-        // بداية الأنيميشن بعد ما الفيو يتظبط بالكامل وقبل أول رسمة، عشان يمنع الوميض
-        view.doOnPreDraw {
-            startPostponedEnterTransition()
-        }
+        view.postDelayed({
+            if (_binding != null) {
+                binding.recyclerView.itemAnimator = DefaultItemAnimator()
+            }
+        }, ITEM_ANIMATOR_REENABLE_DELAY_MS)
     }
 
     private fun extractArtistColor(artist: Artist) {
