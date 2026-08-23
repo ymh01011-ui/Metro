@@ -1,17 +1,12 @@
 package code.name.monkey.retromusic.fragments.artists
 
-import android.animation.Animator
-import android.animation.ObjectAnimator
 import android.graphics.Bitmap
 import android.graphics.Color
 import android.graphics.drawable.Drawable
 import android.os.Bundle
-import android.transition.TransitionValues
-import android.transition.Visibility
 import android.view.Menu
 import android.view.MenuItem
 import android.view.View
-import android.view.ViewGroup
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.graphics.ColorUtils
@@ -62,37 +57,6 @@ private const val FADE_START_FRACTION = 0.42f
 private const val GLASS_CIRCLE_ALPHA = 0x4D // ~30%
 private const val SEE_ALL_ALPHA = 0x99 // ~60%
 private const val SONGS_PREVIEW_COUNT = 6
-
-/**
- * ترانزيشن بسيطة: حركة Translation بس (من غير أي Alpha/Fade) عشان نتجنب
- * مشكلة الوميض الأسود اللي بتحصل مع أي أنيميشن بيعمل animate على الشفافية.
- */
-private class TranslateOnly(
-    private val slideDistance: Int,
-    private val forward: Boolean
-) : Visibility() {
-
-    override fun onAppear(
-        sceneRoot: ViewGroup,
-        view: View,
-        startValues: TransitionValues?,
-        endValues: TransitionValues?
-    ): Animator {
-        val offset = if (forward) slideDistance.toFloat() else -slideDistance.toFloat()
-        view.translationY = offset
-        return ObjectAnimator.ofFloat(view, View.TRANSLATION_Y, offset, 0f)
-    }
-
-    override fun onDisappear(
-        sceneRoot: ViewGroup,
-        view: View,
-        startValues: TransitionValues?,
-        endValues: TransitionValues?
-    ): Animator {
-        val offset = if (forward) -slideDistance.toFloat() else slideDistance.toFloat()
-        return ObjectAnimator.ofFloat(view, View.TRANSLATION_Y, 0f, offset)
-    }
-}
 
 abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragment_artist_details),
     IAlbumClickListener {
