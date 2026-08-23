@@ -12,6 +12,7 @@ import androidx.core.os.bundleOf
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.doOnPreDraw
 import androidx.core.view.updatePadding
 import androidx.lifecycle.lifecycleScope
 import androidx.navigation.fragment.findNavController
@@ -59,6 +60,8 @@ class ArtistAllSongsFragment : AbsMainActivityFragment(R.layout.fragment_artist_
         // منع تراكب أنيميشن الدخول والخروج مع بعض (بيمنع الوميض الأسود اللحظي)
         allowEnterTransitionOverlap = false
         allowReturnTransitionOverlap = false
+        // تأجيل بداية أنيميشن الدخول لحد ما الصفحة تتظبط كاملة قبل أول رسمة
+        postponeEnterTransition()
     }
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
@@ -99,6 +102,11 @@ class ArtistAllSongsFragment : AbsMainActivityFragment(R.layout.fragment_artist_
             layoutManager = LinearLayoutManager(context)
             itemAnimator = DefaultItemAnimator()
             adapter = songAdapter
+        }
+
+        // بداية الأنيميشن بعد ما الفيو يتظبط بالكامل وقبل أول رسمة، عشان يمنع الوميض
+        view.doOnPreDraw {
+            startPostponedEnterTransition()
         }
     }
 
