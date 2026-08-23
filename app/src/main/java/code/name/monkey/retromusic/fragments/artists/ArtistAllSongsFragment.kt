@@ -52,6 +52,12 @@ class ArtistAllSongsFragment : AbsMainActivityFragment(R.layout.fragment_artist_
         returnTransition = TranslateOnly(slideDistancePx, forward = false).apply {
             duration = 300L
         }
+
+        // يخلي الـ enter والـ exit transitions تشتغل مع بعض بدل ما يستنوا بعض
+        // ده اللي بيمنع الوميض الأسود اللي بيظهر لما الـ container يفضى للحظة
+        allowEnterTransitionOverlap = true
+        allowReturnTransitionOverlap = true
+
         // تأجيل بداية أنيميشن الدخول لحد ما الصفحة تتظبط كاملة قبل أول رسمة
         postponeEnterTransition()
     }
