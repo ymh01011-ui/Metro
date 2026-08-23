@@ -30,6 +30,8 @@ import code.name.monkey.retromusic.util.ArtistPaletteEngine
 import com.bumptech.glide.Glide
 import com.bumptech.glide.request.target.CustomTarget
 import com.bumptech.glide.request.transition.Transition
+import com.google.android.material.transition.MaterialSharedAxis
+import com.google.android.material.transition.SlideDistanceProvider
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -44,21 +46,25 @@ class ArtistAllSongsFragment : AbsMainActivityFragment(R.layout.fragment_artist_
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        // حركة Translation بس (من غير Fade) عشان نتجنب وميض الأسود
+        // انتقال Shared Axis (محور Y): فيد + حركة رأسية، مع دخول للأمام (forward)
         val slideDistancePx = (resources.displayMetrics.density * 150).toInt()
-        enterTransition = TranslateOnly(slideDistancePx, forward = true).apply {
+        enterTransition = MaterialSharedAxis(MaterialSharedAxis.Y, true).apply {
             duration = 300L
+            (primaryAnimatorProvider as? SlideDistanceProvider)?.slideDistance = slideDistancePx
         }
-        returnTransition = TranslateOnly(slideDistancePx, forward = false).apply {
+        // عند الرجوع: نفس المحور بس بإتجاه عكسي (forward = false)
+        returnTransition = MaterialSharedAxis(MaterialSharedAxis.Y, false).apply {
             duration = 300L
+            (primaryAnimatorProvider as? SlideDistanceProvider)?.slideDistance = slideDistancePx
         }
-
-        // يخلي الـ enter والـ exit transitions تشتغل مع بعض بدل ما يستنوا بعض
-        // ده اللي بيمنع الوميض الأسود اللي بيظهر لما الـ container يفضى للحظة
+        // لازم تكون true عشان الصفحتين يتحركوا مع بعض في نفس الوقت
+        // لو خليتها false، الصفحة القديمة بتخلص تمامًا الأول والـ container بيفضى للحظة
+        // فبيظهر خلفية النافذة (سودة) قبل ما الصفحة الجديدة تبدأ - وده سبب الوميض
         allowEnterTransitionOverlap = true
         allowReturnTransitionOverlap = true
 
         // تأجيل بداية أنيميشن الدخول لحد ما الصفحة تتظبط كاملة قبل أول رسمة
+        // ده مهم عشان يمنع الفلاش/القطع لما الأنيميشن يبدأ قبل ما الفيوهات تتظبط
         postponeEnterTransition()
     }
 
