@@ -56,6 +56,9 @@ class ArtistAllSongsFragment : AbsMainActivityFragment(R.layout.fragment_artist_
             duration = 300L
             (primaryAnimatorProvider as? SlideDistanceProvider)?.slideDistance = slideDistancePx
         }
+        // منع تراكب أنيميشن الدخول والخروج مع بعض (بيمنع الوميض الأسود اللحظي)
+        allowEnterTransitionOverlap = false
+        allowReturnTransitionOverlap = false
     }
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
