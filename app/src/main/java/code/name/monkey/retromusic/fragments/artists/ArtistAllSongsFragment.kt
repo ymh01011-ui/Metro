@@ -46,15 +46,19 @@ class ArtistAllSongsFragment : AbsMainActivityFragment(R.layout.fragment_artist_
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        // انتقال Shared Axis (محور Y): فيد + حركة رأسية، مع دخول للأمام (forward)
+        // انتقال Shared Axis (محور Y): حركة رأسية بس من غير فيد، مع دخول للأمام (forward)
+        // بنشيل الـ secondaryAnimatorProvider (الفيد) عشان الصفحة تفضل شفافيتها 100% طول الوقت
+        // وما يبانش خلفية الـ container وراها (سبب الوميض الأبيض/الأسود)
         val slideDistancePx = (resources.displayMetrics.density * 150).toInt()
         enterTransition = MaterialSharedAxis(MaterialSharedAxis.Y, true).apply {
             duration = 300L
+            secondaryAnimatorProvider = null
             (primaryAnimatorProvider as? SlideDistanceProvider)?.slideDistance = slideDistancePx
         }
         // عند الرجوع: نفس المحور بس بإتجاه عكسي (forward = false)
         returnTransition = MaterialSharedAxis(MaterialSharedAxis.Y, false).apply {
             duration = 300L
+            secondaryAnimatorProvider = null
             (primaryAnimatorProvider as? SlideDistanceProvider)?.slideDistance = slideDistancePx
         }
         // لازم تكون true عشان الصفحتين يتحركوا مع بعض في نفس الوقت
