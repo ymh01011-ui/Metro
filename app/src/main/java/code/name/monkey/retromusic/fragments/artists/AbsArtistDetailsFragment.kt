@@ -47,6 +47,8 @@ import com.bumptech.glide.request.target.CustomTarget
 import com.bumptech.glide.request.transition.Transition
 import com.google.android.material.shape.MaterialShapeDrawable
 import com.google.android.material.transition.MaterialContainerTransform
+import com.google.android.material.transition.MaterialSharedAxis
+import com.google.android.material.transition.SlideDistanceProvider
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -91,17 +93,19 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
             setElevationShadowEnabled(false)
         }
 
-        // حركة Translation بس (من غير Fade) عند الخروج لصفحة "See All" وعند الرجوع منها
+        // انتقال Shared Axis (محور Y) عند الخروج لصفحة "See All" (forward) وعند الرجوع منها (backward)
         val slideDistancePx = (resources.displayMetrics.density * 150).toInt()
-        exitTransition = TranslateOnly(slideDistancePx, forward = true).apply {
+        exitTransition = MaterialSharedAxis(MaterialSharedAxis.Y, true).apply {
             duration = 300L
+            (primaryAnimatorProvider as? SlideDistanceProvider)?.slideDistance = slideDistancePx
         }
-        reenterTransition = TranslateOnly(slideDistancePx, forward = false).apply {
+        reenterTransition = MaterialSharedAxis(MaterialSharedAxis.Y, false).apply {
             duration = 300L
+            (primaryAnimatorProvider as? SlideDistanceProvider)?.slideDistance = slideDistancePx
         }
-
-        // يخلي الـ enter والـ exit transitions تشتغل مع بعض بدل ما يستنوا بعض
-        // ده اللي بيمنع الوميض الأسود اللي بيظهر لما الـ container يفضى للحظة
+        // لازم تكون true عشان الصفحتين يتحركوا مع بعض في نفس الوقت
+        // لو خليتها false، الصفحة القديمة بتخلص تمامًا الأول والـ container بيفضى للحظة
+        // فبيظهر خلفية النافذة (سودة) قبل ما الصفحة الجديدة تبدأ - وده سبب الوميض
         allowEnterTransitionOverlap = true
         allowReturnTransitionOverlap = true
     }
