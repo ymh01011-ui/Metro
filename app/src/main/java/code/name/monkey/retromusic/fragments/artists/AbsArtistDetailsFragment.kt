@@ -94,13 +94,17 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
         }
 
         // انتقال Shared Axis (محور Y) عند الخروج لصفحة "See All" (forward) وعند الرجوع منها (backward)
+        // بنشيل الـ secondaryAnimatorProvider (الفيد) ونسيب بس الحركة (Slide)
+        // عشان الصفحات تفضل شفافيتها 100% طول الوقت وما يبانش خلفية الـ container وراهم (سبب الوميض)
         val slideDistancePx = (resources.displayMetrics.density * 150).toInt()
         exitTransition = MaterialSharedAxis(MaterialSharedAxis.Y, true).apply {
             duration = 300L
+            secondaryAnimatorProvider = null
             (primaryAnimatorProvider as? SlideDistanceProvider)?.slideDistance = slideDistancePx
         }
         reenterTransition = MaterialSharedAxis(MaterialSharedAxis.Y, false).apply {
             duration = 300L
+            secondaryAnimatorProvider = null
             (primaryAnimatorProvider as? SlideDistanceProvider)?.slideDistance = slideDistancePx
         }
         // لازم تكون true عشان الصفحتين يتحركوا مع بعض في نفس الوقت
