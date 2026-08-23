@@ -1,10 +1,15 @@
 package code.name.monkey.retromusic.fragments.artists
 
+import android.animation.Animator
+import android.animation.ObjectAnimator
 import android.graphics.Bitmap
 import android.graphics.Color
 import android.graphics.drawable.Drawable
 import android.os.Bundle
+import android.transition.TransitionValues
+import android.transition.Visibility
 import android.view.View
+import android.view.ViewGroup
 import androidx.core.graphics.ColorUtils
 import androidx.core.graphics.drawable.DrawableCompat
 import androidx.core.os.BundleCompat
@@ -30,11 +35,42 @@ import code.name.monkey.retromusic.util.ArtistPaletteEngine
 import com.bumptech.glide.Glide
 import com.bumptech.glide.request.target.CustomTarget
 import com.bumptech.glide.request.transition.Transition
-import com.google.android.material.transition.MaterialSharedAxis
-import com.google.android.material.transition.SlideDistanceProvider
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+
+/**
+ * ترانزيشن بسيطة: حركة Translation بس (من غير أي Alpha/Fade) عشان نتجنب
+ * مشكلة الوميض الأسود اللي بتحصل مع أي أنيميشن بيعمل animate على الشفافية.
+ * الفيو بيتحرك بمسافة محددة (slideDistance) ويوصل لمكانه النهائي، من غير ما
+ * يختفي أو يفضل شفاف في أي لحظة.
+ */
+private class TranslateOnly(
+    private val slideDistance: Int,
+    private val forward: Boolean
+) : Visibility() {
+
+    override fun onAppear(
+        sceneRoot: ViewGroup,
+        view: View,
+        startValues: TransitionValues?,
+        endValues: TransitionValues?
+    ): Animator {
+        val offset = if (forward) slideDistance.toFloat() else -slideDistance.toFloat()
+        view.translationY = offset
+        return ObjectAnimator.ofFloat(view, View.TRANSLATION_Y, offset, 0f)
+    }
+
+    override fun onDisappear(
+        sceneRoot: ViewGroup,
+        view: View,
+        startValues: TransitionValues?,
+        endValues: TransitionValues?
+    ): Animator {
+        val offset = if (forward) -slideDistance.toFloat() else slideDistance.toFloat()
+        return ObjectAnimator.ofFloat(view, View.TRANSLATION_Y, 0f, offset)
+    }
+}
 
 class ArtistAllSongsFragment : AbsMainActivityFragment(R.layout.fragment_artist_all_songs) {
 
@@ -46,20 +82,14 @@ class ArtistAllSongsFragment : AbsMainActivityFragment(R.layout.fragment_artist_
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        // انتقال Shared Axis (محور Y): فيد + حركة رأسية، مع دخول للأمام (forward)
+        // حركة Translation بس (من غير Fade) عشان نتجنب وميض الأسود
         val slideDistancePx = (resources.displayMetrics.density * 150).toInt()
-        enterTransition = MaterialSharedAxis(MaterialSharedAxis.Y, true).apply {
+        enterTransition = TranslateOnly(slideDistancePx, forward = true).apply {
             duration = 300L
-            (primaryAnimatorProvider as? SlideDistanceProvider)?.slideDistance = slideDistancePx
         }
-        // عند الرجوع: نفس المحور بس بإتجاه عكسي (forward = false)
-        returnTransition = MaterialSharedAxis(MaterialSharedAxis.Y, false).apply {
+        returnTransition = TranslateOnly(slideDistancePx, forward = false).apply {
             duration = 300L
-            (primaryAnimatorProvider as? SlideDistanceProvider)?.slideDistance = slideDistancePx
         }
-        // منع تراكب أنيميشن الدخول والخروج مع بعض (بيمنع الوميض الأسود اللحظي)
-        allowEnterTransitionOverlap = false
-        allowReturnTransitionOverlap = false
         // تأجيل بداية أنيميشن الدخول لحد ما الصفحة تتظبط كاملة قبل أول رسمة
         postponeEnterTransition()
     }
