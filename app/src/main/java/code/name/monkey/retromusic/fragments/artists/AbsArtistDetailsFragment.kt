@@ -20,7 +20,6 @@ import androidx.core.view.updatePadding
 import androidx.lifecycle.lifecycleScope
 import androidx.navigation.fragment.FragmentNavigatorExtras
 import androidx.navigation.fragment.findNavController
-import androidx.recyclerview.widget.DefaultItemAnimator
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.LinearLayoutManager
 import code.name.monkey.retromusic.EXTRA_ALBUM_ID
@@ -56,14 +55,9 @@ import org.koin.android.ext.android.get
 import java.util.*
 
 private const val FADE_START_FRACTION = 0.42f
-private const val GLASS_CIRCLE_ALPHA = 0x4D // ~30%
-private const val SEE_ALL_ALPHA = 0x99 // ~60%
+private const val GLASS_CIRCLE_ALPHA = 0x4D
+private const val SEE_ALL_ALPHA = 0x99
 private const val SONGS_PREVIEW_COUNT = 6
-private const val TRANSITION_DURATION_MS = 300L
-
-// وقت إضافي بسيط بعد مدة الترانزيشن قبل ما نرجع نفعّل أنيميشن عناصر الـ RecyclerView
-// عشان منخليهاش تتزاحم مع أنيميشن الصفحة نفسها وتسبب تهنيج (jank) وقت الدخول/الخروج
-private const val ITEM_ANIMATOR_REENABLE_DELAY_MS = TRANSITION_DURATION_MS + 50L
 
 abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragment_artist_details),
     IAlbumClickListener {
@@ -79,8 +73,7 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
     private lateinit var singlesAdapter: HorizontalAlbumAdapter
     private lateinit var appearsOnAdapter: HorizontalAlbumAdapter
     private var forceDownload: Boolean = false
-
-    // متغيرات لحفظ الصورة والألوان لتجنب اللاج عند الرجوع للصفحة
+    
     private var dominantBackgroundColor: Int = Color.BLACK
     private var cachedBitmap: Bitmap? = null
     private var cachedGradientStops: IntArray? = null
@@ -98,23 +91,17 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
             setElevationShadowEnabled(false)
         }
 
-        // انتقال Shared Axis (محور Y) عند الخروج لصفحة "See All" (forward) وعند الرجوع منها (backward)
-        // بنشيل الـ secondaryAnimatorProvider (الفيد) ونسيب بس الحركة (Slide)
-        // عشان الصفحات تفضل شفافيتها 100% طول الوقت وما يبانش خلفية الـ container وراهم (سبب الوميض)
         val slideDistancePx = (resources.displayMetrics.density * 150).toInt()
         exitTransition = MaterialSharedAxis(MaterialSharedAxis.Y, true).apply {
-            duration = TRANSITION_DURATION_MS
+            duration = 300L
             secondaryAnimatorProvider = null
             (primaryAnimatorProvider as? SlideDistanceProvider)?.slideDistance = slideDistancePx
         }
         reenterTransition = MaterialSharedAxis(MaterialSharedAxis.Y, false).apply {
-            duration = TRANSITION_DURATION_MS
+            duration = 300L
             secondaryAnimatorProvider = null
             (primaryAnimatorProvider as? SlideDistanceProvider)?.slideDistance = slideDistancePx
         }
-        // لازم تكون true عشان الصفحتين يتحركوا مع بعض في نفس الوقت
-        // لو خليتها false، الصفحة القديمة بتخلص تمامًا الأول والـ container بيفضى للحظة
-        // فبيظهر خلفية النافذة (سودة) قبل ما الصفحة الجديدة تبدأ - وده سبب الوميض
         allowEnterTransitionOverlap = true
         allowReturnTransitionOverlap = true
     }
@@ -168,9 +155,6 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
 
         binding.headerContainer?.transitionName = (artistId ?: artistName).toString()
 
-        // نأجل الانتقال بس أول مرة الصفحة بتتحمل (عشان أنيميشن الدخول من الألبوم يشتغل صح)
-        // لو البيانات محملة أصلاً (يعني راجعين من صفحة "See All")، منأجلش تاني
-        // عشان منستناش الـ LiveData تبعت تاني فيحصل وقفة لحظية في نص الأنيميشن
         val isFirstLoad = !::artist.isInitialized
         if (isFirstLoad) {
             postponeEnterTransition()
@@ -207,19 +191,18 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
             if (::artist.isInitialized) {
                 findNavController().navigate(
                     R.id.artistAllSongsFragment,
-                    ArtistAllSongsFragment.createBundle(artist, artist.sortedSongs, (artistId ?: artistName).toString())
+                    ArtistAllSongsFragment.createBundle(
+                        artist = artist,
+                        songs = artist.sortedSongs,
+                        transitionName = (artistId ?: artistName).toString(),
+                        backgroundColor = dominantBackgroundColor
+                    )
                 )
             }
         }
 
         binding.appBarLayout?.statusBarForeground =
             MaterialShapeDrawable.createWithElevationOverlay(requireContext())
-
-        // نأجّل تفعيل أنيميشن عناصر القوائم (item animator) لحد ما أنيميشن الصفحة (Shared Axis)
-        // يخلص تمامًا، عشان الاتنين ميشتغلوش مع بعض على نفس الـ thread ويسببوا تهنيج/تجمد
-        view.postDelayed({
-            enableListItemAnimations()
-        }, ITEM_ANIMATOR_REENABLE_DELAY_MS)
     }
 
     private fun addArtistSongsToPlaylist() {
@@ -234,52 +217,33 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
     }
 
     private fun setupRecyclerView() {
-        // بنستخدم نفس الـ Adapter لو موجود بالفعل بدل ما نعمل واحد جديد كل مرة الـ View يتبني
-        // (مثلاً لما نرجع من صفحة "See All")، عشان نقلل الشغل اللي بيحصل وقت الأنيميشن
-        if (!::albumAdapter.isInitialized) {
-            albumAdapter = HorizontalAlbumAdapter(requireActivity(), ArrayList(), this)
-        }
+        albumAdapter = HorizontalAlbumAdapter(requireActivity(), ArrayList(), this)
         binding.fragmentArtistContent.albumRecyclerView.apply {
             itemAnimator = null
             layoutManager = GridLayoutManager(this.context, 1, GridLayoutManager.HORIZONTAL, false)
             adapter = albumAdapter
         }
 
-        if (!::singlesAdapter.isInitialized) {
-            singlesAdapter = HorizontalAlbumAdapter(requireActivity(), ArrayList(), this)
-        }
+        singlesAdapter = HorizontalAlbumAdapter(requireActivity(), ArrayList(), this)
         binding.fragmentArtistContent.singlesRecyclerView.apply {
             itemAnimator = null
             layoutManager = GridLayoutManager(this.context, 1, GridLayoutManager.HORIZONTAL, false)
             adapter = singlesAdapter
         }
 
-        if (!::appearsOnAdapter.isInitialized) {
-            appearsOnAdapter = HorizontalAlbumAdapter(requireActivity(), ArrayList(), this)
-        }
+        appearsOnAdapter = HorizontalAlbumAdapter(requireActivity(), ArrayList(), this)
         binding.fragmentArtistContent.appearsOnRecyclerView.apply {
             itemAnimator = null
             layoutManager = GridLayoutManager(this.context, 1, GridLayoutManager.HORIZONTAL, false)
             adapter = appearsOnAdapter
         }
 
-        if (!::songAdapter.isInitialized) {
-            songAdapter = SimpleSongAdapter(requireActivity(), ArrayList(), R.layout.item_song)
-        }
+        songAdapter = SimpleSongAdapter(requireActivity(), ArrayList(), R.layout.item_song)
         binding.fragmentArtistContent.recyclerView.apply {
             itemAnimator = null
             layoutManager = LinearLayoutManager(this.context)
             adapter = songAdapter
         }
-    }
-
-    private fun enableListItemAnimations() {
-        if (_binding == null) return
-        val defaultAnimator = DefaultItemAnimator()
-        binding.fragmentArtistContent.albumRecyclerView.itemAnimator = defaultAnimator
-        binding.fragmentArtistContent.singlesRecyclerView.itemAnimator = DefaultItemAnimator()
-        binding.fragmentArtistContent.appearsOnRecyclerView.itemAnimator = DefaultItemAnimator()
-        binding.fragmentArtistContent.recyclerView.itemAnimator = DefaultItemAnimator()
     }
 
     private fun categorizeAlbums(artist: Artist): Triple<List<Album>, List<Album>, List<Album>> {
@@ -307,8 +271,7 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
         }
 
         this.artist = artist
-
-        // هيتم استدعاء الدالة دائماً، ولكن بداخلها فحص للـ Cache لمنع اللاج
+        
         loadArtistImage(artist)
 
         binding.artistTitle.text = artist.name
@@ -348,7 +311,6 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
     }
 
     private fun loadArtistImage(artist: Artist) {
-        // لو الصورة والألوان محفوظين، استخدمهم فوراً بدون ما تستنى عشان تتجنب اللاج
         if (cachedBitmap != null && hasExtractedColors && cachedGradientStops != null) {
             binding.image.setImageBitmap(cachedBitmap)
             setColors(dominantBackgroundColor, cachedGradientStops!!)
@@ -407,7 +369,7 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
         if (_binding == null) return
 
         binding.rootLayout.setBackgroundColor(backgroundColor)
-
+        
         binding.appBarLayout?.setBackgroundColor(ColorUtils.setAlphaComponent(backgroundColor, 0))
 
         val gradientDrawable = android.graphics.drawable.GradientDrawable(
@@ -552,7 +514,7 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
         }
         return true
     }
-
+    
     private fun clearImageCache() {
         cachedBitmap = null
         cachedGradientStops = null
