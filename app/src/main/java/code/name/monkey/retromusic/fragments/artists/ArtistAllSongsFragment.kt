@@ -70,6 +70,15 @@ class ArtistAllSongsFragment : AbsMainActivityFragment(R.layout.fragment_artist_
 
         dominantBackgroundColor = arguments?.getInt(EXTRA_DOMINANT_COLOR, Color.TRANSPARENT) ?: Color.TRANSPARENT
 
+        // 1. تهيئة الـ Adapter والـ RecyclerView أولاً قبل أي عملية تطبيق للألوان
+        songAdapter = SimpleSongAdapter(requireActivity(), songs, R.layout.item_song)
+        binding.recyclerView.apply {
+            layoutManager = LinearLayoutManager(context)
+            itemAnimator = DefaultItemAnimator()
+            adapter = songAdapter
+        }
+
+        // 2. إعداد الـ Insets ومستمع زر الرجوع
         WindowCompat.setDecorFitsSystemWindows(requireActivity().window, false)
         ViewCompat.setOnApplyWindowInsetsListener(binding.rootLayout) { _, insets ->
             val statusBarInsets = insets.getInsets(WindowInsetsCompat.Type.statusBars())
@@ -85,6 +94,7 @@ class ArtistAllSongsFragment : AbsMainActivityFragment(R.layout.fragment_artist_
             findNavController().navigateUp()
         }
 
+        // 3. تطبيق الألوان واستخراجها بعد ضمان جاهزية الـ songAdapter
         if (artist != null) {
             binding.toolbar.title = artist.name
             
@@ -93,13 +103,6 @@ class ArtistAllSongsFragment : AbsMainActivityFragment(R.layout.fragment_artist_
             } else {
                 extractArtistColor(artist)
             }
-        }
-
-        songAdapter = SimpleSongAdapter(requireActivity(), songs, R.layout.item_song)
-        binding.recyclerView.apply {
-            layoutManager = LinearLayoutManager(context)
-            itemAnimator = DefaultItemAnimator()
-            adapter = songAdapter
         }
     }
 
@@ -146,10 +149,12 @@ class ArtistAllSongsFragment : AbsMainActivityFragment(R.layout.fragment_artist_
         binding.toolbar.setTitleTextColor(foregroundColor)
         binding.toolbar.navigationIcon?.let { DrawableCompat.setTint(it, foregroundColor) }
 
-        songAdapter.setDynamicTextColors(
-            foregroundColor,
-            ColorUtils.setAlphaComponent(foregroundColor, 0xCC)
-        )
+        if (::songAdapter.isInitialized) {
+            songAdapter.setDynamicTextColors(
+                foregroundColor,
+                ColorUtils.setAlphaComponent(foregroundColor, 0xCC)
+            )
+        }
     }
 
     override fun onDestroyView() {
