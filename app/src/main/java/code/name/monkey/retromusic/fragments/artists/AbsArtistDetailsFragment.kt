@@ -90,11 +90,11 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
             setElevationShadowEnabled(false)
         }
 
-        // ملحوظة: عمدًا مفيش exitTransition/reenterTransition هنا.
-        // الصفحة ديه (Artist Details) بتفضل ثابتة وopaque 100% وقت الانتقال
-        // لـ See All وبالعكس، عشان تمنع لحظة التداخل اللي كانت بتسبب الفلاش
-        // الأسود. الحركة كلها بقت مسؤولية ArtistAllSongsFragment لوحدها
-        // (enterTransition/returnTransition بتاعتها).
+        // الصفحة ديه بتفضل opaque 100% طول الوقت (مفيش alpha animation خالص)،
+        // بس بتتحرك حركة بسيطة (Parallax) عشان تدي إحساس عمق من غير أي خطر
+        // إن الشفافية تكشف اللي وراها - وده هو اللي بيمنع الفلاش الأسود.
+        exitTransition = SubtleParallaxSlide(forward = true).apply { duration = 300L }
+        reenterTransition = SubtleParallaxSlide(forward = false).apply { duration = 300L }
     }
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
