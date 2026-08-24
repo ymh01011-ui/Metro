@@ -60,6 +60,17 @@ class ArtistAllSongsFragment : AbsMainActivityFragment(R.layout.fragment_artist_
         super.onViewCreated(view, savedInstanceState)
         _binding = FragmentArtistAllSongsBinding.bind(view)
 
+        dominantBackgroundColor = arguments?.getInt(EXTRA_DOMINANT_COLOR, Color.TRANSPARENT) ?: Color.TRANSPARENT
+
+        // 0. أول حاجة قبل أي setup تاني: نحط خلفية على rootLayout فورًا.
+        // لو اللون جاي جاهز من الصفحة اللي قبلها (الحالة الغالبة) نستخدمه على طول.
+        // لو مفيش (TRANSPARENT)، منسيبهاش شفافة أبدًا - نحط لون محايد من الثيم
+        // كـ placeholder فوري، وبعدين لما اللون الحقيقي يتحسب بنعمل له transition ناعم
+        // بدل ما نستنى (postpone) ونعطل الأنيميشن.
+        binding.rootLayout.setBackgroundColor(
+            if (dominantBackgroundColor != Color.TRANSPARENT) dominantBackgroundColor else neutralFallbackColor()
+        )
+
         val artist: Artist? = arguments?.let {
             BundleCompat.getParcelable(it, EXTRA_ARTIST, Artist::class.java)
         }
@@ -67,8 +78,6 @@ class ArtistAllSongsFragment : AbsMainActivityFragment(R.layout.fragment_artist_
         @Suppress("DEPRECATION")
         val songs: ArrayList<Song> =
             arguments?.getParcelableArrayList(EXTRA_SONGS) ?: arrayListOf()
-
-        dominantBackgroundColor = arguments?.getInt(EXTRA_DOMINANT_COLOR, Color.TRANSPARENT) ?: Color.TRANSPARENT
 
         // 1. تهيئة الـ Adapter والـ RecyclerView أولاً قبل أي عملية تطبيق للألوان
         songAdapter = SimpleSongAdapter(requireActivity(), songs, R.layout.item_song)
@@ -133,9 +142,20 @@ class ArtistAllSongsFragment : AbsMainActivityFragment(R.layout.fragment_artist_
             )
             withContext(Dispatchers.Main) {
                 if (_binding != null) {
-                    applyDynamicColor(dominantColor)
+                    // الأنيميشن بدأ بالفعل بلون محايد (placeholder)، فبدل ما نغيّر
+                    // اللون فجأة، نعمل transition ناعم للون الحقيقي بدل قطعة حادة
+                    animateToRealColor(dominantColor)
                 }
             }
+        }
+    }
+
+    private fun animateToRealColor(newColor: Int) {
+        val currentColor = dominantBackgroundColor
+        android.animation.ValueAnimator.ofArgb(currentColor, newColor).apply {
+            duration = 300L
+            addUpdateListener { applyDynamicColor(it.animatedValue as Int) }
+            start()
         }
     }
 
@@ -155,6 +175,14 @@ class ArtistAllSongsFragment : AbsMainActivityFragment(R.layout.fragment_artist_
                 ColorUtils.setAlphaComponent(foregroundColor, 0xCC)
             )
         }
+    }
+
+    private fun neutralFallbackColor(): Int {
+        val typedValue = android.util.TypedValue()
+        val resolved = requireContext().theme.resolveAttribute(
+            com.google.android.material.R.attr.colorSurface, typedValue, true
+        )
+        return if (resolved) typedValue.data else Color.TRANSPARENT
     }
 
     override fun onDestroyView() {
