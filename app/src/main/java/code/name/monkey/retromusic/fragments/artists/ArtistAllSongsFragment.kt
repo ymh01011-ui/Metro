@@ -4,6 +4,7 @@ import android.graphics.Bitmap
 import android.graphics.Color
 import android.graphics.drawable.Drawable
 import android.os.Bundle
+import android.transition.Transition as PlatformTransition
 import android.view.View
 import androidx.core.graphics.ColorUtils
 import androidx.core.graphics.drawable.DrawableCompat
@@ -45,27 +46,28 @@ class ArtistAllSongsFragment : AbsMainActivityFragment(R.layout.fragment_artist_
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // اللون اللي جه من صفحة الفنان (نفس اللون بالظبط)
+        val passedColor = arguments?.getInt(EXTRA_BACKGROUND_COLOR, Color.BLACK) ?: Color.BLACK
+        dominantBackgroundColor = passedColor
+
+        val container = requireActivity().findViewById<View>(R.id.fragment_container)
+
         // انتقال Shared Axis (محور Y): فيد + حركة رأسية، مع دخول للأمام (forward)
         val slideDistancePx = (resources.displayMetrics.density * 150).toInt()
         enterTransition = MaterialSharedAxis(MaterialSharedAxis.Y, true).apply {
             duration = 300L
             (primaryAnimatorProvider as? SlideDistanceProvider)?.slideDistance = slideDistancePx
+            colorContainerDuringTransition(container) { dominantBackgroundColor }
         }
         // عند الرجوع: نفس المحور بس بإتجاه عكسي (forward = false)
         returnTransition = MaterialSharedAxis(MaterialSharedAxis.Y, false).apply {
             duration = 300L
             (primaryAnimatorProvider as? SlideDistanceProvider)?.slideDistance = slideDistancePx
+            colorContainerDuringTransition(container) { dominantBackgroundColor }
         }
         // منع تراكب أنيميشن الدخول والخروج مع بعض (بيمنع الوميض الأسود اللحظي)
         allowEnterTransitionOverlap = false
         allowReturnTransitionOverlap = false
-
-        // لوّن الـ Container المشترك فوراً بنفس لون الفنان (زي ما جه من الصفحة اللي قبلها)
-        // عشان أي لحظة شفافية أثناء الـ Fade تبين نفس اللون بدل الأسود
-        val passedColor = arguments?.getInt(EXTRA_BACKGROUND_COLOR, Color.BLACK) ?: Color.BLACK
-        dominantBackgroundColor = passedColor
-        requireActivity().findViewById<View>(R.id.fragment_container)
-            ?.setBackgroundColor(passedColor)
     }
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
@@ -185,4 +187,36 @@ class ArtistAllSongsFragment : AbsMainActivityFragment(R.layout.fragment_artist_
                 EXTRA_BACKGROUND_COLOR to backgroundColor
             )
     }
+}
+
+/**
+ * بيلوّن الـ Container المشترك (fragment_container) بس أثناء مدة الأنيميشن نفسه —
+ * بيتلوّن لحظة بداية الترانزيشن (onTransitionStart) ويرجع لخلفيته الأصلية أول
+ * ما الترانزيشن يخلص أو يتلغي (onTransitionEnd / onTransitionCancel)، عشان
+ * التلوين ميفضلش عالق على باقي صفحات التطبيق.
+ */
+private fun PlatformTransition.colorContainerDuringTransition(
+    container: View?,
+    colorProvider: () -> Int
+) {
+    if (container == null) return
+    addListener(object : PlatformTransition.TransitionListener {
+        private var originalBackground: Drawable? = null
+
+        override fun onTransitionStart(transition: PlatformTransition) {
+            originalBackground = container.background
+            container.setBackgroundColor(colorProvider())
+        }
+
+        override fun onTransitionEnd(transition: PlatformTransition) {
+            container.background = originalBackground
+        }
+
+        override fun onTransitionCancel(transition: PlatformTransition) {
+            container.background = originalBackground
+        }
+
+        override fun onTransitionPause(transition: PlatformTransition) {}
+        override fun onTransitionResume(transition: PlatformTransition) {}
+    })
 }
