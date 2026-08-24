@@ -1,8 +1,8 @@
 package code.name.monkey.retromusic.fragments.artists
 
 import android.graphics.drawable.Drawable
-import android.transition.Transition
 import android.view.View
+import androidx.transition.Transition
 
 /**
  * بيلوّن الـ Container المشترك (fragment_container) بس أثناء مدة الأنيميشن نفسه —
