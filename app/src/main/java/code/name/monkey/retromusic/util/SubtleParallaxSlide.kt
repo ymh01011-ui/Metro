@@ -2,8 +2,6 @@ package code.name.monkey.retromusic.util
 
 import android.animation.Animator
 import android.animation.ObjectAnimator
-import android.content.Context
-import android.util.AttributeSet
 import android.view.View
 import android.view.ViewGroup
 import androidx.transition.TransitionValues
@@ -20,11 +18,9 @@ import androidx.transition.Visibility
  * forward = false => بتتحرك لليمين وقت الرجوع
  */
 class SubtleParallaxSlide @JvmOverloads constructor(
-    context: Context? = null,
-    attrs: AttributeSet? = null,
     private val forward: Boolean = true,
     private val distancePx: Float = 0f
-) : Visibility(context, attrs) {
+) : Visibility() {
 
     private fun resolveDistance(sceneRoot: ViewGroup): Float {
         // لو مفيش مسافة متحددة، نستخدم 15% من عرض الشاشة كقيمة افتراضية معقولة
