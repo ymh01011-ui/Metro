@@ -29,8 +29,6 @@ import code.name.monkey.retromusic.util.ArtistPaletteEngine
 import com.bumptech.glide.Glide
 import com.bumptech.glide.request.target.CustomTarget
 import com.bumptech.glide.request.transition.Transition
-import com.google.android.material.transition.MaterialSharedAxis
-import com.google.android.material.transition.SlideDistanceProvider
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -41,32 +39,23 @@ class ArtistAllSongsFragment : AbsMainActivityFragment(R.layout.fragment_artist_
     private val binding get() = _binding!!
 
     private lateinit var songAdapter: SimpleSongAdapter
-    private var dominantBackgroundColor: Int = Color.BLACK
+    // جعل اللون الافتراضي شفافاً لتفادي الوميض الأسود
+    private var dominantBackgroundColor: Int = Color.TRANSPARENT
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        // اللون اللي جه من صفحة الفنان (نفس اللون بالظبط)
-        val passedColor = arguments?.getInt(EXTRA_BACKGROUND_COLOR, Color.BLACK) ?: Color.BLACK
-        dominantBackgroundColor = passedColor
+        
+        allowEnterTransitionOverlap = true
+        allowReturnTransitionOverlap = true
 
-        val container = requireActivity().findViewById<View>(R.id.fragment_container)
-
-        // انتقال Shared Axis (محور Y): فيد + حركة رأسية، مع دخول للأمام (forward)
+        // حركة Translation فقط من غير Fade لمنع التعارض
         val slideDistancePx = (resources.displayMetrics.density * 150).toInt()
-        enterTransition = MaterialSharedAxis(MaterialSharedAxis.Y, true).apply {
+        enterTransition = TranslateOnly(slideDistancePx, forward = true).apply {
             duration = 300L
-            (primaryAnimatorProvider as? SlideDistanceProvider)?.slideDistance = slideDistancePx
-            colorContainerDuringTransition(container) { dominantBackgroundColor }
         }
-        // عند الرجوع: نفس المحور بس بإتجاه عكسي (forward = false)
-        returnTransition = MaterialSharedAxis(MaterialSharedAxis.Y, false).apply {
+        returnTransition = TranslateOnly(slideDistancePx, forward = false).apply {
             duration = 300L
-            (primaryAnimatorProvider as? SlideDistanceProvider)?.slideDistance = slideDistancePx
-            colorContainerDuringTransition(container) { dominantBackgroundColor }
         }
-        // منع تراكب أنيميشن الدخول والخروج مع بعض (بيمنع الوميض الأسود اللحظي)
-        allowEnterTransitionOverlap = false
-        allowReturnTransitionOverlap = false
     }
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
@@ -81,7 +70,9 @@ class ArtistAllSongsFragment : AbsMainActivityFragment(R.layout.fragment_artist_
         val songs: ArrayList<Song> =
             arguments?.getParcelableArrayList(EXTRA_SONGS) ?: arrayListOf()
 
-        // ضبط الـ Edge-to-Edge بدون تداخل
+        // استلام اللون الممرر مباشرةً من الصفحة السابقة
+        dominantBackgroundColor = arguments?.getInt(EXTRA_DOMINANT_COLOR, Color.TRANSPARENT) ?: Color.TRANSPARENT
+
         WindowCompat.setDecorFitsSystemWindows(requireActivity().window, false)
         ViewCompat.setOnApplyWindowInsetsListener(binding.rootLayout) { _, insets ->
             val statusBarInsets = insets.getInsets(WindowInsetsCompat.Type.statusBars())
@@ -93,16 +84,19 @@ class ArtistAllSongsFragment : AbsMainActivityFragment(R.layout.fragment_artist_
             insets
         }
 
-        // نطبق نفس اللون كخلفية مبدئية للصفحة (قبل ما استخراج اللون الخاص بيها يخلص)
-        binding.rootLayout.setBackgroundColor(dominantBackgroundColor)
-
         binding.toolbar.setNavigationOnClickListener {
             findNavController().navigateUp()
         }
 
         if (artist != null) {
             binding.toolbar.title = artist.name
-            extractArtistColor(artist)
+            
+            // تطبيق اللون فوراً قبل بدء حركة الانتقال
+            if (dominantBackgroundColor != Color.TRANSPARENT) {
+                applyDynamicColor(dominantBackgroundColor)
+            } else {
+                extractArtistColor(artist)
+            }
         }
 
         songAdapter = SimpleSongAdapter(requireActivity(), songs, R.layout.item_song)
@@ -171,19 +165,19 @@ class ArtistAllSongsFragment : AbsMainActivityFragment(R.layout.fragment_artist_
         const val EXTRA_ARTIST = "extra_artist"
         const val EXTRA_SONGS = "extra_songs"
         const val EXTRA_TRANSITION_NAME = "extra_transition_name"
-        const val EXTRA_BACKGROUND_COLOR = "extra_background_color"
+        const val EXTRA_DOMINANT_COLOR = "extra_dominant_color"
 
         fun createBundle(
-            artist: Artist,
-            songs: List<Song>,
+            artist: Artist, 
+            songs: List<Song>, 
             transitionName: String,
-            backgroundColor: Int
+            dominantColor: Int = Color.TRANSPARENT
         ): Bundle =
             bundleOf(
                 EXTRA_ARTIST to artist,
                 EXTRA_SONGS to ArrayList(songs),
                 EXTRA_TRANSITION_NAME to transitionName,
-                EXTRA_BACKGROUND_COLOR to backgroundColor
+                EXTRA_DOMINANT_COLOR to dominantColor
             )
     }
 }
