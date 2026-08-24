@@ -47,8 +47,6 @@ import com.bumptech.glide.request.target.CustomTarget
 import com.bumptech.glide.request.transition.Transition
 import com.google.android.material.shape.MaterialShapeDrawable
 import com.google.android.material.transition.MaterialContainerTransform
-import com.google.android.material.transition.MaterialSharedAxis
-import com.google.android.material.transition.SlideDistanceProvider
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -93,23 +91,14 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
             setElevationShadowEnabled(false)
         }
 
-        val container = requireActivity().findViewById<View>(R.id.fragment_container)
-
-        // انتقال Shared Axis (محور Y) عند الخروج لصفحة "See All" (forward) وعند الرجوع منها (backward)
+        // حركة Translation بس (من غير Fade) عند الخروج لصفحة "See All" وعند الرجوع منها
         val slideDistancePx = (resources.displayMetrics.density * 150).toInt()
-        exitTransition = MaterialSharedAxis(MaterialSharedAxis.Y, true).apply {
+        exitTransition = TranslateOnly(slideDistancePx, forward = true).apply {
             duration = 300L
-            (primaryAnimatorProvider as? SlideDistanceProvider)?.slideDistance = slideDistancePx
-            colorContainerDuringTransition(container) { dominantBackgroundColor }
         }
-        reenterTransition = MaterialSharedAxis(MaterialSharedAxis.Y, false).apply {
+        reenterTransition = TranslateOnly(slideDistancePx, forward = false).apply {
             duration = 300L
-            (primaryAnimatorProvider as? SlideDistanceProvider)?.slideDistance = slideDistancePx
-            colorContainerDuringTransition(container) { dominantBackgroundColor }
         }
-        // منع تراكب أنيميشن الدخول والخروج مع بعض (بيمنع الوميض الأسود اللحظي)
-        allowEnterTransitionOverlap = false
-        allowReturnTransitionOverlap = false
     }
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
@@ -194,10 +183,10 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
                 findNavController().navigate(
                     R.id.artistAllSongsFragment,
                     ArtistAllSongsFragment.createBundle(
-                        artist = artist,
-                        songs = artist.sortedSongs,
-                        transitionName = (artistId ?: artistName).toString(),
-                        backgroundColor = dominantBackgroundColor
+                        artist, 
+                        artist.sortedSongs, 
+                        (artistId ?: artistName).toString(),
+                        dominantBackgroundColor
                     )
                 )
             }
@@ -274,7 +263,6 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
 
         this.artist = artist
         
-        // هيتم استدعاء الدالة دائماً، ولكن بداخلها فحص للـ Cache لمنع اللاج
         loadArtistImage(artist)
 
         binding.artistTitle.text = artist.name
@@ -314,7 +302,6 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
     }
 
     private fun loadArtistImage(artist: Artist) {
-        // لو الصورة والألوان محفوظين، استخدمهم فوراً بدون ما تستنى عشان تتجنب اللاج
         if (cachedBitmap != null && hasExtractedColors && cachedGradientStops != null) {
             binding.image.setImageBitmap(cachedBitmap)
             setColors(dominantBackgroundColor, cachedGradientStops!!)
