@@ -47,7 +47,6 @@ import com.bumptech.glide.request.target.CustomTarget
 import com.bumptech.glide.request.transition.Transition
 import com.google.android.material.shape.MaterialShapeDrawable
 import com.google.android.material.transition.MaterialContainerTransform
-import com.google.android.material.transition.MaterialSharedAxis
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -91,12 +90,11 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
             setElevationShadowEnabled(false)
         }
 
-        exitTransition = MaterialSharedAxis(MaterialSharedAxis.X, true).apply {
-            duration = 300L
-        }
-        reenterTransition = MaterialSharedAxis(MaterialSharedAxis.X, false).apply {
-            duration = 300L
-        }
+        // ملحوظة: عمدًا مفيش exitTransition/reenterTransition هنا.
+        // الصفحة ديه (Artist Details) بتفضل ثابتة وopaque 100% وقت الانتقال
+        // لـ See All وبالعكس، عشان تمنع لحظة التداخل اللي كانت بتسبب الفلاش
+        // الأسود. الحركة كلها بقت مسؤولية ArtistAllSongsFragment لوحدها
+        // (enterTransition/returnTransition بتاعتها).
     }
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
