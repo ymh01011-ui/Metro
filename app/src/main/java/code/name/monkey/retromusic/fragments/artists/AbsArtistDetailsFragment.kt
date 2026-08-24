@@ -103,6 +103,13 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
         super.onViewCreated(view, savedInstanceState)
         _binding = FragmentArtistDetailsBinding.bind(view)
 
+        // مهم: نحط background فورًا وقبل أي حاجة تانية، عشان الـ rootLayout
+        // متفضلش من غير خلفية (transparent) لحد ما الصورة تتحمل ويتحسب اللون.
+        // لو عندنا لون محسوب فعلاً من قبل (رجوع للصفحة) نستخدمه، غير كده نستخدم
+        // لون محايد من الثيم بدل الأسود الافتراضي لحد ما اللون الحقيقي يوصل.
+        val initialColor = if (hasExtractedColors) dominantBackgroundColor else neutralFallbackColor()
+        binding.rootLayout.setBackgroundColor(initialColor)
+
         mainActivity.addMusicServiceEventListener(detailsViewModel)
 
         val toolbar = binding.toolbar as TintableToolbar
@@ -503,6 +510,15 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
         return true
     }
     
+    private fun neutralFallbackColor(): Int {
+        // لون محايد قريب من خلفية التطبيق (مش أسود صريح)، يتاخد من الثيم لو موجود
+        val typedValue = android.util.TypedValue()
+        val resolved = requireContext().theme.resolveAttribute(
+            com.google.android.material.R.attr.colorSurface, typedValue, true
+        )
+        return if (resolved) typedValue.data else Color.BLACK
+    }
+
     private fun clearImageCache() {
         cachedBitmap = null
         cachedGradientStops = null
