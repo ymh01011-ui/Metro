@@ -91,14 +91,16 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
             setElevationShadowEnabled(false)
         }
 
-        val slideDistancePx = (resources.displayMetrics.density * 150).toInt()
+        // الحل الجذري: مسافة الحركة بقت تغطي الشاشة بالكامل
+        val slideDistancePx = resources.displayMetrics.heightPixels
+        
         exitTransition = MaterialSharedAxis(MaterialSharedAxis.Y, true).apply {
-            duration = 300L
+            duration = 400L
             secondaryAnimatorProvider = null
             (primaryAnimatorProvider as? SlideDistanceProvider)?.slideDistance = slideDistancePx
         }
         reenterTransition = MaterialSharedAxis(MaterialSharedAxis.Y, false).apply {
-            duration = 300L
+            duration = 400L
             secondaryAnimatorProvider = null
             (primaryAnimatorProvider as? SlideDistanceProvider)?.slideDistance = slideDistancePx
         }
