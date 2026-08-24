@@ -47,6 +47,7 @@ import com.bumptech.glide.request.target.CustomTarget
 import com.bumptech.glide.request.transition.Transition
 import com.google.android.material.shape.MaterialShapeDrawable
 import com.google.android.material.transition.MaterialContainerTransform
+import com.google.android.material.transition.MaterialSharedAxis
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -73,7 +74,6 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
     private lateinit var appearsOnAdapter: HorizontalAlbumAdapter
     private var forceDownload: Boolean = false
     
-    // متغيرات لحفظ الصورة والألوان لتجنب اللاج عند الرجوع للصفحة
     private var dominantBackgroundColor: Int = Color.BLACK
     private var cachedBitmap: Bitmap? = null
     private var cachedGradientStops: IntArray? = null
@@ -91,12 +91,10 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
             setElevationShadowEnabled(false)
         }
 
-        // حركة Translation بس (من غير Fade) عند الخروج لصفحة "See All" وعند الرجوع منها
-        val slideDistancePx = (resources.displayMetrics.density * 150).toInt()
-        exitTransition = TranslateOnly(slideDistancePx, forward = true).apply {
+        exitTransition = MaterialSharedAxis(MaterialSharedAxis.X, true).apply {
             duration = 300L
         }
-        reenterTransition = TranslateOnly(slideDistancePx, forward = false).apply {
+        reenterTransition = MaterialSharedAxis(MaterialSharedAxis.X, false).apply {
             duration = 300L
         }
     }
@@ -150,7 +148,6 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
 
         binding.headerContainer?.transitionName = (artistId ?: artistName).toString()
 
-        // يجب تأجيل الانتقال دائماً لكي تعمل أنيميشن الرجوع من الألبوم
         postponeEnterTransition()
 
         detailsViewModel.getArtist().observe(viewLifecycleOwner) {
