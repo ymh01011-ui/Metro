@@ -20,6 +20,7 @@ import androidx.core.view.updatePadding
 import androidx.lifecycle.lifecycleScope
 import androidx.navigation.fragment.FragmentNavigatorExtras
 import androidx.navigation.fragment.findNavController
+import androidx.recyclerview.widget.DefaultItemAnimator
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.LinearLayoutManager
 import code.name.monkey.retromusic.EXTRA_ALBUM_ID
@@ -55,8 +56,8 @@ import org.koin.android.ext.android.get
 import java.util.*
 
 private const val FADE_START_FRACTION = 0.42f
-private const val GLASS_CIRCLE_ALPHA = 0x4D
-private const val SEE_ALL_ALPHA = 0x99
+private const val GLASS_CIRCLE_ALPHA = 0x4D // ~30%
+private const val SEE_ALL_ALPHA = 0x99 // ~60%
 private const val SONGS_PREVIEW_COUNT = 6
 
 abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragment_artist_details),
@@ -74,6 +75,7 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
     private lateinit var appearsOnAdapter: HorizontalAlbumAdapter
     private var forceDownload: Boolean = false
     
+    // متغيرات لحفظ الصورة والألوان لتجنب اللاج عند الرجوع للصفحة
     private var dominantBackgroundColor: Int = Color.BLACK
     private var cachedBitmap: Bitmap? = null
     private var cachedGradientStops: IntArray? = null
@@ -91,21 +93,19 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
             setElevationShadowEnabled(false)
         }
 
-        // الحل الجذري: مسافة الحركة بقت تغطي الشاشة بالكامل
-        val slideDistancePx = resources.displayMetrics.heightPixels
-        
+        // انتقال Shared Axis (محور Y) عند الخروج لصفحة "See All" (forward) وعند الرجوع منها (backward)
+        val slideDistancePx = (resources.displayMetrics.density * 150).toInt()
         exitTransition = MaterialSharedAxis(MaterialSharedAxis.Y, true).apply {
-            duration = 400L
-            secondaryAnimatorProvider = null
+            duration = 300L
             (primaryAnimatorProvider as? SlideDistanceProvider)?.slideDistance = slideDistancePx
         }
         reenterTransition = MaterialSharedAxis(MaterialSharedAxis.Y, false).apply {
-            duration = 400L
-            secondaryAnimatorProvider = null
+            duration = 300L
             (primaryAnimatorProvider as? SlideDistanceProvider)?.slideDistance = slideDistancePx
         }
-        allowEnterTransitionOverlap = true
-        allowReturnTransitionOverlap = true
+        // منع تراكب أنيميشن الدخول والخروج مع بعض (بيمنع الوميض الأسود اللحظي)
+        allowEnterTransitionOverlap = false
+        allowReturnTransitionOverlap = false
     }
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
@@ -157,17 +157,13 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
 
         binding.headerContainer?.transitionName = (artistId ?: artistName).toString()
 
-        val isFirstLoad = !::artist.isInitialized
-        if (isFirstLoad) {
-            postponeEnterTransition()
-        }
+        // يجب تأجيل الانتقال دائماً لكي تعمل أنيميشن الرجوع من الألبوم
+        postponeEnterTransition()
 
         detailsViewModel.getArtist().observe(viewLifecycleOwner) {
             showArtist(it)
-            if (isFirstLoad) {
-                view.doOnPreDraw {
-                    startPostponedEnterTransition()
-                }
+            view.doOnPreDraw {
+                startPostponedEnterTransition()
             }
         }
         setupRecyclerView()
@@ -191,6 +187,11 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
 
         binding.fragmentArtistContent.seeAllSongs.setOnClickListener {
             if (::artist.isInitialized) {
+                // نلوّن الـ Container المشترك بنفس لون الفنان فوراً قبل بدء الأنيميشن
+                // عشان أي لحظة شفافية أثناء الـ Fade تبين نفس اللون بدل الأسود
+                requireActivity().findViewById<View>(R.id.fragment_container)
+                    ?.setBackgroundColor(dominantBackgroundColor)
+
                 findNavController().navigate(
                     R.id.artistAllSongsFragment,
                     ArtistAllSongsFragment.createBundle(
@@ -221,28 +222,28 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
     private fun setupRecyclerView() {
         albumAdapter = HorizontalAlbumAdapter(requireActivity(), ArrayList(), this)
         binding.fragmentArtistContent.albumRecyclerView.apply {
-            itemAnimator = null
+            itemAnimator = DefaultItemAnimator()
             layoutManager = GridLayoutManager(this.context, 1, GridLayoutManager.HORIZONTAL, false)
             adapter = albumAdapter
         }
 
         singlesAdapter = HorizontalAlbumAdapter(requireActivity(), ArrayList(), this)
         binding.fragmentArtistContent.singlesRecyclerView.apply {
-            itemAnimator = null
+            itemAnimator = DefaultItemAnimator()
             layoutManager = GridLayoutManager(this.context, 1, GridLayoutManager.HORIZONTAL, false)
             adapter = singlesAdapter
         }
 
         appearsOnAdapter = HorizontalAlbumAdapter(requireActivity(), ArrayList(), this)
         binding.fragmentArtistContent.appearsOnRecyclerView.apply {
-            itemAnimator = null
+            itemAnimator = DefaultItemAnimator()
             layoutManager = GridLayoutManager(this.context, 1, GridLayoutManager.HORIZONTAL, false)
             adapter = appearsOnAdapter
         }
 
         songAdapter = SimpleSongAdapter(requireActivity(), ArrayList(), R.layout.item_song)
         binding.fragmentArtistContent.recyclerView.apply {
-            itemAnimator = null
+            itemAnimator = DefaultItemAnimator()
             layoutManager = LinearLayoutManager(this.context)
             adapter = songAdapter
         }
@@ -274,6 +275,7 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
 
         this.artist = artist
         
+        // هيتم استدعاء الدالة دائماً، ولكن بداخلها فحص للـ Cache لمنع اللاج
         loadArtistImage(artist)
 
         binding.artistTitle.text = artist.name
@@ -313,6 +315,7 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
     }
 
     private fun loadArtistImage(artist: Artist) {
+        // لو الصورة والألوان محفوظين، استخدمهم فوراً بدون ما تستنى عشان تتجنب اللاج
         if (cachedBitmap != null && hasExtractedColors && cachedGradientStops != null) {
             binding.image.setImageBitmap(cachedBitmap)
             setColors(dominantBackgroundColor, cachedGradientStops!!)
