@@ -33,14 +33,16 @@ class ArtistAllSongsFragment : AbsMainActivityFragment(R.layout.fragment_artist_
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        val slideDistancePx = (resources.displayMetrics.density * 150).toInt()
+        // الحل الجذري: استخدام ارتفاع الشاشة بالكامل كمسافة للحركة بدلاً من 150dp
+        val slideDistancePx = resources.displayMetrics.heightPixels
+
         enterTransition = MaterialSharedAxis(MaterialSharedAxis.Y, true).apply {
-            duration = 300L
+            duration = 400L // رفع المدة لـ 400 عشان تناسب المسافة الجديدة
             secondaryAnimatorProvider = null
             (primaryAnimatorProvider as? SlideDistanceProvider)?.slideDistance = slideDistancePx
         }
         returnTransition = MaterialSharedAxis(MaterialSharedAxis.Y, false).apply {
-            duration = 300L
+            duration = 400L
             secondaryAnimatorProvider = null
             (primaryAnimatorProvider as? SlideDistanceProvider)?.slideDistance = slideDistancePx
         }
