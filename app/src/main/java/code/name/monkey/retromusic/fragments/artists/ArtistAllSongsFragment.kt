@@ -29,6 +29,7 @@ import code.name.monkey.retromusic.util.ArtistPaletteEngine
 import com.bumptech.glide.Glide
 import com.bumptech.glide.request.target.CustomTarget
 import com.bumptech.glide.request.transition.Transition
+import com.google.android.material.transition.MaterialSharedAxis
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -39,7 +40,6 @@ class ArtistAllSongsFragment : AbsMainActivityFragment(R.layout.fragment_artist_
     private val binding get() = _binding!!
 
     private lateinit var songAdapter: SimpleSongAdapter
-    // جعل اللون الافتراضي شفافاً لتفادي الوميض الأسود
     private var dominantBackgroundColor: Int = Color.TRANSPARENT
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -48,12 +48,10 @@ class ArtistAllSongsFragment : AbsMainActivityFragment(R.layout.fragment_artist_
         allowEnterTransitionOverlap = true
         allowReturnTransitionOverlap = true
 
-        // حركة Translation فقط من غير Fade لمنع التعارض
-        val slideDistancePx = (resources.displayMetrics.density * 150).toInt()
-        enterTransition = TranslateOnly(slideDistancePx, forward = true).apply {
+        enterTransition = MaterialSharedAxis(MaterialSharedAxis.X, true).apply {
             duration = 300L
         }
-        returnTransition = TranslateOnly(slideDistancePx, forward = false).apply {
+        returnTransition = MaterialSharedAxis(MaterialSharedAxis.X, false).apply {
             duration = 300L
         }
     }
@@ -70,7 +68,6 @@ class ArtistAllSongsFragment : AbsMainActivityFragment(R.layout.fragment_artist_
         val songs: ArrayList<Song> =
             arguments?.getParcelableArrayList(EXTRA_SONGS) ?: arrayListOf()
 
-        // استلام اللون الممرر مباشرةً من الصفحة السابقة
         dominantBackgroundColor = arguments?.getInt(EXTRA_DOMINANT_COLOR, Color.TRANSPARENT) ?: Color.TRANSPARENT
 
         WindowCompat.setDecorFitsSystemWindows(requireActivity().window, false)
@@ -91,7 +88,6 @@ class ArtistAllSongsFragment : AbsMainActivityFragment(R.layout.fragment_artist_
         if (artist != null) {
             binding.toolbar.title = artist.name
             
-            // تطبيق اللون فوراً قبل بدء حركة الانتقال
             if (dominantBackgroundColor != Color.TRANSPARENT) {
                 applyDynamicColor(dominantBackgroundColor)
             } else {
