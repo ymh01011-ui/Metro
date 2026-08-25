@@ -2,7 +2,6 @@ package code.name.monkey.retromusic.fragments.artists
 
 import android.graphics.Bitmap
 import android.graphics.Color
-import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.Drawable
 import android.os.Bundle
 import android.view.Menu
@@ -47,8 +46,8 @@ import com.bumptech.glide.Glide
 import com.bumptech.glide.request.target.CustomTarget
 import com.bumptech.glide.request.transition.Transition
 import com.google.android.material.shape.MaterialShapeDrawable
+import com.google.android.material.transition.Hold
 import com.google.android.material.transition.MaterialContainerTransform
-import com.google.android.material.transition.MaterialSharedAxis
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -85,9 +84,6 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        
-        // حل نهائي للوميض الأبيض
-        requireActivity().window.setBackgroundDrawable(ColorDrawable(Color.BLACK))
 
         sharedElementEnterTransition = MaterialContainerTransform().apply {
             drawingViewId = R.id.fragment_container
@@ -96,12 +92,12 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
             setElevationShadowEnabled(false)
         }
 
-        // انيميشن الخروج والعودة متناسق مع شاشة "كل الأغاني"
-        exitTransition = MaterialSharedAxis(MaterialSharedAxis.X, /* forward = */ true).apply {
-            duration = 400L
+        // استخدام Hold للحفاظ على الشاشة الحالية صلبة وتحت الشاشة الجديدة تماماً
+        exitTransition = Hold().apply {
+            duration = 350L
         }
-        reenterTransition = MaterialSharedAxis(MaterialSharedAxis.X, /* forward = */ false).apply {
-            duration = 400L
+        reenterTransition = Hold().apply {
+            duration = 350L
         }
     }
 
