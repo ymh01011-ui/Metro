@@ -2,6 +2,7 @@ package code.name.monkey.retromusic.fragments.artists
 
 import android.graphics.Bitmap
 import android.graphics.Color
+import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.Drawable
 import android.os.Bundle
 import android.view.Menu
@@ -85,6 +86,9 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         
+        // حل نهائي للوميض الأبيض
+        requireActivity().window.setBackgroundDrawable(ColorDrawable(Color.BLACK))
+
         sharedElementEnterTransition = MaterialContainerTransform().apply {
             drawingViewId = R.id.fragment_container
             scrimColor = Color.TRANSPARENT
@@ -92,12 +96,12 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
             setElevationShadowEnabled(false)
         }
 
-        // تم استبدال SubtleParallaxSlide بالـ SharedAxis على المحور Y
-        exitTransition = MaterialSharedAxis(MaterialSharedAxis.Y, /* forward = */ true).apply {
-            duration = 300L
+        // انيميشن الخروج والعودة متناسق مع شاشة "كل الأغاني"
+        exitTransition = MaterialSharedAxis(MaterialSharedAxis.X, /* forward = */ true).apply {
+            duration = 400L
         }
-        reenterTransition = MaterialSharedAxis(MaterialSharedAxis.Y, /* forward = */ false).apply {
-            duration = 300L
+        reenterTransition = MaterialSharedAxis(MaterialSharedAxis.X, /* forward = */ false).apply {
+            duration = 400L
         }
     }
 
