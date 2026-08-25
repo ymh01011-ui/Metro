@@ -2,6 +2,7 @@ package code.name.monkey.retromusic.fragments.artists
 
 import android.graphics.Bitmap
 import android.graphics.Color
+import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.Drawable
 import android.os.Bundle
 import android.view.View
@@ -45,15 +46,18 @@ class ArtistAllSongsFragment : AbsMainActivityFragment(R.layout.fragment_artist_
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         
+        // منع الوميض الأبيض بجعل خلفية النافذة الأساسية سوداء
+        requireActivity().window.setBackgroundDrawable(ColorDrawable(Color.BLACK))
+        
         allowEnterTransitionOverlap = true
         allowReturnTransitionOverlap = true
 
-        // انيميشن الدخول والخروج على المحور Y
-        enterTransition = MaterialSharedAxis(MaterialSharedAxis.Y, /* forward = */ true).apply {
-            duration = 300L
+        // انيميشن Apple Music: إزاحة من اليمين لليسار مع تظليل
+        enterTransition = MaterialSharedAxis(MaterialSharedAxis.X, /* forward = */ true).apply {
+            duration = 400L // مدة 400 ملي ثانية لتعطي سلاسة نظام iOS
         }
-        returnTransition = MaterialSharedAxis(MaterialSharedAxis.Y, /* forward = */ false).apply {
-            duration = 300L
+        returnTransition = MaterialSharedAxis(MaterialSharedAxis.X, /* forward = */ false).apply {
+            duration = 400L
         }
     }
 
@@ -144,7 +148,7 @@ class ArtistAllSongsFragment : AbsMainActivityFragment(R.layout.fragment_artist_
     private fun animateToRealColor(newColor: Int) {
         val currentColor = dominantBackgroundColor
         android.animation.ValueAnimator.ofArgb(currentColor, newColor).apply {
-            duration = 300L
+            duration = 400L
             addUpdateListener { applyDynamicColor(it.animatedValue as Int) }
             start()
         }
