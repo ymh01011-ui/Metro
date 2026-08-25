@@ -2,9 +2,9 @@ package code.name.monkey.retromusic.fragments.artists
 
 import android.graphics.Bitmap
 import android.graphics.Color
-import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.Drawable
 import android.os.Bundle
+import android.view.Gravity
 import android.view.View
 import androidx.core.graphics.ColorUtils
 import androidx.core.graphics.drawable.DrawableCompat
@@ -14,10 +14,12 @@ import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.updatePadding
+import androidx.interpolator.view.animation.FastOutSlowInInterpolator
 import androidx.lifecycle.lifecycleScope
 import androidx.navigation.fragment.findNavController
 import androidx.recyclerview.widget.DefaultItemAnimator
 import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.transition.Slide
 import code.name.monkey.retromusic.R
 import code.name.monkey.retromusic.adapter.song.SimpleSongAdapter
 import code.name.monkey.retromusic.databinding.FragmentArtistAllSongsBinding
@@ -30,7 +32,6 @@ import code.name.monkey.retromusic.util.ArtistPaletteEngine
 import com.bumptech.glide.Glide
 import com.bumptech.glide.request.target.CustomTarget
 import com.bumptech.glide.request.transition.Transition
-import com.google.android.material.transition.MaterialSharedAxis
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -46,18 +47,17 @@ class ArtistAllSongsFragment : AbsMainActivityFragment(R.layout.fragment_artist_
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         
-        // منع الوميض الأبيض بجعل خلفية النافذة الأساسية سوداء
-        requireActivity().window.setBackgroundDrawable(ColorDrawable(Color.BLACK))
-        
         allowEnterTransitionOverlap = true
         allowReturnTransitionOverlap = true
 
-        // انيميشن Apple Music: إزاحة من اليمين لليسار مع تظليل
-        enterTransition = MaterialSharedAxis(MaterialSharedAxis.X, /* forward = */ true).apply {
-            duration = 400L // مدة 400 ملي ثانية لتعطي سلاسة نظام iOS
+        // إزاحة صريحة بدون Fade مانعة للوميض في كل الثيمات
+        enterTransition = Slide(Gravity.END).apply {
+            duration = 350L
+            interpolator = FastOutSlowInInterpolator()
         }
-        returnTransition = MaterialSharedAxis(MaterialSharedAxis.X, /* forward = */ false).apply {
-            duration = 400L
+        returnTransition = Slide(Gravity.END).apply {
+            duration = 350L
+            interpolator = FastOutSlowInInterpolator()
         }
     }
 
@@ -148,7 +148,7 @@ class ArtistAllSongsFragment : AbsMainActivityFragment(R.layout.fragment_artist_
     private fun animateToRealColor(newColor: Int) {
         val currentColor = dominantBackgroundColor
         android.animation.ValueAnimator.ofArgb(currentColor, newColor).apply {
-            duration = 400L
+            duration = 350L
             addUpdateListener { applyDynamicColor(it.animatedValue as Int) }
             start()
         }
