@@ -188,8 +188,12 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
                 // مفيش shared element في الانتقال ده، فلو سبنا exitTransition على Hold()
                 // هتفضل الشاشة الحالية ثابتة وفوق الشاشة الجايه وتغطي على الـ Slide بتاعها
                 // فيبان وكأنه مفيش أنيميشن. بنحط Slide حقيقية تتزامن مع enterTransition
-                // بتاعة ArtistAllSongsFragment.
+                // بتاعة ArtistAllSongsFragment، في الذهاب والرجوع.
                 exitTransition = Slide(Gravity.START).apply {
+                    duration = 350L
+                    interpolator = FastOutSlowInInterpolator()
+                }
+                reenterTransition = Slide(Gravity.START).apply {
                     duration = 350L
                     interpolator = FastOutSlowInInterpolator()
                 }
@@ -436,7 +440,11 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
     override fun onAlbumClick(albumId: Long, view: View) {
         // الانتقال ده فيه shared element حقيقي (transitionName بتاع الألبوم)
         // فبيعتمد على Hold() عشان الشاشة الحالية تفضل ثابتة ورا الـ MaterialContainerTransform
+        // في الذهاب والرجوع
         exitTransition = Hold().apply {
+            duration = 350L
+        }
+        reenterTransition = Hold().apply {
             duration = 350L
         }
         findNavController().navigate(
