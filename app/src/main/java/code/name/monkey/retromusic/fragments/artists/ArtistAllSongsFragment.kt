@@ -48,10 +48,11 @@ class ArtistAllSongsFragment : AbsMainActivityFragment(R.layout.fragment_artist_
         allowEnterTransitionOverlap = true
         allowReturnTransitionOverlap = true
 
-        enterTransition = MaterialSharedAxis(MaterialSharedAxis.X, true).apply {
+        // انيميشن الدخول والخروج على المحور Y
+        enterTransition = MaterialSharedAxis(MaterialSharedAxis.Y, /* forward = */ true).apply {
             duration = 300L
         }
-        returnTransition = MaterialSharedAxis(MaterialSharedAxis.X, false).apply {
+        returnTransition = MaterialSharedAxis(MaterialSharedAxis.Y, /* forward = */ false).apply {
             duration = 300L
         }
     }
@@ -62,11 +63,6 @@ class ArtistAllSongsFragment : AbsMainActivityFragment(R.layout.fragment_artist_
 
         dominantBackgroundColor = arguments?.getInt(EXTRA_DOMINANT_COLOR, Color.TRANSPARENT) ?: Color.TRANSPARENT
 
-        // 0. أول حاجة قبل أي setup تاني: نحط خلفية على rootLayout فورًا.
-        // لو اللون جاي جاهز من الصفحة اللي قبلها (الحالة الغالبة) نستخدمه على طول.
-        // لو مفيش (TRANSPARENT)، منسيبهاش شفافة أبدًا - نحط لون محايد من الثيم
-        // كـ placeholder فوري، وبعدين لما اللون الحقيقي يتحسب بنعمل له transition ناعم
-        // بدل ما نستنى (postpone) ونعطل الأنيميشن.
         binding.rootLayout.setBackgroundColor(
             if (dominantBackgroundColor != Color.TRANSPARENT) dominantBackgroundColor else neutralFallbackColor()
         )
@@ -79,7 +75,6 @@ class ArtistAllSongsFragment : AbsMainActivityFragment(R.layout.fragment_artist_
         val songs: ArrayList<Song> =
             arguments?.getParcelableArrayList(EXTRA_SONGS) ?: arrayListOf()
 
-        // 1. تهيئة الـ Adapter والـ RecyclerView أولاً قبل أي عملية تطبيق للألوان
         songAdapter = SimpleSongAdapter(requireActivity(), songs, R.layout.item_song)
         binding.recyclerView.apply {
             layoutManager = LinearLayoutManager(context)
@@ -87,7 +82,6 @@ class ArtistAllSongsFragment : AbsMainActivityFragment(R.layout.fragment_artist_
             adapter = songAdapter
         }
 
-        // 2. إعداد الـ Insets ومستمع زر الرجوع
         WindowCompat.setDecorFitsSystemWindows(requireActivity().window, false)
         ViewCompat.setOnApplyWindowInsetsListener(binding.rootLayout) { _, insets ->
             val statusBarInsets = insets.getInsets(WindowInsetsCompat.Type.statusBars())
@@ -103,7 +97,6 @@ class ArtistAllSongsFragment : AbsMainActivityFragment(R.layout.fragment_artist_
             findNavController().navigateUp()
         }
 
-        // 3. تطبيق الألوان واستخراجها بعد ضمان جاهزية الـ songAdapter
         if (artist != null) {
             binding.toolbar.title = artist.name
             
@@ -142,8 +135,6 @@ class ArtistAllSongsFragment : AbsMainActivityFragment(R.layout.fragment_artist_
             )
             withContext(Dispatchers.Main) {
                 if (_binding != null) {
-                    // الأنيميشن بدأ بالفعل بلون محايد (placeholder)، فبدل ما نغيّر
-                    // اللون فجأة، نعمل transition ناعم للون الحقيقي بدل قطعة حادة
                     animateToRealColor(dominantColor)
                 }
             }
