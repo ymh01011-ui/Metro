@@ -4,6 +4,7 @@ import android.graphics.Bitmap
 import android.graphics.Color
 import android.graphics.drawable.Drawable
 import android.os.Bundle
+import android.view.Gravity
 import android.view.Menu
 import android.view.MenuItem
 import android.view.View
@@ -17,12 +18,14 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.doOnPreDraw
 import androidx.core.view.isVisible
 import androidx.core.view.updatePadding
+import androidx.interpolator.view.animation.FastOutSlowInInterpolator
 import androidx.lifecycle.lifecycleScope
 import androidx.navigation.fragment.FragmentNavigatorExtras
 import androidx.navigation.fragment.findNavController
 import androidx.recyclerview.widget.DefaultItemAnimator
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.transition.Slide
 import code.name.monkey.retromusic.EXTRA_ALBUM_ID
 import code.name.monkey.retromusic.R
 import code.name.monkey.retromusic.adapter.album.HorizontalAlbumAdapter
@@ -182,6 +185,14 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
 
         binding.fragmentArtistContent.seeAllSongs.setOnClickListener {
             if (::artist.isInitialized) {
+                // مفيش shared element في الانتقال ده، فلو سبنا exitTransition على Hold()
+                // هتفضل الشاشة الحالية ثابتة وفوق الشاشة الجايه وتغطي على الـ Slide بتاعها
+                // فيبان وكأنه مفيش أنيميشن. بنحط Slide حقيقية تتزامن مع enterTransition
+                // بتاعة ArtistAllSongsFragment.
+                exitTransition = Slide(Gravity.START).apply {
+                    duration = 350L
+                    interpolator = FastOutSlowInInterpolator()
+                }
                 findNavController().navigate(
                     R.id.artistAllSongsFragment,
                     ArtistAllSongsFragment.createBundle(
@@ -423,6 +434,11 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
     }
 
     override fun onAlbumClick(albumId: Long, view: View) {
+        // الانتقال ده فيه shared element حقيقي (transitionName بتاع الألبوم)
+        // فبيعتمد على Hold() عشان الشاشة الحالية تفضل ثابتة ورا الـ MaterialContainerTransform
+        exitTransition = Hold().apply {
+            duration = 350L
+        }
         findNavController().navigate(
             R.id.albumDetailsFragment,
             bundleOf(EXTRA_ALBUM_ID to albumId),
