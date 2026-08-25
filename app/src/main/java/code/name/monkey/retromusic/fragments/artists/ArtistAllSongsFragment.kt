@@ -13,6 +13,7 @@ import androidx.core.os.bundleOf
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.doOnPreDraw
 import androidx.core.view.updatePadding
 import androidx.interpolator.view.animation.FastOutSlowInInterpolator
 import androidx.lifecycle.lifecycleScope
@@ -50,7 +51,6 @@ class ArtistAllSongsFragment : AbsMainActivityFragment(R.layout.fragment_artist_
         allowEnterTransitionOverlap = true
         allowReturnTransitionOverlap = true
 
-        // إزاحة صريحة بدون Fade مانعة للوميض في كل الثيمات
         enterTransition = Slide(Gravity.END).apply {
             duration = 350L
             interpolator = FastOutSlowInInterpolator()
@@ -63,6 +63,10 @@ class ArtistAllSongsFragment : AbsMainActivityFragment(R.layout.fragment_artist_
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
+        
+        // 1. تأجيل الأنيميشن لحد ما القائمة والعناصر تترسم بالكامل لمنع التقطيع
+        postponeEnterTransition()
+
         _binding = FragmentArtistAllSongsBinding.bind(view)
 
         dominantBackgroundColor = arguments?.getInt(EXTRA_DOMINANT_COLOR, Color.TRANSPARENT) ?: Color.TRANSPARENT
@@ -109,6 +113,11 @@ class ArtistAllSongsFragment : AbsMainActivityFragment(R.layout.fragment_artist_
             } else {
                 extractArtistColor(artist)
             }
+        }
+
+        // 2. إعطاء أمر ببدء الأنيميشن فوراً بمجرد ما الشاشة تجهز للعرض
+        view.doOnPreDraw {
+            startPostponedEnterTransition()
         }
     }
 
