@@ -47,6 +47,7 @@ import com.bumptech.glide.request.target.CustomTarget
 import com.bumptech.glide.request.transition.Transition
 import com.google.android.material.shape.MaterialShapeDrawable
 import com.google.android.material.transition.MaterialContainerTransform
+import com.google.android.material.transition.MaterialSharedAxis
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -83,6 +84,7 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        
         sharedElementEnterTransition = MaterialContainerTransform().apply {
             drawingViewId = R.id.fragment_container
             scrimColor = Color.TRANSPARENT
@@ -90,21 +92,19 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
             setElevationShadowEnabled(false)
         }
 
-        // الصفحة ديه بتفضل opaque 100% طول الوقت (مفيش alpha animation خالص)،
-        // بس بتتحرك حركة بسيطة (Parallax) عشان تدي إحساس عمق من غير أي خطر
-        // إن الشفافية تكشف اللي وراها - وده هو اللي بيمنع الفلاش الأسود.
-        exitTransition = SubtleParallaxSlide(forward = true).apply { duration = 300L }
-        reenterTransition = SubtleParallaxSlide(forward = false).apply { duration = 300L }
+        // تم استبدال SubtleParallaxSlide بالـ SharedAxis على المحور Y
+        exitTransition = MaterialSharedAxis(MaterialSharedAxis.Y, /* forward = */ true).apply {
+            duration = 300L
+        }
+        reenterTransition = MaterialSharedAxis(MaterialSharedAxis.Y, /* forward = */ false).apply {
+            duration = 300L
+        }
     }
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
         _binding = FragmentArtistDetailsBinding.bind(view)
 
-        // مهم: نحط background فورًا وقبل أي حاجة تانية، عشان الـ rootLayout
-        // متفضلش من غير خلفية (transparent) لحد ما الصورة تتحمل ويتحسب اللون.
-        // لو عندنا لون محسوب فعلاً من قبل (رجوع للصفحة) نستخدمه، غير كده نستخدم
-        // لون محايد من الثيم بدل الأسود الافتراضي لحد ما اللون الحقيقي يوصل.
         val initialColor = if (hasExtractedColors) dominantBackgroundColor else neutralFallbackColor()
         binding.rootLayout.setBackgroundColor(initialColor)
 
@@ -509,7 +509,6 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
     }
     
     private fun neutralFallbackColor(): Int {
-        // لون محايد قريب من خلفية التطبيق (مش أسود صريح)، يتاخد من الثيم لو موجود
         val typedValue = android.util.TypedValue()
         val resolved = requireContext().theme.resolveAttribute(
             com.google.android.material.R.attr.colorSurface, typedValue, true
