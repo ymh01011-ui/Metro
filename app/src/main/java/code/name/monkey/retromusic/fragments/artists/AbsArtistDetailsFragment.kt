@@ -18,6 +18,7 @@ import androidx.core.view.doOnPreDraw
 import androidx.core.view.isVisible
 import androidx.core.view.updatePadding
 import androidx.lifecycle.lifecycleScope
+import androidx.navigation.NavOptions
 import androidx.navigation.fragment.FragmentNavigatorExtras
 import androidx.navigation.fragment.findNavController
 import androidx.recyclerview.widget.DefaultItemAnimator
@@ -48,7 +49,6 @@ import com.bumptech.glide.request.transition.Transition
 import com.google.android.material.shape.MaterialShapeDrawable
 import com.google.android.material.transition.Hold
 import com.google.android.material.transition.MaterialContainerTransform
-import com.google.android.material.transition.MaterialSharedAxis
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -183,16 +183,20 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
 
         binding.fragmentArtistContent.seeAllSongs.setOnClickListener {
             if (::artist.isInitialized) {
-                // مفيش shared element في الانتقال ده، فلو سبنا exitTransition على Hold()
-                // هتفضل الشاشة الحالية ثابتة وفوق الشاشة الجايه وتغطي على حركتها.
-                // MaterialSharedAxis.Z بتدي إحساس إن الشاشة الجايه بتكبر وتيجي فوق
-                // والشاشة الحالية بتصغر وتـ fade تحتها، والعكس صحيح في الرجوع.
-                exitTransition = MaterialSharedAxis(MaterialSharedAxis.Z, true).apply {
-                    duration = 350L
-                }
-                reenterTransition = MaterialSharedAxis(MaterialSharedAxis.Z, false).apply {
-                    duration = 350L
-                }
+                // انتقال iOS-style: بنشيل الـ Transition Framework خالص هنا ونستخدم
+                // Animation resources كلاسيكية تحاكي push/pop بتاعة UINavigationController:
+                // الشاشة الجايه بتغطي الشاشة كلها من اليمين، والشاشة الحالية بتعمل
+                // parallax بسيط لليسار وتضلم شوية، والعكس بالظبط وأنت راجع.
+                exitTransition = null
+                reenterTransition = null
+
+                val navOptions = NavOptions.Builder()
+                    .setEnterAnim(R.anim.nav_slide_in_right)
+                    .setExitAnim(R.anim.nav_slide_out_left)
+                    .setPopEnterAnim(R.anim.nav_slide_in_left)
+                    .setPopExitAnim(R.anim.nav_slide_out_right)
+                    .build()
+
                 findNavController().navigate(
                     R.id.artistAllSongsFragment,
                     ArtistAllSongsFragment.createBundle(
@@ -200,7 +204,8 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
                         artist.sortedSongs, 
                         (artistId ?: artistName).toString(),
                         dominantBackgroundColor
-                    )
+                    ),
+                    navOptions
                 )
             }
         }
