@@ -4,7 +4,6 @@ import android.graphics.Bitmap
 import android.graphics.Color
 import android.graphics.drawable.Drawable
 import android.os.Bundle
-import android.view.Gravity
 import android.view.View
 import androidx.core.graphics.ColorUtils
 import androidx.core.graphics.drawable.DrawableCompat
@@ -15,12 +14,10 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.doOnPreDraw
 import androidx.core.view.updatePadding
-import androidx.interpolator.view.animation.FastOutSlowInInterpolator
 import androidx.lifecycle.lifecycleScope
 import androidx.navigation.fragment.findNavController
 import androidx.recyclerview.widget.DefaultItemAnimator
 import androidx.recyclerview.widget.LinearLayoutManager
-import androidx.transition.Slide
 import code.name.monkey.retromusic.R
 import code.name.monkey.retromusic.adapter.song.SimpleSongAdapter
 import code.name.monkey.retromusic.databinding.FragmentArtistAllSongsBinding
@@ -33,6 +30,7 @@ import code.name.monkey.retromusic.util.ArtistPaletteEngine
 import com.bumptech.glide.Glide
 import com.bumptech.glide.request.target.CustomTarget
 import com.bumptech.glide.request.transition.Transition
+import com.google.android.material.transition.MaterialSharedAxis
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -51,13 +49,11 @@ class ArtistAllSongsFragment : AbsMainActivityFragment(R.layout.fragment_artist_
         allowEnterTransitionOverlap = true
         allowReturnTransitionOverlap = true
 
-        enterTransition = Slide(Gravity.END).apply {
+        enterTransition = MaterialSharedAxis(MaterialSharedAxis.Z, true).apply {
             duration = 350L
-            interpolator = FastOutSlowInInterpolator()
         }
-        returnTransition = Slide(Gravity.END).apply {
+        returnTransition = MaterialSharedAxis(MaterialSharedAxis.Z, false).apply {
             duration = 350L
-            interpolator = FastOutSlowInInterpolator()
         }
     }
 
