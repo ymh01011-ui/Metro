@@ -91,6 +91,10 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
             scrimColor = Color.TRANSPARENT
             setAllContainerColors(Color.TRANSPARENT)
             setElevationShadowEnabled(false)
+            // FADE_MODE_THROUGH بيقفل محتوى الكارت الأول قبل ما يفتح محتوى الشاشة الجديدة
+            // بدل ما الاتنين يترسموا فوق بعض في نفس الوقت (overdraw) - ده بيقلل التقل
+            // خصوصًا في الشاشات اللي فيها عناصر/صور كتير.
+            fadeMode = MaterialContainerTransform.FADE_MODE_THROUGH
         }
         // بنحددها صراحة (بدل الاعتماد على القيمة الافتراضية) عشان نضمن إن
         // الصورة هترجع تصغر تاني بنفس الأنيميشن بالظبط لما نرجع للـ Artists list
@@ -99,6 +103,7 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
             scrimColor = Color.TRANSPARENT
             setAllContainerColors(Color.TRANSPARENT)
             setElevationShadowEnabled(false)
+            fadeMode = MaterialContainerTransform.FADE_MODE_THROUGH
         }
 
         // العنصر المشترك دلوقتي بقى الشاشة كلها (rootLayout) مش هيدر جزئي بس،
@@ -241,32 +246,50 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
     }
 
     private fun setupRecyclerView() {
+        // بنعمل كل RecyclerView "transition group" عشان الـ Container Transform ياخد
+        // لقطة (snapshot) من الليست ككل بدل ما يحاول يتعامل مع كل عنصر جوه القائمة
+        // لوحده وقت التحويل - ده اللي بيسبب التقل في الفنانين اللي عندهم عناصر كتير.
+        // وبنشيل itemAnimator وقت الإعداد الأول عشان ميتعارضش مع أنيميشن الدخول.
+
         albumAdapter = HorizontalAlbumAdapter(requireActivity(), ArrayList(), this)
         binding.fragmentArtistContent.albumRecyclerView.apply {
-            itemAnimator = DefaultItemAnimator()
+            androidx.core.view.ViewGroupCompat.setTransitionGroup(this, true)
+            itemAnimator = null
             layoutManager = GridLayoutManager(this.context, 1, GridLayoutManager.HORIZONTAL, false)
             adapter = albumAdapter
         }
 
         singlesAdapter = HorizontalAlbumAdapter(requireActivity(), ArrayList(), this)
         binding.fragmentArtistContent.singlesRecyclerView.apply {
-            itemAnimator = DefaultItemAnimator()
+            androidx.core.view.ViewGroupCompat.setTransitionGroup(this, true)
+            itemAnimator = null
             layoutManager = GridLayoutManager(this.context, 1, GridLayoutManager.HORIZONTAL, false)
             adapter = singlesAdapter
         }
 
         appearsOnAdapter = HorizontalAlbumAdapter(requireActivity(), ArrayList(), this)
         binding.fragmentArtistContent.appearsOnRecyclerView.apply {
-            itemAnimator = DefaultItemAnimator()
+            androidx.core.view.ViewGroupCompat.setTransitionGroup(this, true)
+            itemAnimator = null
             layoutManager = GridLayoutManager(this.context, 1, GridLayoutManager.HORIZONTAL, false)
             adapter = appearsOnAdapter
         }
 
         songAdapter = SimpleSongAdapter(requireActivity(), ArrayList(), R.layout.item_song)
         binding.fragmentArtistContent.recyclerView.apply {
-            itemAnimator = DefaultItemAnimator()
+            androidx.core.view.ViewGroupCompat.setTransitionGroup(this, true)
+            itemAnimator = null
             layoutManager = LinearLayoutManager(this.context)
             adapter = songAdapter
+        }
+
+        // نرجع الـ itemAnimator العادي بعد ما أنيميشن الدخول يخلص، عشان تحديثات الليست
+        // بعد كده (زي تغيير الترتيب) تفضل بتتحرك بشكل طبيعي.
+        view?.doOnPreDraw {
+            binding.fragmentArtistContent.albumRecyclerView.itemAnimator = DefaultItemAnimator()
+            binding.fragmentArtistContent.singlesRecyclerView.itemAnimator = DefaultItemAnimator()
+            binding.fragmentArtistContent.appearsOnRecyclerView.itemAnimator = DefaultItemAnimator()
+            binding.fragmentArtistContent.recyclerView.itemAnimator = DefaultItemAnimator()
         }
     }
 
