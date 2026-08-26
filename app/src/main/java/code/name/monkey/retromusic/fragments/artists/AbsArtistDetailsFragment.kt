@@ -24,7 +24,6 @@ import androidx.navigation.fragment.findNavController
 import androidx.recyclerview.widget.DefaultItemAnimator
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.LinearLayoutManager
-import androidx.transition.Fade
 import code.name.monkey.retromusic.EXTRA_ALBUM_ID
 import code.name.monkey.retromusic.R
 import code.name.monkey.retromusic.adapter.album.HorizontalAlbumAdapter
@@ -102,16 +101,10 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
             setElevationShadowEnabled(false)
         }
 
-        // العنصر المشترك (headerContainer) بيتحرك لوحده عن طريق الـ MaterialContainerTransform،
-        // لكن باقي محتوى الشاشة (التولبار، اسم الفنان، قايمة الأغاني...) مفيهوش أي enterTransition
-        // فكان بيظهر فجأة. بنضيف Fade هنا عشان باقي الشاشة كلها تدخل بتدرج مع نفس توقيت الـ transform.
-        enterTransition = Fade().apply {
-            duration = 250L
-            startDelay = 80L
-        }
-        returnTransition = Fade().apply {
-            duration = 200L
-        }
+        // العنصر المشترك دلوقتي بقى الشاشة كلها (rootLayout) مش هيدر جزئي بس،
+        // فالـ MaterialContainerTransform هيحول الكارت الصغير في القائمة للشاشة
+        // بالكامل بمحتواها كلها مع بعض، فمحتاجينش أي enterTransition/returnTransition
+        // إضافية لباقي المحتوى.
 
         // استخدام Hold للحفاظ على الشاشة الحالية صلبة وتحت الشاشة الجديدة تماماً
         exitTransition = Hold().apply {
@@ -172,7 +165,9 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
             }
         })
 
-        binding.headerContainer?.transitionName = (artistId ?: artistName).toString()
+        // الـ transitionName بقى على rootLayout (الشاشة كلها) مش headerContainer،
+        // عشان يتطابق مع الكارت الكامل في القائمة (itemView) بدل ما يتطابق مع صورة بس.
+        binding.rootLayout.transitionName = (artistId ?: artistName).toString()
 
         postponeEnterTransition()
 
