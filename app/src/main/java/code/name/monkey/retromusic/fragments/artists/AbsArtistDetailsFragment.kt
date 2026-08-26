@@ -4,7 +4,6 @@ import android.graphics.Bitmap
 import android.graphics.Color
 import android.graphics.drawable.Drawable
 import android.os.Bundle
-import android.view.Gravity
 import android.view.Menu
 import android.view.MenuItem
 import android.view.View
@@ -18,14 +17,12 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.doOnPreDraw
 import androidx.core.view.isVisible
 import androidx.core.view.updatePadding
-import androidx.interpolator.view.animation.FastOutSlowInInterpolator
 import androidx.lifecycle.lifecycleScope
 import androidx.navigation.fragment.FragmentNavigatorExtras
 import androidx.navigation.fragment.findNavController
 import androidx.recyclerview.widget.DefaultItemAnimator
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.LinearLayoutManager
-import androidx.transition.Slide
 import code.name.monkey.retromusic.EXTRA_ALBUM_ID
 import code.name.monkey.retromusic.R
 import code.name.monkey.retromusic.adapter.album.HorizontalAlbumAdapter
@@ -51,6 +48,7 @@ import com.bumptech.glide.request.transition.Transition
 import com.google.android.material.shape.MaterialShapeDrawable
 import com.google.android.material.transition.Hold
 import com.google.android.material.transition.MaterialContainerTransform
+import com.google.android.material.transition.MaterialSharedAxis
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -186,16 +184,14 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
         binding.fragmentArtistContent.seeAllSongs.setOnClickListener {
             if (::artist.isInitialized) {
                 // مفيش shared element في الانتقال ده، فلو سبنا exitTransition على Hold()
-                // هتفضل الشاشة الحالية ثابتة وفوق الشاشة الجايه وتغطي على الـ Slide بتاعها
-                // فيبان وكأنه مفيش أنيميشن. بنحط Slide حقيقية تتزامن مع enterTransition
-                // بتاعة ArtistAllSongsFragment، في الذهاب والرجوع.
-                exitTransition = Slide(Gravity.START).apply {
+                // هتفضل الشاشة الحالية ثابتة وفوق الشاشة الجايه وتغطي على حركتها.
+                // MaterialSharedAxis.Z بتدي إحساس إن الشاشة الجايه بتكبر وتيجي فوق
+                // والشاشة الحالية بتصغر وتـ fade تحتها، والعكس صحيح في الرجوع.
+                exitTransition = MaterialSharedAxis(MaterialSharedAxis.Z, true).apply {
                     duration = 350L
-                    interpolator = FastOutSlowInInterpolator()
                 }
-                reenterTransition = Slide(Gravity.START).apply {
+                reenterTransition = MaterialSharedAxis(MaterialSharedAxis.Z, false).apply {
                     duration = 350L
-                    interpolator = FastOutSlowInInterpolator()
                 }
                 findNavController().navigate(
                     R.id.artistAllSongsFragment,
