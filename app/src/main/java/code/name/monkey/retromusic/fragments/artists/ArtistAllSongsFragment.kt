@@ -30,7 +30,6 @@ import code.name.monkey.retromusic.util.ArtistPaletteEngine
 import com.bumptech.glide.Glide
 import com.bumptech.glide.request.target.CustomTarget
 import com.bumptech.glide.request.transition.Transition
-import com.google.android.material.transition.MaterialSharedAxis
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -45,16 +44,9 @@ class ArtistAllSongsFragment : AbsMainActivityFragment(R.layout.fragment_artist_
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        
-        allowEnterTransitionOverlap = true
-        allowReturnTransitionOverlap = true
-
-        enterTransition = MaterialSharedAxis(MaterialSharedAxis.Z, true).apply {
-            duration = 350L
-        }
-        returnTransition = MaterialSharedAxis(MaterialSharedAxis.Z, false).apply {
-            duration = 350L
-        }
+        // ملحوظة: الأنيميشن بتاعة الدخول والخروج للصفحة دي بقت متحكم فيها بالكامل
+        // من Animation resources (nav_slide_in_right / nav_slide_out_left / ...)
+        // اللي بتتحدد وقت الـ navigate() في AbsArtistDetailsFragment، مش من هنا.
     }
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
