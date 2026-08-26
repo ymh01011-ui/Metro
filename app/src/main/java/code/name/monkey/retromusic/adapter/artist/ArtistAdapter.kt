@@ -93,11 +93,10 @@ class ArtistAdapter(
         holder.text?.hide()
         val transitionName =
             if (albumArtistsOnly || multiArtistsEnabled) artist.name else artist.id.toString()
-        if (holder.imageContainer != null) {
-            holder.imageContainer?.transitionName = transitionName
-        } else {
-            holder.image?.transitionName = transitionName
-        }
+        // الـ Container Transform (زي Apple Music) بيحول الكارت كله في القائمة لشاشة كاملة،
+        // مش صورة صغيرة بس تتحول لجزء من الشاشة. فالـ shared element المفروض يبقى
+        // itemView (الكارت بالكامل) مش image لوحدها.
+        holder.itemView.transitionName = transitionName
         loadArtistImage(artist, holder)
     }
 
@@ -173,17 +172,17 @@ class ArtistAdapter(
                 toggleChecked(layoutPosition)
             } else {
                 val artist = dataSet[layoutPosition]
-                image?.let {
-                    when {
-                        multiArtistsEnabled && IMultiArtistClickListener != null -> {
-                            IMultiArtistClickListener.onMultiArtist(artist.name, imageContainer ?: it)
-                        }
-                        albumArtistsOnly && IAlbumArtistClickListener != null -> {
-                            IAlbumArtistClickListener.onAlbumArtist(artist.name, imageContainer ?: it)
-                        }
-                        else -> {
-                            IArtistClickListener.onArtist(artist.id, imageContainer ?: it)
-                        }
+                // بنبعت itemView (الكارت كله) كـ shared element، مش الصورة بس،
+                // عشان الـ Container Transform يحول الكارت بالكامل لشاشة التفاصيل كلها.
+                when {
+                    multiArtistsEnabled && IMultiArtistClickListener != null -> {
+                        IMultiArtistClickListener.onMultiArtist(artist.name, itemView)
+                    }
+                    albumArtistsOnly && IAlbumArtistClickListener != null -> {
+                        IAlbumArtistClickListener.onAlbumArtist(artist.name, itemView)
+                    }
+                    else -> {
+                        IArtistClickListener.onArtist(artist.id, itemView)
                     }
                 }
             }
