@@ -28,6 +28,7 @@ class ArtistDetailsViewModel(
     private val isMultiArtist: Boolean = false
 ) : ViewModel(), IMusicServiceEventListener {
     private val artistDetails = MutableLiveData<Artist>()
+    private val biography = MutableLiveData<String?>()
 
     init {
         fetchArtist()
@@ -40,15 +41,34 @@ class ArtistDetailsViewModel(
                 // a combined tag (e.g. "Amr Diab, Jana Diab"), not as the
                 // exact album_artist value, so we must use the split-aware
                 // lookup instead of an exact album_artist match.
-                artistName?.let { artistDetails.postValue(realRepository.multiArtistByName(it)) }
+                artistName?.let {
+                    val artist = realRepository.multiArtistByName(it)
+                    artistDetails.postValue(artist)
+                    fetchBiography(artist.name)
+                }
             } else {
-                artistId?.let { artistDetails.postValue(realRepository.artistById(it)) }
-                artistName?.let { artistDetails.postValue(realRepository.albumArtistByName(it)) }
+                artistId?.let {
+                    val artist = realRepository.artistById(it)
+                    artistDetails.postValue(artist)
+                    fetchBiography(artist.name)
+                }
+                artistName?.let {
+                    val artist = realRepository.albumArtistByName(it)
+                    artistDetails.postValue(artist)
+                    fetchBiography(artist.name)
+                }
             }
         }
     }
 
+    private fun fetchBiography(name: String) {
+        viewModelScope.launch(IO) {
+            biography.postValue(realRepository.artistBiography(name))
+        }
+    }
+
     fun getArtist(): LiveData<Artist> = artistDetails
+    fun getBiography(): LiveData<String?> = biography
 
     override fun onMediaStoreChanged() {
         fetchArtist()
