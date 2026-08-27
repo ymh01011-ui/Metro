@@ -22,6 +22,7 @@ import code.name.monkey.retromusic.db.*
 import code.name.monkey.retromusic.fragments.search.Filter
 import code.name.monkey.retromusic.model.*
 import code.name.monkey.retromusic.model.smartplaylist.NotPlayedPlaylist
+import code.name.monkey.retromusic.network.LastFmBiographyFetcher
 import code.name.monkey.retromusic.util.PreferenceUtil
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
@@ -48,6 +49,7 @@ interface Repository {
     suspend fun artistById(artistId: Long): Artist
     suspend fun albumArtistByName(name: String): Artist
     suspend fun multiArtistByName(name: String): Artist
+    suspend fun artistBiography(artistName: String): String?
     suspend fun recentArtists(): List<Artist>
     suspend fun topArtists(): List<Artist>
     suspend fun topAlbums(): List<Album>
@@ -143,6 +145,9 @@ class RealRepository(
 
     override suspend fun multiArtistByName(name: String): Artist =
         artistRepository.multiArtistByName(name)
+
+    override suspend fun artistBiography(artistName: String): String? =
+        LastFmBiographyFetcher.fetchBiography(artistName)
 
     override suspend fun recentArtists(): List<Artist> = lastAddedRepository.recentArtists()
 
