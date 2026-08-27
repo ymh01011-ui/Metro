@@ -182,6 +182,33 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
                 startPostponedEnterTransition()
             }
         }
+
+        detailsViewModel.getBiography().observe(viewLifecycleOwner) { bio ->
+            if (bio.isNullOrBlank()) {
+                binding.fragmentArtistContent.biographyTitle.visibility = View.GONE
+                binding.fragmentArtistContent.biographyCard.visibility = View.GONE
+            } else {
+                binding.fragmentArtistContent.biographyTitle.visibility = View.VISIBLE
+                binding.fragmentArtistContent.biographyCard.visibility = View.VISIBLE
+                binding.fragmentArtistContent.biographyText.text = bio
+                // نرجّعها تتقفل (3 أسطر) كل ما فنان جديد يتحمل
+                binding.fragmentArtistContent.biographyText.maxLines = 3
+                binding.fragmentArtistContent.biographyMore.text = "More"
+            }
+        }
+
+        binding.fragmentArtistContent.biographyMore.setOnClickListener {
+            val bioText = binding.fragmentArtistContent.biographyText
+            val isExpanded = bioText.maxLines > 3
+            if (isExpanded) {
+                bioText.maxLines = 3
+                binding.fragmentArtistContent.biographyMore.text = "More"
+            } else {
+                bioText.maxLines = Int.MAX_VALUE
+                binding.fragmentArtistContent.biographyMore.text = "Less"
+            }
+        }
+
         setupRecyclerView()
 
         binding.fragmentArtistContent.playAction.setOnClickListener {
