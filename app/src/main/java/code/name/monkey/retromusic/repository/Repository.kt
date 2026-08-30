@@ -147,7 +147,7 @@ class RealRepository(
         artistRepository.multiArtistByName(name)
 
     override suspend fun artistBiography(artistName: String): String? =
-        LastFmBiographyFetcher.fetchBiography(artistName)
+        LastFmBiographyFetcher.fetchBiography(context, artistName)
 
     override suspend fun recentArtists(): List<Artist> = lastAddedRepository.recentArtists()
 
