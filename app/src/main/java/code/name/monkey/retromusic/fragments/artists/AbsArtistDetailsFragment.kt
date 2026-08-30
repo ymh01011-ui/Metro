@@ -80,6 +80,12 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
     private var cachedGradientStops: IntArray? = null
     private var originalAppearanceLightStatusBars: Boolean? = null
     private var hasExtractedColors: Boolean = false
+    // موضع أسفل اسم الفنان بالنسبة لأعلى الـ NestedScrollView كله (مش بالنسبة
+    // لأبوه المباشر بس)، محسوب مرة واحدة ومتخزن هنا. ده اللي كان ناقص: كنا
+    // بنستخدم artistTitle.bottom اللي بيرجع قيمة بالنسبة لأبوه المباشر (اللي هو
+    // LinearLayout صغير لف حوالين النص بس)، مش بالنسبة للسكرول كله، فكانت
+    // القيمة صغيرة جدًا وبالتالي البار كان بيظهر بمجرد أول سحب بسيط
+    private var artistTitleBottomInScrollContent: Int = -1
 
     private val savedSongSortOrder: String
         get() = PreferenceUtil.artistDetailSongSortOrder
@@ -160,7 +166,20 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
         binding.toolbar.isClickable = true
 
         binding.content.setOnScrollChangeListener(androidx.core.widget.NestedScrollView.OnScrollChangeListener { _, _, scrollY, _, _ ->
-            val titleBottom = binding.artistTitle.bottom
+            // artistTitle.bottom بيرجع الموضع بالنسبة لأبوه المباشر بس (اللي هو
+            // LinearLayout صغير لف حوالين النص)، مش بالنسبة لبداية محتوى السكرول
+            // كله - فكانت القيمة دايمًا صغيرة وبيبان البار بمجرد أول سحب. بنحسبها
+            // هنا صح مرة واحدة بس (أول سكرول) ونخزنها، لأن الـ layout مش هيتغير.
+            if (artistTitleBottomInScrollContent <= 0) {
+                val titleLocation = IntArray(2)
+                binding.artistTitle.getLocationOnScreen(titleLocation)
+                val contentLocation = IntArray(2)
+                binding.content.getLocationOnScreen(contentLocation)
+                val titleBottomOnScreen = titleLocation[1] + binding.artistTitle.height
+                artistTitleBottomInScrollContent = (titleBottomOnScreen - contentLocation[1]) + scrollY
+            }
+
+            val titleBottom = artistTitleBottomInScrollContent
             if (titleBottom > 0) {
                 // نطاق ظهور صغير (48dp) بدل الطول اللي كان مرتبط بارتفاع الصورة كلها،
                 // عشان البار يفضل مخفي تمامًا لحد ما اسم الفنان يوشك يختفي، وبعدين
