@@ -35,7 +35,6 @@ import code.name.monkey.retromusic.interfaces.IMultiArtistClickListener
 import code.name.monkey.retromusic.service.MusicService
 import code.name.monkey.retromusic.util.PreferenceUtil
 import code.name.monkey.retromusic.util.RetroUtil
-import com.google.android.material.transition.Hold
 
 class ArtistsFragment : AbsRecyclerViewCustomGridSizeFragment<ArtistAdapter, GridLayoutManager>(),
     IArtistClickListener, IAlbumArtistClickListener, IMultiArtistClickListener {
@@ -136,9 +135,6 @@ class ArtistsFragment : AbsRecyclerViewCustomGridSizeFragment<ArtistAdapter, Gri
     }
 
     override fun onArtist(artistId: Long, view: View) {
-        // بنحدد Hold صراحة عشان الشاشة تفضل ثابتة وواضحة ورا الـ Container Transform،
-        // بدل ما تعتمد على أي exitTransition افتراضي ممكن يعمل fade/dim.
-        exitTransition = Hold().apply { duration = 350L }
         findNavController().navigate(
             R.id.artistDetailsFragment,
             bundleOf(EXTRA_ARTIST_ID to artistId),
@@ -149,7 +145,6 @@ class ArtistsFragment : AbsRecyclerViewCustomGridSizeFragment<ArtistAdapter, Gri
     }
 
     override fun onAlbumArtist(artistName: String, view: View) {
-        exitTransition = Hold().apply { duration = 350L }
         findNavController().navigate(
             R.id.albumArtistDetailsFragment,
             bundleOf(EXTRA_ARTIST_NAME to artistName),
@@ -160,7 +155,6 @@ class ArtistsFragment : AbsRecyclerViewCustomGridSizeFragment<ArtistAdapter, Gri
     }
 
     override fun onMultiArtist(artistName: String, view: View) {
-        exitTransition = Hold().apply { duration = 350L }
         findNavController().navigate(
             R.id.multiArtistDetailsFragment,
             bundleOf(EXTRA_ARTIST_NAME to artistName),
