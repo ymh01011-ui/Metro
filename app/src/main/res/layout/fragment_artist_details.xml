@@ -37,24 +37,6 @@
                     android:layout_height="match_parent"
                     android:background="@drawable/header_gradient_bg" />
 
-                <com.google.android.material.appbar.AppBarLayout
-                    android:id="@+id/appBarLayout"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_gravity="top"
-                    android:background="@android:color/transparent"
-                    android:elevation="0dp">
-
-                    <code.name.monkey.retromusic.views.TintableToolbar
-                        android:id="@+id/toolbar"
-                        style="@style/Toolbar"
-                        android:layout_width="match_parent"
-                        android:layout_height="?attr/actionBarSize"
-                        android:background="@android:color/transparent"
-                        app:navigationIcon="@drawable/ic_arrow_back" />
-
-                </com.google.android.material.appbar.AppBarLayout>
-
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
@@ -90,5 +72,27 @@
 
         </LinearLayout>
     </androidx.core.widget.NestedScrollView>
+
+    <!-- الـ toolbar بقى شقيق للـ NestedScrollView مباشرة جوه rootLayout، مش
+         جوه الصورة/الهيدر. كده بيفضل عايم فوق الشاشة كلها edge-to-edge طول
+         الوقت (زي صفحة All songs بالظبط)، مهما سحبت لتحت، بدل ما يختفي مع
+         الصورة بعد أول 380dp من السحب. -->
+    <com.google.android.material.appbar.AppBarLayout
+        android:id="@+id/appBarLayout"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="top"
+        android:background="@android:color/transparent"
+        android:elevation="0dp">
+
+        <code.name.monkey.retromusic.views.TintableToolbar
+            android:id="@+id/toolbar"
+            style="@style/Toolbar"
+            android:layout_width="match_parent"
+            android:layout_height="?attr/actionBarSize"
+            android:background="@android:color/transparent"
+            app:navigationIcon="@drawable/ic_arrow_back" />
+
+    </com.google.android.material.appbar.AppBarLayout>
 
 </FrameLayout>
