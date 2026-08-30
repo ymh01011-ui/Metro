@@ -78,6 +78,7 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
     private var dominantBackgroundColor: Int = Color.BLACK
     private var cachedBitmap: Bitmap? = null
     private var cachedGradientStops: IntArray? = null
+    private var originalAppearanceLightStatusBars: Boolean? = null
     private var hasExtractedColors: Boolean = false
 
     private val savedSongSortOrder: String
@@ -149,6 +150,11 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
                 insets
             }
         }
+
+        // مساحة فاضية تحت المحتوى كله بارتفاع ربع الشاشة تقريبًا
+        binding.fragmentArtistContent.bottomSpacer.layoutParams.height =
+            resources.displayMetrics.heightPixels / 4
+        binding.fragmentArtistContent.bottomSpacer.requestLayout()
 
         binding.appBarLayout?.alpha = 1f
         binding.toolbar.isClickable = true
@@ -500,10 +506,13 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
 
         // شريط الحالة (الساعة/البطارية فوق) يتحول لأيقونات غامقة لما الخلفية فاتحة،
         // وأيقونات بيضة لما الخلفية غامقة، بنفس منطق isLightBackground المستخدم هنا.
+        // بنسجل الحالة الأصلية أول مرة بس، عشان نرجعها زي ما كانت لما نخرج من الشاشة.
         activity?.window?.let { window ->
-            androidx.core.view.WindowInsetsControllerCompat(window, window.decorView).apply {
-                isAppearanceLightStatusBars = isLightBackground
+            val controller = androidx.core.view.WindowInsetsControllerCompat(window, window.decorView)
+            if (originalAppearanceLightStatusBars == null) {
+                originalAppearanceLightStatusBars = controller.isAppearanceLightStatusBars
             }
+            controller.isAppearanceLightStatusBars = isLightBackground
         }
 
         binding.fragmentArtistContent.playAction.elevation = 0f
@@ -678,6 +687,13 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
         }
 
     override fun onDestroyView() {
+        // نرجّع شكل شريط الحالة (فاتح/غامق) زي ما كان قبل ما ندخل الشاشة دي
+        originalAppearanceLightStatusBars?.let { original ->
+            activity?.window?.let { window ->
+                androidx.core.view.WindowInsetsControllerCompat(window, window.decorView)
+                    .isAppearanceLightStatusBars = original
+            }
+        }
         super.onDestroyView()
         _binding = null
     }
