@@ -173,11 +173,11 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
 
                 // اسم الفنان بيظهر جوه الـ toolbar بس لما البار يكون قرب يبان بالكامل
                 if (alphaProgress >= 0.9f) {
-                    if (binding.toolbar.title.isNullOrEmpty()) {
-                        binding.toolbar.title = binding.artistTitle.text
+                    if (toolbar.title.isNullOrEmpty()) {
+                        toolbar.title = binding.artistTitle.text
                     }
                 } else {
-                    binding.toolbar.title = null
+                    toolbar.title = null
                 }
             }
         })
