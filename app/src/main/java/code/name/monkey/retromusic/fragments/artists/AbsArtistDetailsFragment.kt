@@ -56,8 +56,8 @@ import org.koin.android.ext.android.get
 import java.util.*
 
 private const val FADE_START_FRACTION = 0.42f
-private const val GLASS_CIRCLE_ALPHA = 0x4D // ~30%
 private const val SEE_ALL_ALPHA = 0x99 // ~60%
+private const val BIOGRAPHY_GLASS_CORNER_DP = 12f
 private const val SONGS_PREVIEW_COUNT = 6
 
 abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragment_artist_details),
@@ -223,10 +223,10 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
         detailsViewModel.getBiography().observe(viewLifecycleOwner) { bio ->
             if (bio.isNullOrBlank()) {
                 binding.fragmentArtistContent.biographyTitle.visibility = View.GONE
-                binding.fragmentArtistContent.biographyCard.visibility = View.GONE
+                binding.fragmentArtistContent.biographyCardWrapper.visibility = View.GONE
             } else {
                 binding.fragmentArtistContent.biographyTitle.visibility = View.VISIBLE
-                binding.fragmentArtistContent.biographyCard.visibility = View.VISIBLE
+                binding.fragmentArtistContent.biographyCardWrapper.visibility = View.VISIBLE
                 binding.fragmentArtistContent.biographyText.text = bio
                 // نرجّعها تتقفل (3 أسطر) كل ما فنان جديد يتحمل
                 binding.fragmentArtistContent.biographyText.maxLines = 3
@@ -535,21 +535,25 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
         }
 
         binding.fragmentArtistContent.playAction.elevation = 0f
-        if (binding.fragmentArtistContent.playAction is com.google.android.material.button.MaterialButton) {
-            (binding.fragmentArtistContent.playAction as com.google.android.material.button.MaterialButton).strokeWidth = 0
-        }
 
-        val glassCircleTint = ColorUtils.setAlphaComponent(backgroundColor, GLASS_CIRCLE_ALPHA)
-        binding.fragmentArtistContent.infoAction.backgroundTintList =
-            android.content.res.ColorStateList.valueOf(glassCircleTint)
-        binding.fragmentArtistContent.shuffleAction.backgroundTintList =
-            android.content.res.ColorStateList.valueOf(glassCircleTint)
+        // التلات دواير بقوا زجاج حقيقي (بلور GPU + انكسار/تشتت لوني) بدل
+        // الشفافية الثابتة القديمة - بنمرر لون خلفية الصفحة الحقيقي، وهو اللي
+        // بيتعمله البلور والشيدر فوقه جوه LiquidGlassView
+        binding.fragmentArtistContent.infoActionGlass.setBackdropColor(backgroundColor)
+        binding.fragmentArtistContent.playActionGlass.setBackdropColor(backgroundColor)
+        binding.fragmentArtistContent.shuffleActionGlass.setBackdropColor(backgroundColor)
 
         binding.fragmentArtistContent.infoAction.iconTint =
             android.content.res.ColorStateList.valueOf(foregroundColor)
-
         binding.fragmentArtistContent.shuffleAction.iconTint =
             android.content.res.ColorStateList.valueOf(foregroundColor)
+        binding.fragmentArtistContent.playAction.imageTintList =
+            android.content.res.ColorStateList.valueOf(foregroundColor)
+
+        // نفس الزجاج الحقيقي على مستطيل الـ Biography، بنفس حواف الكارت الدائرية
+        binding.fragmentArtistContent.biographyCardGlass.cornerRadiusPx =
+            BIOGRAPHY_GLASS_CORNER_DP * resources.displayMetrics.density
+        binding.fragmentArtistContent.biographyCardGlass.setBackdropColor(backgroundColor)
 
         songAdapter.setDynamicTextColors(foregroundColor, secondaryForegroundColor)
         albumAdapter.setDynamicTextColors(foregroundColor, secondaryForegroundColor)
