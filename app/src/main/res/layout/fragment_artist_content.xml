@@ -244,4 +244,11 @@
         </LinearLayout>
     </androidx.cardview.widget.CardView>
 
+    <!-- مساحة فاضية تحت المحتوى كله - الارتفاع بيتحدد من الكود (ربع ارتفاع
+         الشاشة تقريبًا) عشان يفضل نسبي مهما اختلف حجم الشاشة. -->
+    <View
+        android:id="@+id/bottomSpacer"
+        android:layout_width="match_parent"
+        android:layout_height="0dp" />
+
 </LinearLayout>
