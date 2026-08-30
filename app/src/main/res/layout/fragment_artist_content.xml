@@ -20,51 +20,83 @@
         android:paddingEnd="16dp">
 
         <!--
-            backgroundTint هنا قيمة افتراضية بس (fallback) قبل ما الصورة تتحمل.
-            بعد استخراج اللون، الكود في AbsArtistDetailsFragment.kt بيغيّرها
-            لنفس لون خلفية الصفحة بشفافية، مع الحفاظ على strokeColor الأبيض
-            زي ما هو عشان يدي تأثير زجاجي (glass).
+            التلات دواير بقوا بنفس الحجم بالظبط (58dp)، وكل واحدة فيهم بقى
+            جواها طبقة LiquidGlassView زجاج حقيقي (بلور GPU حقيقي + شيدر
+            انكسار/تشتت لوني على أندرويد 13+) بدل الشفافية الثابتة القديمة.
+            الكود في AbsArtistDetailsFragment.kt بينادي setBackdropColor بعد
+            استخراج لون الصفحة، والزر اللي فوق بخلفية شفافة تمامًا عشان
+            الزجاج يبان من وراه.
         -->
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/infoAction"
-            style="@style/Widget.Material3.Button.IconButton"
-            android:layout_width="52dp"
-            android:layout_height="52dp"
-            android:layout_marginEnd="24dp"
-            android:backgroundTint="#33FFFFFF"
-            app:cornerRadius="26dp"
-            app:icon="@drawable/ic_add"
-            app:iconGravity="textStart"
-            app:iconPadding="0dp"
-            app:iconTint="@android:color/white"
-            app:strokeColor="#1AFFFFFF"
-            app:strokeWidth="1dp" />
+        <FrameLayout
+            android:layout_width="58dp"
+            android:layout_height="58dp"
+            android:layout_marginEnd="24dp">
 
-        <com.google.android.material.floatingactionbutton.FloatingActionButton
-            android:id="@+id/playAction"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            app:backgroundTint="@android:color/white"
-            app:tint="@android:color/black"
-            app:shapeAppearanceOverlay="@style/ShapeAppearance.Material3.Corner.Full"
-            app:fabCustomSize="64dp"
-            app:iconSize="30dp"
-            app:srcCompat="@drawable/ic_play_arrow" />
+            <code.name.monkey.retromusic.views.LiquidGlassView
+                android:id="@+id/infoActionGlass"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent" />
 
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/shuffleAction"
-            style="@style/Widget.Material3.Button.IconButton"
-            android:layout_width="52dp"
-            android:layout_height="52dp"
-            android:layout_marginStart="24dp"
-            android:backgroundTint="#33FFFFFF"
-            app:cornerRadius="26dp"
-            app:icon="@drawable/ic_shuffle"
-            app:iconGravity="textStart"
-            app:iconPadding="0dp"
-            app:iconTint="@android:color/white"
-            app:strokeColor="#1AFFFFFF"
-            app:strokeWidth="1dp" />
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/infoAction"
+                style="@style/Widget.Material3.Button.IconButton"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:backgroundTint="@android:color/transparent"
+                app:cornerRadius="29dp"
+                app:icon="@drawable/ic_add"
+                app:iconGravity="textStart"
+                app:iconPadding="0dp"
+                app:iconTint="@android:color/white"
+                app:strokeWidth="0dp" />
+        </FrameLayout>
+
+        <FrameLayout
+            android:layout_width="58dp"
+            android:layout_height="58dp">
+
+            <code.name.monkey.retromusic.views.LiquidGlassView
+                android:id="@+id/playActionGlass"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent" />
+
+            <com.google.android.material.floatingactionbutton.FloatingActionButton
+                android:id="@+id/playAction"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                app:backgroundTint="@android:color/transparent"
+                app:tint="@android:color/white"
+                app:elevation="0dp"
+                app:pressedTranslationZ="0dp"
+                app:shapeAppearanceOverlay="@style/ShapeAppearance.Material3.Corner.Full"
+                app:fabCustomSize="58dp"
+                app:iconSize="26dp"
+                app:srcCompat="@drawable/ic_play_arrow" />
+        </FrameLayout>
+
+        <FrameLayout
+            android:layout_width="58dp"
+            android:layout_height="58dp"
+            android:layout_marginStart="24dp">
+
+            <code.name.monkey.retromusic.views.LiquidGlassView
+                android:id="@+id/shuffleActionGlass"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/shuffleAction"
+                style="@style/Widget.Material3.Button.IconButton"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:backgroundTint="@android:color/transparent"
+                app:cornerRadius="29dp"
+                app:icon="@drawable/ic_shuffle"
+                app:iconGravity="textStart"
+                app:iconPadding="0dp"
+                app:iconTint="@android:color/white"
+                app:strokeWidth="0dp" />
+        </FrameLayout>
     </LinearLayout>
 
     <!-- قائمة الأغاني -->
@@ -199,50 +231,67 @@
         android:visibility="gone"
         tools:visibility="visible" />
 
-    <androidx.cardview.widget.CardView
-        android:id="@+id/biographyCard"
+    <!--
+        نفس فكرة الدواير: FrameLayout غلاف بيتحكم في الظهور/الاختفاء (بدل ما
+        كان بيتحكم في CardView نفسها مباشرة)، وجواه LiquidGlassView زجاج حقيقي
+        بحواف دائرية 12dp تطابق حواف الكارت، وفوقه CardView بخلفية شفافة
+        تمامًا عشان الزجاج يبان من وراها.
+    -->
+    <FrameLayout
+        android:id="@+id/biographyCardWrapper"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginStart="16dp"
         android:layout_marginEnd="16dp"
         android:visibility="gone"
-        app:cardBackgroundColor="#1AFFFFFF"
-        app:cardCornerRadius="12dp"
-        app:cardElevation="0dp"
         tools:visibility="visible">
 
-        <LinearLayout
+        <code.name.monkey.retromusic.views.LiquidGlassView
+            android:id="@+id/biographyCardGlass"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent" />
+
+        <androidx.cardview.widget.CardView
+            android:id="@+id/biographyCard"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:orientation="vertical"
-            android:padding="16dp">
+            app:cardBackgroundColor="@android:color/transparent"
+            app:cardCornerRadius="12dp"
+            app:cardElevation="0dp">
 
-            <TextView
-                android:id="@+id/biographyText"
+            <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:ellipsize="end"
-                android:lineSpacingExtra="2dp"
-                android:maxLines="3"
-                android:textColor="#E6FFFFFF"
-                android:textSize="14sp"
-                tools:text="Dua Lipa (born 22 August 1995) is an English singer, songwriter and actress. She is one of the most successful pop artists of her generation," />
+                android:orientation="vertical"
+                android:padding="16dp">
 
-            <com.google.android.material.textview.MaterialTextView
-                android:id="@+id/biographyMore"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_gravity="end"
-                android:layout_marginTop="8dp"
-                android:background="?attr/selectableItemBackgroundBorderless"
-                android:gravity="center_vertical"
-                android:padding="4dp"
-                android:text="More"
-                android:textColor="?attr/colorPrimary"
-                android:textStyle="bold" />
+                <TextView
+                    android:id="@+id/biographyText"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:ellipsize="end"
+                    android:lineSpacingExtra="2dp"
+                    android:maxLines="3"
+                    android:textColor="#E6FFFFFF"
+                    android:textSize="14sp"
+                    tools:text="Dua Lipa (born 22 August 1995) is an English singer, songwriter and actress. She is one of the most successful pop artists of her generation," />
 
-        </LinearLayout>
-    </androidx.cardview.widget.CardView>
+                <com.google.android.material.textview.MaterialTextView
+                    android:id="@+id/biographyMore"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="end"
+                    android:layout_marginTop="8dp"
+                    android:background="?attr/selectableItemBackgroundBorderless"
+                    android:gravity="center_vertical"
+                    android:padding="4dp"
+                    android:text="More"
+                    android:textColor="?attr/colorPrimary"
+                    android:textStyle="bold" />
+
+            </LinearLayout>
+        </androidx.cardview.widget.CardView>
+    </FrameLayout>
 
     <!-- مساحة فاضية تحت المحتوى كله - الارتفاع بيتحدد من الكود (ربع ارتفاع
          الشاشة تقريبًا) عشان يفضل نسبي مهما اختلف حجم الشاشة. -->
