@@ -57,10 +57,10 @@ class LiquidGlassView @JvmOverloads constructor(
         // hsl[2] تمثل الإضاءة (Lightness) من 0.0 إلى 1.0
         if (hsl[2] > 0.5f) {
             // لو الصفحة فاتحة: نغمق لون الدائرة بنسبة 10%
-            hsl[2] = Math.max(0f, hsl[2] - 0.10f)
+            hsl[2] = Math.max(0f, hsl[2] - 0.06f)
         } else {
             // لو الصفحة غامقة: نفتح لون الدائرة بنسبة 15% (مثل الصورة المرجعية تماماً)
-            hsl[2] = Math.min(1f, hsl[2] + 0.15f)
+            hsl[2] = Math.min(1f, hsl[2] + 0.08f)
         }
         
         // تعيين اللون الصلب الناتج (بدون أي Alpha/شفافية)
