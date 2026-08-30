@@ -12,8 +12,9 @@ import android.view.View
 import androidx.core.graphics.ColorUtils
 
 /**
- * طبقة "زجاج" خفيفة ومحسنة
- * تعتمد على شفافية بسيطة (10%) وحواف رفيعة جداً لتعطي إحساساً بالأناقة بدون استهلاك الموارد.
+ * طبقة الأزرار الصلبة (Solid Tint)
+ * تعتمد على تفتيح/تغميق لون الخلفية الأصلي بدون استخدام أي شفافية،
+ * مع الاحتفاظ بحواف بيضاء رفيعة وثابتة لإعطاء التباين المطلوب.
  */
 class LiquidGlassView @JvmOverloads constructor(
     context: Context,
@@ -36,7 +37,7 @@ class LiquidGlassView @JvmOverloads constructor(
     
     private val borderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
-        // تقليل سمك الحافة لتكون أرفع وأكثر أناقة بناءً على طلبك
+        // الحفاظ على السمك الرفيع (Hairline) للحواف
         strokeWidth = 0.8f * resources.displayMetrics.density 
     }
 
@@ -49,15 +50,25 @@ class LiquidGlassView @JvmOverloads constructor(
     private fun setupPaints() {
         if (width == 0 || height == 0) return
 
-        val isLight = ColorUtils.calculateLuminance(backdropColor) > 0.45f
-        val glassBaseColor = if (isLight) Color.BLACK else Color.WHITE
+        // 1. تحديد لون التعبئة (تعديل درجة الإضاءة بدون شفافية)
+        val hsl = FloatArray(3)
+        ColorUtils.colorToHSL(backdropColor, hsl)
 
-        // الشفافية 10% (القيمة 25 من أصل 255) ليكون اللون هادئ جداً
-        fillPaint.color = ColorUtils.setAlphaComponent(glassBaseColor, 20) 
+        // hsl[2] تمثل الإضاءة (Lightness) من 0.0 إلى 1.0
+        if (hsl[2] > 0.5f) {
+            // لو الصفحة فاتحة: نغمق لون الدائرة بنسبة 10%
+            hsl[2] = Math.max(0f, hsl[2] - 0.10f)
+        } else {
+            // لو الصفحة غامقة: نفتح لون الدائرة بنسبة 15% (مثل الصورة المرجعية تماماً)
+            hsl[2] = Math.min(1f, hsl[2] + 0.15f)
+        }
+        
+        // تعيين اللون الصلب الناتج (بدون أي Alpha/شفافية)
+        fillPaint.color = ColorUtils.HSLToColor(hsl)
 
-        // تدرج الإطار (اللمعة الجانبية)
-        val topBorderColor = ColorUtils.setAlphaComponent(glassBaseColor, 65) // لمعة علوية أنعم
-        val bottomBorderColor = ColorUtils.setAlphaComponent(glassBaseColor, 10) // خفوت سفلي
+        // 2. إطار اللمعة: أبيض دائماً ولا يتحول للأسود إطلاقاً
+        val topBorderColor = ColorUtils.setAlphaComponent(Color.WHITE, 65) 
+        val bottomBorderColor = ColorUtils.setAlphaComponent(Color.WHITE, 10) 
         
         borderPaint.shader = LinearGradient(
             0f, 0f, 0f, height.toFloat(),
@@ -77,10 +88,10 @@ class LiquidGlassView @JvmOverloads constructor(
         
         val radius = if (cornerRadiusPx > 0f) cornerRadiusPx else height / 2f
         
-        // رسم جسم الزجاج
+        // رسم جسم الزر باللون الصلب المعدل
         canvas.drawRoundRect(rect, radius, radius, fillPaint)
         
-        // رسم الإطار اللامع الرفيع
+        // رسم الإطار اللامع الأبيض
         val inset = borderPaint.strokeWidth / 2f
         val borderRect = RectF(inset, inset, width - inset, height - inset)
         val borderRadius = radius - inset
