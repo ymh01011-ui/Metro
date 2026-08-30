@@ -154,10 +154,13 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
         binding.toolbar.isClickable = true
 
         binding.content.setOnScrollChangeListener(androidx.core.widget.NestedScrollView.OnScrollChangeListener { _, _, scrollY, _, _ ->
-            val imageHeight = binding.image.height
-            if (imageHeight > 0) {
-                val startFade = imageHeight - 220
-                val endFade = imageHeight - 60
+            val titleBottom = binding.artistTitle.bottom
+            if (titleBottom > 0) {
+                // نطاق ظهور صغير (48dp) بدل الطول اللي كان مرتبط بارتفاع الصورة كلها،
+                // عشان البار يفضل مخفي تمامًا لحد ما اسم الفنان يوشك يختفي، وبعدين
+                // يظهر بسرعة بدل ما يتلون بالتدريج طول السحب.
+                val startFade = titleBottom - 24
+                val endFade = titleBottom + 24
 
                 val alphaProgress = when {
                     scrollY <= startFade -> 0f
@@ -167,6 +170,15 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
 
                 val dynamicColor = ColorUtils.setAlphaComponent(dominantBackgroundColor, (alphaProgress * 255).toInt())
                 binding.appBarLayout?.setBackgroundColor(dynamicColor)
+
+                // اسم الفنان بيظهر جوه الـ toolbar بس لما البار يكون قرب يبان بالكامل
+                if (alphaProgress >= 0.9f) {
+                    if (binding.toolbar.title.isNullOrEmpty()) {
+                        binding.toolbar.title = binding.artistTitle.text
+                    }
+                } else {
+                    binding.toolbar.title = null
+                }
             }
         })
 
@@ -467,9 +479,11 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
         if (toolbar is TintableToolbar) {
             toolbar.navigationIcon?.let { DrawableCompat.setTint(it, foregroundColor) }
             toolbar.setOverflowIconTint(foregroundColor)
+            toolbar.setTitleTextColor(foregroundColor)
         } else if (toolbar is androidx.appcompat.widget.Toolbar) {
             toolbar.navigationIcon?.let { DrawableCompat.setTint(it, foregroundColor) }
             toolbar.overflowIcon?.let { DrawableCompat.setTint(it, foregroundColor) }
+            toolbar.setTitleTextColor(foregroundColor)
         }
 
         binding.fragmentArtistContent.songTitle.setTextColor(foregroundColor)
@@ -479,6 +493,18 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
         binding.fragmentArtistContent.albumTitle.setTextColor(foregroundColor)
         binding.fragmentArtistContent.singlesTitle.setTextColor(foregroundColor)
         binding.fragmentArtistContent.appearsOnTitle.setTextColor(foregroundColor)
+
+        binding.fragmentArtistContent.biographyTitle.setTextColor(foregroundColor)
+        binding.fragmentArtistContent.biographyText.setTextColor(secondaryForegroundColor)
+        binding.fragmentArtistContent.biographyMore.setTextColor(foregroundColor)
+
+        // شريط الحالة (الساعة/البطارية فوق) يتحول لأيقونات غامقة لما الخلفية فاتحة،
+        // وأيقونات بيضة لما الخلفية غامقة، بنفس منطق isLightBackground المستخدم هنا.
+        activity?.window?.let { window ->
+            androidx.core.view.WindowInsetsControllerCompat(window, window.decorView).apply {
+                isAppearanceLightStatusBars = isLightBackground
+            }
+        }
 
         binding.fragmentArtistContent.playAction.elevation = 0f
         if (binding.fragmentArtistContent.playAction is com.google.android.material.button.MaterialButton) {
