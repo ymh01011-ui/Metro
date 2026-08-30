@@ -12,7 +12,8 @@ import android.view.View
 import androidx.core.graphics.ColorUtils
 
 /**
- * طبقة "زجاج حقيقي" محسنة (Apple Music iOS 26 Style)
+ * طبقة "زجاج" خفيفة ومحسنة
+ * تعتمد على شفافية بسيطة (10%) وحواف رفيعة جداً لتعطي إحساساً بالأناقة بدون استهلاك الموارد.
  */
 class LiquidGlassView @JvmOverloads constructor(
     context: Context,
@@ -35,7 +36,8 @@ class LiquidGlassView @JvmOverloads constructor(
     
     private val borderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
-        strokeWidth = 1.5f * resources.displayMetrics.density 
+        // تقليل سمك الحافة لتكون أرفع وأكثر أناقة بناءً على طلبك
+        strokeWidth = 0.8f * resources.displayMetrics.density 
     }
 
     fun setBackdropColor(color: Int) {
@@ -47,19 +49,15 @@ class LiquidGlassView @JvmOverloads constructor(
     private fun setupPaints() {
         if (width == 0 || height == 0) return
 
-        // 1. تحديد ما إذا كانت الخلفية فاتحة أم غامقة
         val isLight = ColorUtils.calculateLuminance(backdropColor) > 0.45f
-        
-        // السر هنا: استخدام الأبيض أو الأسود الشفاف لخلق تباين الزجاج، وليس لون الخلفية نفسه
         val glassBaseColor = if (isLight) Color.BLACK else Color.WHITE
 
-        // 2. لون التعبئة (جسم الزجاج): أبيض/أسود بشفافية 15% (القيمة 38 من 255)
-        // هذا ما يجعل الزر يبرز كطبقة زجاجية مضيئة فوق الخلفية
-        fillPaint.color = ColorUtils.setAlphaComponent(glassBaseColor, 38) 
+        // الشفافية 10% (القيمة 25 من أصل 255) ليكون اللون هادئ جداً
+        fillPaint.color = ColorUtils.setAlphaComponent(glassBaseColor, 20) 
 
-        // 3. تدرج الإطار (اللمعة الجانبية)
-        val topBorderColor = ColorUtils.setAlphaComponent(glassBaseColor, 80)
-        val bottomBorderColor = ColorUtils.setAlphaComponent(glassBaseColor, 15) 
+        // تدرج الإطار (اللمعة الجانبية)
+        val topBorderColor = ColorUtils.setAlphaComponent(glassBaseColor, 65) // لمعة علوية أنعم
+        val bottomBorderColor = ColorUtils.setAlphaComponent(glassBaseColor, 10) // خفوت سفلي
         
         borderPaint.shader = LinearGradient(
             0f, 0f, 0f, height.toFloat(),
@@ -79,8 +77,10 @@ class LiquidGlassView @JvmOverloads constructor(
         
         val radius = if (cornerRadiusPx > 0f) cornerRadiusPx else height / 2f
         
+        // رسم جسم الزجاج
         canvas.drawRoundRect(rect, radius, radius, fillPaint)
         
+        // رسم الإطار اللامع الرفيع
         val inset = borderPaint.strokeWidth / 2f
         val borderRect = RectF(inset, inset, width - inset, height - inset)
         val borderRadius = radius - inset
