@@ -179,13 +179,20 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
                 artistTitleBottomInScrollContent = (titleBottomOnScreen - contentLocation[1]) + scrollY
             }
 
-            val titleBottom = artistTitleBottomInScrollContent
+            // ارتفاع الـ appBar نفسه (padding الـ status bar + التولبار) - ده
+            // المكان اللي اسم الفنان بيختفي وراه فعليًا وهو بيسكرول لفوق، مش
+            // لما يوصل لأعلى الشاشة تمامًا (0). من غير طرح الارتفاع ده كان فيه
+            // تأخير: البار كان بيستنى لحد ما الاسم يبقى مختفي بمسافة كمان
+            // (بارتفاع الـ appBar) قبل ما يبدأ يظهر.
+            val appBarHeight = binding.appBarLayout?.height ?: 0
+            val titleBottom = artistTitleBottomInScrollContent - appBarHeight
             if (titleBottom > 0) {
-                // نطاق ظهور صغير (48dp) بدل الطول اللي كان مرتبط بارتفاع الصورة كلها،
-                // عشان البار يفضل مخفي تمامًا لحد ما اسم الفنان يوشك يختفي، وبعدين
-                // يظهر بسرعة بدل ما يتلون بالتدريج طول السحب.
-                val startFade = titleBottom - 24
-                val endFade = titleBottom + 24
+                // نطاق ظهور صغير (32dp محولة صح بالـ density، مش بكسلات خام زي الأول)
+                // عشان البار يفضل مخفي تمامًا لحد ما اسم الفنان يوشك يختفي وراه بالظبط،
+                // وبعدين يظهر بسرعة بدل ما يتلون بالتدريج طول السحب.
+                val fadeWindowPx = (32 * resources.displayMetrics.density).toInt()
+                val startFade = titleBottom - fadeWindowPx / 2
+                val endFade = titleBottom + fadeWindowPx / 2
 
                 val alphaProgress = when {
                     scrollY <= startFade -> 0f
