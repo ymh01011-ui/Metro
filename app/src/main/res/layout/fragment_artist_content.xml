@@ -47,7 +47,7 @@
                 app:icon="@drawable/ic_add"
                 app:iconGravity="textStart"
                 app:iconPadding="0dp"
-                app:iconSize="20dp"
+                app:iconSize="24dp"
                 app:iconTint="@android:color/white"
                 app:strokeWidth="0dp" />
         </FrameLayout>
@@ -71,7 +71,7 @@
                 app:pressedTranslationZ="0dp"
                 app:shapeAppearanceOverlay="@style/ShapeAppearance.Material3.Corner.Full"
                 app:fabCustomSize="58dp"
-                app:iconSize="48dp"
+                app:iconSize="64dp"
                 app:srcCompat="@drawable/ic_play_arrow" />
         </FrameLayout>
 
@@ -95,7 +95,7 @@
                 app:icon="@drawable/ic_shuffle"
                 app:iconGravity="textStart"
                 app:iconPadding="0dp"
-                app:iconSize="20dp"
+                app:iconSize="24dp"
                 app:iconTint="@android:color/white"
                 app:strokeWidth="0dp" />
         </FrameLayout>
