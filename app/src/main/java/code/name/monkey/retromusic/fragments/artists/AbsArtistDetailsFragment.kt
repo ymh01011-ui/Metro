@@ -57,6 +57,7 @@ import java.util.*
 
 private const val FADE_START_FRACTION = 0.42f
 private const val SEE_ALL_ALPHA = 0x99 // ~60%
+private const val TOOLBAR_ICON_ALPHA = 0xE6 // ~90% - شفافية بسيطة للسهم ونقط المنيو
 private const val BIOGRAPHY_GLASS_CORNER_DP = 12f
 private const val SONGS_PREVIEW_COUNT = 6
 
@@ -508,13 +509,14 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
         binding.text.setTextColor(secondaryForegroundColor)
 
         val toolbar = binding.toolbar
+        val iconColor = ColorUtils.setAlphaComponent(foregroundColor, TOOLBAR_ICON_ALPHA)
         if (toolbar is TintableToolbar) {
-            toolbar.navigationIcon?.let { DrawableCompat.setTint(it, foregroundColor) }
-            toolbar.setOverflowIconTint(foregroundColor)
+            toolbar.navigationIcon?.let { DrawableCompat.setTint(it, iconColor) }
+            toolbar.setOverflowIconTint(iconColor)
             toolbar.setTitleTextColor(foregroundColor)
         } else if (toolbar is androidx.appcompat.widget.Toolbar) {
-            toolbar.navigationIcon?.let { DrawableCompat.setTint(it, foregroundColor) }
-            toolbar.overflowIcon?.let { DrawableCompat.setTint(it, foregroundColor) }
+            toolbar.navigationIcon?.let { DrawableCompat.setTint(it, iconColor) }
+            toolbar.overflowIcon?.let { DrawableCompat.setTint(it, iconColor) }
             toolbar.setTitleTextColor(foregroundColor)
         }
 
