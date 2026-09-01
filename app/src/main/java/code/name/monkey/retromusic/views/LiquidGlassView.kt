@@ -58,7 +58,7 @@ class LiquidGlassView @JvmOverloads constructor(
         // افتراضيًا دايمًا بنفتح، إلا لو الخلفية فاتحة جدًا أصلاً (قريبة من الأبيض)
         // بحيث التفتيح مش هايبان/هيدي فرق - في الحالة دي بس نغمق شوية عشان تفضل
         // الدائرة واضحة فوق الخلفية.
-        val veryLightThreshold = 0.85f
+        val veryLightThreshold = 0.55f
         if (hsl[2] > veryLightThreshold) {
             hsl[2] = Math.max(0f, hsl[2] - 0.035f)
         } else {
