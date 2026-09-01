@@ -79,7 +79,6 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
     private var dominantBackgroundColor: Int = Color.BLACK
     private var cachedBitmap: Bitmap? = null
     private var cachedGradientStops: IntArray? = null
-    private var originalAppearanceLightStatusBars: Boolean? = null
     private var hasExtractedColors: Boolean = false
     // موضع أسفل اسم الفنان بالنسبة لأعلى الـ NestedScrollView كله (مش بالنسبة
     // لأبوه المباشر بس)، محسوب مرة واحدة ومتخزن هنا. ده اللي كان ناقص: كنا
@@ -140,8 +139,10 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
         val toolbar = binding.toolbar as TintableToolbar
         toolbar.title = null
         // بيبعد اسم الفنان شمال شوية عشان يبقى في نفس موضعه بالظبط زي توولبار
-        // صفحة all songs (اللي مش بيحط الـ inset الإضافي ده أصلاً).
+        // صفحة all songs. contentInsetStartWithNavigation لوحدها معملتش فرق،
+        // فالمسافة غالبًا جايه من titleMarginStart نفسه.
         toolbar.contentInsetStartWithNavigation = 0
+        toolbar.setTitleMarginStart(0)
         toolbar.inflateMenu(R.menu.menu_artist_detail)
         setUpSortOrderMenu(toolbar.menu)
         toolbar.setNavigationOnClickListener {
@@ -537,14 +538,10 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
 
         // شريط الحالة (الساعة/البطارية فوق) يتحول لأيقونات غامقة لما الخلفية فاتحة،
         // وأيقونات بيضة لما الخلفية غامقة، بنفس منطق isLightBackground المستخدم هنا.
-        // بنسجل الحالة الأصلية أول مرة بس، عشان نرجعها زي ما كانت لما نخرج من الشاشة.
-        activity?.window?.let { window ->
-            val controller = androidx.core.view.WindowInsetsControllerCompat(window, window.decorView)
-            if (originalAppearanceLightStatusBars == null) {
-                originalAppearanceLightStatusBars = controller.isAppearanceLightStatusBars
-            }
-            controller.isAppearanceLightStatusBars = isLightBackground
-        }
+        // بنفرضها من جديد في onResume (مش بس هنا) عشان لما نرجع من صفحة "See all"،
+        // الصفحة دي تضمن إنها هي اللي فارضة القيمة الصح، بغض النظر عن توقيت
+        // onDestroyView بتاع أي صفحة تانية بترجع منها.
+        applyStatusBarAppearance(isLightBackground)
 
         binding.fragmentArtistContent.playAction.elevation = 0f
 
@@ -721,14 +718,24 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
             }
         }
 
-    override fun onDestroyView() {
-        // نرجّع شكل شريط الحالة (فاتح/غامق) زي ما كان قبل ما ندخل الشاشة دي
-        originalAppearanceLightStatusBars?.let { original ->
-            activity?.window?.let { window ->
-                androidx.core.view.WindowInsetsControllerCompat(window, window.decorView)
-                    .isAppearanceLightStatusBars = original
-            }
+    // شريط الحالة (الساعة/البطارية فوق) - نطبقها هنا كنقطة واحدة، ومنسجلش
+    // "قيمة أصلية" لأننا لو حاولنا نرجعها في onDestroyView ممكن ده يحصل بعد ما
+    // صفحة جديدة (زي See all) تكون خلاص ظبطت القيمة الصح بتاعتها هي، فيبقى
+    // فيه تعارض توقيت (race) بيمسح تظبيطها. كل صفحة بقت مسؤولة عن فرض القيمة
+    // الصح بتاعتها هي بس، وقت ما تكون هي الظاهرة فعليًا.
+    private fun applyStatusBarAppearance(isLightBackground: Boolean) {
+        activity?.window?.let { window ->
+            androidx.core.view.WindowInsetsControllerCompat(window, window.decorView)
+                .isAppearanceLightStatusBars = isLightBackground
         }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        applyStatusBarAppearance(ColorUtils.calculateLuminance(dominantBackgroundColor) > 0.45f)
+    }
+
+    override fun onDestroyView() {
         super.onDestroyView()
         _binding = null
     }
