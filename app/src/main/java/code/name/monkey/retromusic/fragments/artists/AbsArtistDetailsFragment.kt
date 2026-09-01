@@ -18,6 +18,7 @@ import androidx.core.view.doOnPreDraw
 import androidx.core.view.isVisible
 import androidx.core.view.updatePadding
 import androidx.lifecycle.lifecycleScope
+import androidx.navigation.NavController
 import androidx.navigation.NavOptions
 import androidx.navigation.fragment.FragmentNavigatorExtras
 import androidx.navigation.fragment.findNavController
@@ -77,6 +78,7 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
     private var forceDownload: Boolean = false
     
     private var dominantBackgroundColor: Int = Color.BLACK
+    private var navDestinationListener: NavController.OnDestinationChangedListener? = null
     private var cachedBitmap: Bitmap? = null
     private var cachedGradientStops: IntArray? = null
     private var hasExtractedColors: Boolean = false
@@ -733,6 +735,24 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
     override fun onResume() {
         super.onResume()
         applyStatusBarAppearance(ColorUtils.calculateLuminance(dominantBackgroundColor) > 0.45f)
+
+        // لما نخرج خالص من السلسلة دي (تفاصيل الفنان / See all) لأي صفحة تانية،
+        // نرجّع شريط الحالة لطبيعته الافتراضية (أيقونات بيضة - نفس ثيم التطبيق
+        // العادي الغامق). طول ما لسه داخل السلسلة (بيننا وبين See all) منلمسهاش.
+        val ownDestinationId = findNavController().currentDestination?.id
+        val listener = NavController.OnDestinationChangedListener { _, destination, _ ->
+            if (destination.id != ownDestinationId && destination.id != R.id.artistAllSongsFragment) {
+                applyStatusBarAppearance(false)
+            }
+        }
+        navDestinationListener = listener
+        findNavController().addOnDestinationChangedListener(listener)
+    }
+
+    override fun onPause() {
+        navDestinationListener?.let { findNavController().removeOnDestinationChangedListener(it) }
+        navDestinationListener = null
+        super.onPause()
     }
 
     override fun onDestroyView() {
