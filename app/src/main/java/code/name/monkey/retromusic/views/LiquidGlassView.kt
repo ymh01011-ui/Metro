@@ -55,11 +55,13 @@ class LiquidGlassView @JvmOverloads constructor(
         ColorUtils.colorToHSL(backdropColor, hsl)
 
         // hsl[2] تمثل الإضاءة (Lightness) من 0.0 إلى 1.0
-        if (hsl[2] > 0.5f) {
-            // لو الصفحة فاتحة: نغمق لون الدائرة بنسبة 10%
+        // افتراضيًا دايمًا بنفتح، إلا لو الخلفية فاتحة جدًا أصلاً (قريبة من الأبيض)
+        // بحيث التفتيح مش هايبان/هيدي فرق - في الحالة دي بس نغمق شوية عشان تفضل
+        // الدائرة واضحة فوق الخلفية.
+        val veryLightThreshold = 0.85f
+        if (hsl[2] > veryLightThreshold) {
             hsl[2] = Math.max(0f, hsl[2] - 0.035f)
         } else {
-            // لو الصفحة غامقة: نفتح لون الدائرة بنسبة 15% (مثل الصورة المرجعية تماماً)
             hsl[2] = Math.min(1f, hsl[2] + 0.05f)
         }
         
