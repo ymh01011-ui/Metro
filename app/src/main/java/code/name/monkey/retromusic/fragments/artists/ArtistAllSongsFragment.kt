@@ -16,6 +16,7 @@ import androidx.core.view.WindowInsetsControllerCompat
 import androidx.core.view.doOnPreDraw
 import androidx.core.view.updatePadding
 import androidx.lifecycle.lifecycleScope
+import androidx.navigation.NavController
 import androidx.navigation.fragment.findNavController
 import androidx.recyclerview.widget.DefaultItemAnimator
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -42,6 +43,7 @@ class ArtistAllSongsFragment : AbsMainActivityFragment(R.layout.fragment_artist_
 
     private lateinit var songAdapter: SimpleSongAdapter
     private var dominantBackgroundColor: Int = Color.TRANSPARENT
+    private var navDestinationListener: NavController.OnDestinationChangedListener? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -188,6 +190,24 @@ class ArtistAllSongsFragment : AbsMainActivityFragment(R.layout.fragment_artist_
         if (dominantBackgroundColor != Color.TRANSPARENT) {
             applyStatusBarAppearance(ColorUtils.calculateLuminance(dominantBackgroundColor) > 0.45f)
         }
+
+        // زي ما هو في صفحة تفاصيل الفنان: لما نخرج خالص من السلسلة (لا احنا ولا
+        // صفحة تفاصيل الفنان اللي جاي منها)، نرجّع شريط الحالة لطبيعته الافتراضية.
+        val ownDestinationId = findNavController().currentDestination?.id
+        val previousDestinationId = findNavController().previousBackStackEntry?.destination?.id
+        val listener = NavController.OnDestinationChangedListener { _, destination, _ ->
+            if (destination.id != ownDestinationId && destination.id != previousDestinationId) {
+                applyStatusBarAppearance(false)
+            }
+        }
+        navDestinationListener = listener
+        findNavController().addOnDestinationChangedListener(listener)
+    }
+
+    override fun onPause() {
+        navDestinationListener?.let { findNavController().removeOnDestinationChangedListener(it) }
+        navDestinationListener = null
+        super.onPause()
     }
 
     private fun neutralFallbackColor(): Int {
