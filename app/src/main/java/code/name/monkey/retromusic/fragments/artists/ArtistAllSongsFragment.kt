@@ -42,7 +42,6 @@ class ArtistAllSongsFragment : AbsMainActivityFragment(R.layout.fragment_artist_
 
     private lateinit var songAdapter: SimpleSongAdapter
     private var dominantBackgroundColor: Int = Color.TRANSPARENT
-    private var originalAppearanceLightStatusBars: Boolean? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -163,22 +162,31 @@ class ArtistAllSongsFragment : AbsMainActivityFragment(R.layout.fragment_artist_
         binding.toolbar.setTitleTextColor(foregroundColor)
         binding.toolbar.navigationIcon?.let { DrawableCompat.setTint(it, foregroundColor) }
 
-        // شريط الحالة (الساعة/البطارية فوق) يتحول لأيقونات غامقة لما الخلفية فاتحة،
-        // وأيقونات بيضة لما الخلفية غامقة. بنسجل الحالة الأصلية أول مرة بس، عشان
-        // نرجعها زي ما كانت لما نخرج من الشاشة.
-        activity?.window?.let { window ->
-            val controller = WindowInsetsControllerCompat(window, window.decorView)
-            if (originalAppearanceLightStatusBars == null) {
-                originalAppearanceLightStatusBars = controller.isAppearanceLightStatusBars
-            }
-            controller.isAppearanceLightStatusBars = isLightBackground
-        }
+        applyStatusBarAppearance(isLightBackground)
 
         if (::songAdapter.isInitialized) {
             songAdapter.setDynamicTextColors(
                 foregroundColor,
                 ColorUtils.setAlphaComponent(foregroundColor, 0xCC)
             )
+        }
+    }
+
+    // شريط الحالة (الساعة/البطارية فوق) يتحول لأيقونات غامقة لما الخلفية فاتحة،
+    // وأيقونات بيضة لما الخلفية غامقة. بنفرضها من جديد في onResume (مش بس أول مرة)
+    // عشان لما نرجع من صفحة تانية، الصفحة دي تضمن إنها هي اللي فارضة القيمة الصح
+    // بغض النظر عن توقيت خروج أي صفحة تانية كانت بتتحكم في نفس الخاصية.
+    private fun applyStatusBarAppearance(isLightBackground: Boolean) {
+        activity?.window?.let { window ->
+            WindowInsetsControllerCompat(window, window.decorView)
+                .isAppearanceLightStatusBars = isLightBackground
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        if (dominantBackgroundColor != Color.TRANSPARENT) {
+            applyStatusBarAppearance(ColorUtils.calculateLuminance(dominantBackgroundColor) > 0.45f)
         }
     }
 
@@ -191,12 +199,6 @@ class ArtistAllSongsFragment : AbsMainActivityFragment(R.layout.fragment_artist_
     }
 
     override fun onDestroyView() {
-        activity?.window?.let { window ->
-            originalAppearanceLightStatusBars?.let { original ->
-                WindowInsetsControllerCompat(window, window.decorView)
-                    .isAppearanceLightStatusBars = original
-            }
-        }
         super.onDestroyView()
         _binding = null
     }
