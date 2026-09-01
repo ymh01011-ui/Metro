@@ -12,6 +12,7 @@ import androidx.core.os.bundleOf
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import androidx.core.view.doOnPreDraw
 import androidx.core.view.updatePadding
 import androidx.lifecycle.lifecycleScope
@@ -41,6 +42,7 @@ class ArtistAllSongsFragment : AbsMainActivityFragment(R.layout.fragment_artist_
 
     private lateinit var songAdapter: SimpleSongAdapter
     private var dominantBackgroundColor: Int = Color.TRANSPARENT
+    private var originalAppearanceLightStatusBars: Boolean? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -161,6 +163,17 @@ class ArtistAllSongsFragment : AbsMainActivityFragment(R.layout.fragment_artist_
         binding.toolbar.setTitleTextColor(foregroundColor)
         binding.toolbar.navigationIcon?.let { DrawableCompat.setTint(it, foregroundColor) }
 
+        // شريط الحالة (الساعة/البطارية فوق) يتحول لأيقونات غامقة لما الخلفية فاتحة،
+        // وأيقونات بيضة لما الخلفية غامقة. بنسجل الحالة الأصلية أول مرة بس، عشان
+        // نرجعها زي ما كانت لما نخرج من الشاشة.
+        activity?.window?.let { window ->
+            val controller = WindowInsetsControllerCompat(window, window.decorView)
+            if (originalAppearanceLightStatusBars == null) {
+                originalAppearanceLightStatusBars = controller.isAppearanceLightStatusBars
+            }
+            controller.isAppearanceLightStatusBars = isLightBackground
+        }
+
         if (::songAdapter.isInitialized) {
             songAdapter.setDynamicTextColors(
                 foregroundColor,
@@ -178,6 +191,12 @@ class ArtistAllSongsFragment : AbsMainActivityFragment(R.layout.fragment_artist_
     }
 
     override fun onDestroyView() {
+        activity?.window?.let { window ->
+            originalAppearanceLightStatusBars?.let { original ->
+                WindowInsetsControllerCompat(window, window.decorView)
+                    .isAppearanceLightStatusBars = original
+            }
+        }
         super.onDestroyView()
         _binding = null
     }
