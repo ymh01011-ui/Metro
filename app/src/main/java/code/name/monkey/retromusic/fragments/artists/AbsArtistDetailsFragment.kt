@@ -229,9 +229,6 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
 
         detailsViewModel.getArtist().observe(viewLifecycleOwner) {
             showArtist(it)
-            view.doOnPreDraw {
-                startPostponedEnterTransition()
-            }
         }
 
         detailsViewModel.getBiography().observe(viewLifecycleOwner) { bio ->
@@ -331,7 +328,6 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
 
         albumAdapter = HorizontalAlbumAdapter(requireActivity(), ArrayList(), this)
         binding.fragmentArtistContent.albumRecyclerView.apply {
-            androidx.core.view.ViewGroupCompat.setTransitionGroup(this, true)
             itemAnimator = null
             layoutManager = GridLayoutManager(this.context, 1, GridLayoutManager.HORIZONTAL, false)
             adapter = albumAdapter
@@ -339,7 +335,6 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
 
         singlesAdapter = HorizontalAlbumAdapter(requireActivity(), ArrayList(), this)
         binding.fragmentArtistContent.singlesRecyclerView.apply {
-            androidx.core.view.ViewGroupCompat.setTransitionGroup(this, true)
             itemAnimator = null
             layoutManager = GridLayoutManager(this.context, 1, GridLayoutManager.HORIZONTAL, false)
             adapter = singlesAdapter
@@ -347,7 +342,6 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
 
         appearsOnAdapter = HorizontalAlbumAdapter(requireActivity(), ArrayList(), this)
         binding.fragmentArtistContent.appearsOnRecyclerView.apply {
-            androidx.core.view.ViewGroupCompat.setTransitionGroup(this, true)
             itemAnimator = null
             layoutManager = GridLayoutManager(this.context, 1, GridLayoutManager.HORIZONTAL, false)
             adapter = appearsOnAdapter
@@ -355,7 +349,6 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
 
         songAdapter = SimpleSongAdapter(requireActivity(), ArrayList(), R.layout.item_song)
         binding.fragmentArtistContent.recyclerView.apply {
-            androidx.core.view.ViewGroupCompat.setTransitionGroup(this, true)
             itemAnimator = null
             layoutManager = LinearLayoutManager(this.context)
             adapter = songAdapter
@@ -406,25 +399,36 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
             MusicUtil.getReadableDurationString(MusicUtil.getTotalDuration(artist.songs))
         )
 
-        applySongsPreview(artist.sortedSongs)
+        lifecycleScope.launch(Dispatchers.Default) {
+            val sortedSongsList = artist.sortedSongs
+            val (albums, singles, appearsOn) = categorizeAlbums(artist)
 
-        val (albums, singles, appearsOn) = categorizeAlbums(artist)
+            withContext(Dispatchers.Main) {
+                if (_binding == null) return@withContext
+                
+                applySongsPreview(sortedSongsList)
 
-        val albumText = resources.getQuantityString(
-            R.plurals.albums, albums.size, albums.size
-        )
-        binding.fragmentArtistContent.albumTitle.text = albumText
-        albumAdapter.swapDataSet(albums)
-        binding.fragmentArtistContent.albumTitle.isVisible = albums.isNotEmpty()
-        binding.fragmentArtistContent.albumRecyclerView.isVisible = albums.isNotEmpty()
+                val albumText = resources.getQuantityString(
+                    R.plurals.albums, albums.size, albums.size
+                )
+                binding.fragmentArtistContent.albumTitle.text = albumText
+                albumAdapter.swapDataSet(albums)
+                binding.fragmentArtistContent.albumTitle.isVisible = albums.isNotEmpty()
+                binding.fragmentArtistContent.albumRecyclerView.isVisible = albums.isNotEmpty()
 
-        singlesAdapter.swapDataSet(singles)
-        binding.fragmentArtistContent.singlesTitle.isVisible = singles.isNotEmpty()
-        binding.fragmentArtistContent.singlesRecyclerView.isVisible = singles.isNotEmpty()
+                singlesAdapter.swapDataSet(singles)
+                binding.fragmentArtistContent.singlesTitle.isVisible = singles.isNotEmpty()
+                binding.fragmentArtistContent.singlesRecyclerView.isVisible = singles.isNotEmpty()
 
-        appearsOnAdapter.swapDataSet(appearsOn)
-        binding.fragmentArtistContent.appearsOnTitle.isVisible = appearsOn.isNotEmpty()
-        binding.fragmentArtistContent.appearsOnRecyclerView.isVisible = appearsOn.isNotEmpty()
+                appearsOnAdapter.swapDataSet(appearsOn)
+                binding.fragmentArtistContent.appearsOnTitle.isVisible = appearsOn.isNotEmpty()
+                binding.fragmentArtistContent.appearsOnRecyclerView.isVisible = appearsOn.isNotEmpty()
+
+                binding.rootLayout.doOnPreDraw {
+                    startPostponedEnterTransition()
+                }
+            }
+        }
     }
 
     private fun applySongsPreview(sortedSongs: List<Song>) {
@@ -683,7 +687,14 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
 
     private fun setSaveSortOrder(sortOrder: String) {
         PreferenceUtil.artistDetailSongSortOrder = sortOrder
-        applySongsPreview(artist.sortedSongs)
+        lifecycleScope.launch(Dispatchers.Default) {
+            val sortedSongsList = artist.sortedSongs
+            withContext(Dispatchers.Main) {
+                if (_binding != null) {
+                    applySongsPreview(sortedSongsList)
+                }
+            }
+        }
     }
 
     private fun setUpSortOrderMenu(sortOrder: Menu) {
