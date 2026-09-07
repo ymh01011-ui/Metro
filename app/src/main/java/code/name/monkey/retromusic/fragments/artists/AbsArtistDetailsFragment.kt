@@ -324,7 +324,7 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
         // بنعمل كل RecyclerView "transition group" عشان الـ Container Transform ياخد
         // لقطة (snapshot) من الليست ككل بدل ما يحاول يتعامل مع كل عنصر جوه القائمة
         // لوحده وقت التحويل - ده اللي بيسبب التقل في الفنانين اللي عندهم عناصر كتير.
-        // وبنشيل itemAnimator وقت الإعداد الأول عشان ميتعارضش مع أنيميشن الدخول.
+        // وبنشيل itemAnimator خالص من هنا عشان ميتعارضش مع أنيميشن الدخول (هيرجع بعدين).
 
         albumAdapter = HorizontalAlbumAdapter(requireActivity(), ArrayList(), this)
         binding.fragmentArtistContent.albumRecyclerView.apply {
@@ -353,15 +353,9 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
             layoutManager = LinearLayoutManager(this.context)
             adapter = songAdapter
         }
-
-        // نرجع الـ itemAnimator العادي بعد ما أنيميشن الدخول يخلص، عشان تحديثات الليست
-        // بعد كده (زي تغيير الترتيب) تفضل بتتحرك بشكل طبيعي.
-        view?.doOnPreDraw {
-            binding.fragmentArtistContent.albumRecyclerView.itemAnimator = DefaultItemAnimator()
-            binding.fragmentArtistContent.singlesRecyclerView.itemAnimator = DefaultItemAnimator()
-            binding.fragmentArtistContent.appearsOnRecyclerView.itemAnimator = DefaultItemAnimator()
-            binding.fragmentArtistContent.recyclerView.itemAnimator = DefaultItemAnimator()
-        }
+        
+        // تم مسح كود view?.doOnPreDraw من هنا بالكامل عشان كان بيرجع الـ Animators
+        // بدري جداً وبيبوظ التعديل.
     }
 
     private fun categorizeAlbums(artist: Artist): Triple<List<Album>, List<Album>, List<Album>> {
@@ -426,6 +420,20 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
 
                 binding.rootLayout.doOnPreDraw {
                     startPostponedEnterTransition()
+                    
+                    // الحل النهائي لـ Stuttering: بنشغل الـ Transition الأول،
+                    // ونستنى لحد ما يخلص تماماً (حوالي 350-400ms)،
+                    // وبعدين نرجع الـ itemAnimator للقوائم عشان لو ضفنا حاجة بعدين،
+                    // كده مفيش أي أنيميشنز هتدخل في بعض وقت فتح الصفحة.
+                    lifecycleScope.launch {
+                        kotlinx.coroutines.delay(400)
+                        if (_binding != null) {
+                            binding.fragmentArtistContent.albumRecyclerView.itemAnimator = DefaultItemAnimator()
+                            binding.fragmentArtistContent.singlesRecyclerView.itemAnimator = DefaultItemAnimator()
+                            binding.fragmentArtistContent.appearsOnRecyclerView.itemAnimator = DefaultItemAnimator()
+                            binding.fragmentArtistContent.recyclerView.itemAnimator = DefaultItemAnimator()
+                        }
+                    }
                 }
             }
         }
@@ -542,18 +550,10 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
         binding.fragmentArtistContent.biographyText.setTextColor(secondaryForegroundColor)
         binding.fragmentArtistContent.biographyMore.setTextColor(foregroundColor)
 
-        // شريط الحالة (الساعة/البطارية فوق) يتحول لأيقونات غامقة لما الخلفية فاتحة،
-        // وأيقونات بيضة لما الخلفية غامقة، بنفس منطق isLightBackground المستخدم هنا.
-        // بنفرضها من جديد في onResume (مش بس هنا) عشان لما نرجع من صفحة "See all"،
-        // الصفحة دي تضمن إنها هي اللي فارضة القيمة الصح، بغض النظر عن توقيت
-        // onDestroyView بتاع أي صفحة تانية بترجع منها.
         applyStatusBarAppearance(isLightBackground)
 
         binding.fragmentArtistContent.playAction.elevation = 0f
 
-        // التلات دواير بقوا زجاج حقيقي (بلور GPU + انكسار/تشتت لوني) بدل
-        // الشفافية الثابتة القديمة - بنمرر لون خلفية الصفحة الحقيقي، وهو اللي
-        // بيتعمله البلور والشيدر فوقه جوه LiquidGlassView
         binding.fragmentArtistContent.infoActionGlass.setBackdropColor(backgroundColor)
         binding.fragmentArtistContent.playActionGlass.setBackdropColor(backgroundColor)
         binding.fragmentArtistContent.shuffleActionGlass.setBackdropColor(backgroundColor)
@@ -565,7 +565,6 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
         binding.fragmentArtistContent.playAction.imageTintList =
             android.content.res.ColorStateList.valueOf(foregroundColor)
 
-        // نفس الزجاج الحقيقي على مستطيل الـ Biography، بنفس حواف الكارت الدائرية
         binding.fragmentArtistContent.biographyCardGlass.cornerRadiusPx =
             BIOGRAPHY_GLASS_CORNER_DP * resources.displayMetrics.density
         binding.fragmentArtistContent.biographyCardGlass.setBackdropColor(backgroundColor)
@@ -577,9 +576,6 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
     }
 
     override fun onAlbumClick(albumId: Long, view: View) {
-        // الانتقال ده فيه shared element حقيقي (transitionName بتاع الألبوم)
-        // فبيعتمد على Hold() عشان الشاشة الحالية تفضل ثابتة ورا الـ MaterialContainerTransform
-        // في الذهاب والرجوع
         exitTransition = Hold().apply {
             duration = 350L
         }
@@ -731,11 +727,6 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
             }
         }
 
-    // شريط الحالة (الساعة/البطارية فوق) - نطبقها هنا كنقطة واحدة، ومنسجلش
-    // "قيمة أصلية" لأننا لو حاولنا نرجعها في onDestroyView ممكن ده يحصل بعد ما
-    // صفحة جديدة (زي See all) تكون خلاص ظبطت القيمة الصح بتاعتها هي، فيبقى
-    // فيه تعارض توقيت (race) بيمسح تظبيطها. كل صفحة بقت مسؤولة عن فرض القيمة
-    // الصح بتاعتها هي بس، وقت ما تكون هي الظاهرة فعليًا.
     private fun applyStatusBarAppearance(isLightBackground: Boolean) {
         activity?.window?.let { window ->
             androidx.core.view.WindowInsetsControllerCompat(window, window.decorView)
@@ -747,9 +738,6 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
         super.onResume()
         applyStatusBarAppearance(ColorUtils.calculateLuminance(dominantBackgroundColor) > 0.45f)
 
-        // لما نخرج خالص من السلسلة دي (تفاصيل الفنان / See all) لأي صفحة تانية،
-        // نرجّع شريط الحالة لطبيعته الافتراضية (أيقونات بيضة - نفس ثيم التطبيق
-        // العادي الغامق). طول ما لسه داخل السلسلة (بيننا وبين See all) منلمسهاش.
         val ownDestinationId = findNavController().currentDestination?.id
         val listener = NavController.OnDestinationChangedListener { _, destination, _ ->
             if (destination.id != ownDestinationId && destination.id != R.id.artistAllSongsFragment) {
