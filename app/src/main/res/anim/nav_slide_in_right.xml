@@ -2,6 +2,6 @@
 <translate xmlns:android="http://schemas.android.com/apk/res/android"
     android:fromXDelta="100%p"
     android:toXDelta="0%p"
-    android:duration="350"
+    android:duration="230"
     android:interpolator="@android:interpolator/fast_out_slow_in" />
 
