@@ -432,7 +432,7 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
         // الترانزيشن بيبدأ بمجرد ما الهيدر (صورة + عنوان) جاهز للرسم، من غير
         // ما يستنى تصنيف الألبومات ولا بايندنج الـ RecyclerViews - ده اللي كان
         // بيسبب التقطيع لما عدد الأغاني/الألبومات يزيد عن حد معين.
-        binding.headerContainer.doOnPreDraw {
+        (binding.headerContainer ?: binding.rootLayout).doOnPreDraw {
             startPostponedEnterTransition()
         }
 
