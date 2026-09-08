@@ -89,12 +89,6 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
     // القيمة صغيرة جدًا وبالتالي البار كان بيظهر بمجرد أول سحب بسيط
     private var artistTitleBottomInScrollContent: Int = -1
 
-    // بيانات القوائم (أغاني/ألبومات) لما تجهز قبل ما الترانزيشن يخلص - بتتخزن
-    // هنا وبتتعرض أول ما onEnterTransitionFinished يتنادى، عشان بايندنج
-    // الـ RecyclerViews ميحصلش في نفس فريم فتح الصفحة.
-    private var transitionFinished = false
-    private var pendingArtistData: ArtistDisplayData? = null
-
     private data class ArtistDisplayData(
         val songs: List<Song>,
         val albums: List<Album>,
@@ -126,11 +120,13 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
                     if (isAdded) Glide.with(this@AbsArtistDetailsFragment).pauseRequestsRecursive()
                 }
 
-                override fun onTransitionEnd(transition: androidx.transition.Transition) =
-                    onEnterTransitionFinished()
+                override fun onTransitionEnd(transition: androidx.transition.Transition) {
+                    if (isAdded) Glide.with(this@AbsArtistDetailsFragment).resumeRequestsRecursive()
+                }
 
-                override fun onTransitionCancel(transition: androidx.transition.Transition) =
-                    onEnterTransitionFinished()
+                override fun onTransitionCancel(transition: androidx.transition.Transition) {
+                    if (isAdded) Glide.with(this@AbsArtistDetailsFragment).resumeRequestsRecursive()
+                }
 
                 override fun onTransitionPause(transition: androidx.transition.Transition) {}
                 override fun onTransitionResume(transition: androidx.transition.Transition) {}
@@ -290,11 +286,6 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
 
         setupRecyclerView()
 
-        // نخفي محتوى القائمة مؤقتًا لحد ما الترانزيشن يخلص، عشان الـ
-        // MaterialContainerTransform يشتغل على الهيدر بس (خفيف وثابت) بدل
-        // ما يتزاحم مع بايندنج وتحميل صور القوائم في نفس الفريم.
-        binding.fragmentArtistContent.root.isVisible = false
-
         binding.fragmentArtistContent.playAction.setOnClickListener {
             if (::artist.isInitialized) {
                 MusicPlayerRemote.openQueue(artist.sortedSongs, 0, true)
@@ -443,68 +434,50 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
 
             withContext(Dispatchers.Main) {
                 if (_binding == null) return@withContext
-
-                // لو الترانزيشن لسه شغال، نستنى لحد ما يخلص (onEnterTransitionFinished)
-                // قبل ما نعمل أي بايندنج تقيل على الـ RecyclerViews.
-                if (transitionFinished) {
-                    bindAndRevealContent(data)
-                } else {
-                    pendingArtistData = data
-                }
+                bindContentStaggered(data)
             }
         }
     }
 
-    // بيتنادى مرة واحدة لما الـ MaterialContainerTransform يخلص فعليًا (نجاح
-    // أو إلغاء) - مش بعد delay ثابت. هنا بس بيتم بايندنج القوائم وإظهارها.
-    private fun onEnterTransitionFinished() {
-        transitionFinished = true
-        if (isAdded) Glide.with(this).resumeRequestsRecursive()
-        pendingArtistData?.let {
-            bindAndRevealContent(it)
-            pendingArtistData = null
-        }
-    }
-
-    private fun bindAndRevealContent(data: ArtistDisplayData) {
+    // بايندنج مقسّم على فريمات: الأغاني المعروضة (لحد 6) خفيفة فبتتبند فورًا
+    // زي الأول، لكن الـ 3 RecyclerViews الأفقية - اللي أصلاً تحت الشاشة ومش
+    // ظاهرة إلا بعد سكرول - كل واحدة بتتبند على فريم لوحدها (root.post) عشان
+    // محدش منهم ياخد فريم واحد تقيل يوقف حركة الترانزيشن. المستخدم مش هيحس
+    // بفرق لأن العناصر دي أصلاً مش في مجال رؤيته وقت فتح الصفحة.
+    private fun bindContentStaggered(data: ArtistDisplayData) {
         if (_binding == null) return
+        val content = binding.fragmentArtistContent
 
         applySongsPreview(data.songs)
 
-        val albumText = resources.getQuantityString(
-            R.plurals.albums, data.albums.size, data.albums.size
-        )
-        binding.fragmentArtistContent.albumTitle.text = albumText
-        albumAdapter.swapDataSet(data.albums)
-        binding.fragmentArtistContent.albumTitle.isVisible = data.albums.isNotEmpty()
-        binding.fragmentArtistContent.albumRecyclerView.isVisible = data.albums.isNotEmpty()
+        content.root.post {
+            if (_binding == null) return@post
+            val albumText = resources.getQuantityString(
+                R.plurals.albums, data.albums.size, data.albums.size
+            )
+            content.albumTitle.text = albumText
+            albumAdapter.swapDataSet(data.albums)
+            content.albumTitle.isVisible = data.albums.isNotEmpty()
+            content.albumRecyclerView.isVisible = data.albums.isNotEmpty()
+            content.albumRecyclerView.itemAnimator = DefaultItemAnimator()
 
-        singlesAdapter.swapDataSet(data.singles)
-        binding.fragmentArtistContent.singlesTitle.isVisible = data.singles.isNotEmpty()
-        binding.fragmentArtistContent.singlesRecyclerView.isVisible = data.singles.isNotEmpty()
+            content.root.post {
+                if (_binding == null) return@post
+                singlesAdapter.swapDataSet(data.singles)
+                content.singlesTitle.isVisible = data.singles.isNotEmpty()
+                content.singlesRecyclerView.isVisible = data.singles.isNotEmpty()
+                content.singlesRecyclerView.itemAnimator = DefaultItemAnimator()
 
-        appearsOnAdapter.swapDataSet(data.appearsOn)
-        binding.fragmentArtistContent.appearsOnTitle.isVisible = data.appearsOn.isNotEmpty()
-        binding.fragmentArtistContent.appearsOnRecyclerView.isVisible = data.appearsOn.isNotEmpty()
-
-        // نرجّع itemAnimator دلوقتي بس، لأن الترانزيشن خلص فعليًا (مش delay تخميني)
-        binding.fragmentArtistContent.albumRecyclerView.itemAnimator = DefaultItemAnimator()
-        binding.fragmentArtistContent.singlesRecyclerView.itemAnimator = DefaultItemAnimator()
-        binding.fragmentArtistContent.appearsOnRecyclerView.itemAnimator = DefaultItemAnimator()
-        binding.fragmentArtistContent.recyclerView.itemAnimator = DefaultItemAnimator()
-
-        // ظهور تدريجي بسيط للمحتوى كله بعد ما الترانزيشن يخلص، بدل ما يكون
-        // ظاهر ومربوط ببايندنج تقيل وقت حركة فتح الصفحة نفسها.
-        val contentRoot = binding.fragmentArtistContent.root
-        contentRoot.isVisible = true
-        contentRoot.alpha = 0f
-        contentRoot.translationY = 32f
-        contentRoot.animate()
-            .alpha(1f)
-            .translationY(0f)
-            .setDuration(240L)
-            .setInterpolator(android.view.animation.DecelerateInterpolator())
-            .start()
+                content.root.post {
+                    if (_binding == null) return@post
+                    appearsOnAdapter.swapDataSet(data.appearsOn)
+                    content.appearsOnTitle.isVisible = data.appearsOn.isNotEmpty()
+                    content.appearsOnRecyclerView.isVisible = data.appearsOn.isNotEmpty()
+                    content.appearsOnRecyclerView.itemAnimator = DefaultItemAnimator()
+                    content.recyclerView.itemAnimator = DefaultItemAnimator()
+                }
+            }
+        }
     }
 
     private fun applySongsPreview(sortedSongs: List<Song>) {
