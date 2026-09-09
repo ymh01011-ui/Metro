@@ -19,8 +19,11 @@ import android.view.LayoutInflater
 import android.view.ViewGroup
 import androidx.core.widget.ImageViewCompat
 import androidx.fragment.app.FragmentActivity
+import code.name.monkey.retromusic.glide.RetroGlideExtension
+import code.name.monkey.retromusic.glide.RetroGlideExtension.songCoverOptions
 import code.name.monkey.retromusic.model.Song
 import code.name.monkey.retromusic.util.MusicUtil
+import com.bumptech.glide.Glide
 
 class SimpleSongAdapter(
     context: FragmentActivity,
@@ -72,5 +75,18 @@ class SimpleSongAdapter(
 
     override fun getItemCount(): Int {
         return dataSet.size
+    }
+
+    // item_song (المستخدم هنا بس) معندوش paletteColorContainer ولا mask، وألوان
+    // النصوص جايه أصلاً من setDynamicTextColors فوق (لون الصفحة الديناميكي) -
+    // مش من لون الغلاف نفسه. فمفيش داعي نستخرج Palette من كل صورة أغنية
+    // ونرميها زي ما كان بيحصل في الكلاس الأساسي SongAdapter.
+    override fun loadAlbumCover(song: Song, holder: ViewHolder) {
+        if (holder.image == null) return
+        Glide.with(activity)
+            .asDrawable()
+            .songCoverOptions(song)
+            .load(RetroGlideExtension.getSongModel(song))
+            .into(holder.image!!)
     }
 }
