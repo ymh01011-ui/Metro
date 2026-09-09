@@ -44,7 +44,12 @@ object RetroGlideExtension {
     private const val DEFAULT_ALBUM_IMAGE = R.drawable.default_album_art
     private const val DEFAULT_ERROR_IMAGE_BANNER = R.drawable.material_design_default
 
-    private val DEFAULT_DISK_CACHE_STRATEGY_ARTIST = DiskCacheStrategy.RESOURCE
+    // AUTOMATIC بتخزّن البيانات الخام اللي اتنزلت من الشبكة (مش الصورة بعد ما
+    // اتصغّرت لحجم معين). ده مهم عشان صورة الفنان بتتحمّل بحجمين مختلفين -
+    // صغير في الليست وكبير في الهيدر بصفحة التفاصيل - فلو خزّنا النسخة
+    // المعالجة بس (RESOURCE)، الحجم التاني مكانش هيلاقي تطابق وكان هيضطر
+    // يعيد التحميل من الإنترنت من الصفر تاني بدل ما يعمل فك تشفير محلي بس.
+    private val DEFAULT_DISK_CACHE_STRATEGY_ARTIST = DiskCacheStrategy.AUTOMATIC
     private val DEFAULT_DISK_CACHE_STRATEGY = DiskCacheStrategy.RESOURCE
 
     private const val DEFAULT_ANIMATION = android.R.anim.fade_in
