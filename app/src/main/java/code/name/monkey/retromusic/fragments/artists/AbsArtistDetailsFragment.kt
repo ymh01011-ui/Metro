@@ -61,6 +61,7 @@ private const val SEE_ALL_ALPHA = 0x99 // ~60%
 private const val TOOLBAR_ICON_ALPHA = 0xCC // ~80% - شفافية أقل من قبل للسهم ونقط المنيو
 private const val BIOGRAPHY_GLASS_CORNER_DP = 12f
 private const val SONGS_PREVIEW_COUNT = 6
+private const val VISIBLE_SONGS_IMMEDIATE = 4
 
 abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragment_artist_details),
     IAlbumClickListener {
@@ -482,10 +483,22 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
 
     private fun applySongsPreview(sortedSongs: List<Song>) {
         val hasMoreSongs = sortedSongs.size > SONGS_PREVIEW_COUNT
-        songAdapter.swapDataSet(
-            if (hasMoreSongs) sortedSongs.take(SONGS_PREVIEW_COUNT) else sortedSongs
-        )
+        val previewList = if (hasMoreSongs) sortedSongs.take(SONGS_PREVIEW_COUNT) else sortedSongs
         binding.fragmentArtistContent.seeAllSongs.isVisible = hasMoreSongs
+
+        // بس الصفوف اللي فعليًا ظاهرة قبل أي سكرول (زي ما بان في السكرين شوت)
+        // بتتبند فورًا. الباقي (صف 5 و6، تحت حافة الشاشة) بيتأجل فريم واحد -
+        // المستخدم مش هيلاحظ فرق لأنهم أصلاً مش في مجال رؤيته وقت الفتح، لكن
+        // ده بيقلل عدد صور الأغاني اللي بتتحمّل بالتوازي وقت حركة الترانزيشن.
+        val immediateCount = minOf(VISIBLE_SONGS_IMMEDIATE, previewList.size)
+        songAdapter.swapDataSet(previewList.subList(0, immediateCount))
+
+        if (previewList.size > immediateCount) {
+            binding.fragmentArtistContent.root.post {
+                if (_binding == null) return@post
+                songAdapter.swapDataSet(previewList)
+            }
+        }
     }
 
     private fun loadArtistImage(artist: Artist) {
