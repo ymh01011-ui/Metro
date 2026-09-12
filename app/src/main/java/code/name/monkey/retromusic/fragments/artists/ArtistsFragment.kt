@@ -28,19 +28,15 @@ import code.name.monkey.retromusic.adapter.artist.ArtistAdapter
 import code.name.monkey.retromusic.databinding.FragmentArtistsBinding
 import code.name.monkey.retromusic.extensions.accentColor
 import code.name.monkey.retromusic.extensions.dip
-import code.name.monkey.retromusic.extensions.filterByExtraArtist
-import code.name.monkey.retromusic.extensions.saveSortArtistTo
 import code.name.monkey.retromusic.fragments.base.AbsLibraryPagerRecyclerViewFragment
 import code.name.monkey.retromusic.helper.SortOrder
 import code.name.monkey.retromusic.interfaces.IArtistClickListener
 import code.name.monkey.retromusic.model.Artist
 import code.name.monkey.retromusic.util.PreferenceUtil
 import com.google.android.material.transition.MaterialSharedAxisTransition
-import org.koin.androidx.viewmodel.ext.android.sharedViewModel
 
 class ArtistsFragment : AbsLibraryPagerRecyclerViewFragment<ArtistAdapter, GridLayoutManager>(),
     IArtistClickListener {
-    private val libraryViewModel: LibraryViewModel by sharedViewModel()
     private var _binding: FragmentArtistsBinding? = null
     private val binding get() = _binding!!
 
@@ -49,18 +45,6 @@ class ArtistsFragment : AbsLibraryPagerRecyclerViewFragment<ArtistAdapter, GridL
         _binding = FragmentArtistsBinding.bind(view)
         enterTransition = MaterialSharedAxisTransition(MaterialSharedAxisTransition.Y_AXIS, true)
         exitTransition = MaterialSharedAxisTransition(MaterialSharedAxisTransition.Y_AXIS, false)
-        libraryViewModel.artists.observe(viewLifecycleOwner) {
-            if (it.isNotEmpty())
-                onArtistsLoaded(it)
-            else
-                showEmptyView()
-        }
-    }
-
-    private fun onArtistsLoaded(artists: List<Artist>) {
-        val extraArtistName = arguments?.getString(EXTRA_ARTIST_NAME, null)
-        val filtered = artists.filterByExtraArtist(extraArtistName)
-        adapter?.swapData(filtered)
     }
 
     override fun onPrepareMenu(menu: Menu) {
@@ -87,7 +71,6 @@ class ArtistsFragment : AbsLibraryPagerRecyclerViewFragment<ArtistAdapter, GridL
         }
         item.isChecked = true
         PreferenceUtil.artistSortOrder = sortOrder
-        saveSortArtistTo(sortOrder)
         return true
     }
 
