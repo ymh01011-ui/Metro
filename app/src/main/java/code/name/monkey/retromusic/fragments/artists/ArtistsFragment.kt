@@ -12,220 +12,126 @@
  * See the GNU General Public License for more details.
  *
  */
-package code.name.monkey.retromusic.adapter
+package code.name.monkey.retromusic.fragments.artists
 
-import android.annotation.SuppressLint
-import android.view.LayoutInflater
+import android.os.Bundle
+import android.view.Menu
+import android.view.MenuInflater
+import android.view.MenuItem
 import android.view.View
-import android.view.ViewGroup
-import androidx.appcompat.app.AppCompatActivity
-import androidx.appcompat.widget.AppCompatTextView
 import androidx.core.os.bundleOf
-import androidx.fragment.app.findFragment
-import androidx.navigation.NavOptions
 import androidx.navigation.findNavController
 import androidx.navigation.fragment.FragmentNavigatorExtras
 import androidx.recyclerview.widget.GridLayoutManager
-import androidx.recyclerview.widget.LinearLayoutManager
-import androidx.recyclerview.widget.RecyclerView
-import code.name.monkey.retromusic.*
-import code.name.monkey.retromusic.adapter.album.AlbumAdapter
+import code.name.monkey.retromusic.R
 import code.name.monkey.retromusic.adapter.artist.ArtistAdapter
-import code.name.monkey.retromusic.adapter.song.SongAdapter
-import code.name.monkey.retromusic.fragments.home.HomeFragment
-import code.name.monkey.retromusic.interfaces.IAlbumClickListener
+import code.name.monkey.retromusic.databinding.FragmentArtistsBinding
+import code.name.monkey.retromusic.extensions.accentColor
+import code.name.monkey.retromusic.extensions.dip
+import code.name.monkey.retromusic.extensions.filterByExtraArtist
+import code.name.monkey.retromusic.extensions.saveSortArtistTo
+import code.name.monkey.retromusic.fragments.base.AbsLibraryPagerRecyclerViewFragment
+import code.name.monkey.retromusic.helper.SortOrder
 import code.name.monkey.retromusic.interfaces.IArtistClickListener
-import code.name.monkey.retromusic.interfaces.IMultiArtistClickListener
-import code.name.monkey.retromusic.model.Album
 import code.name.monkey.retromusic.model.Artist
-import code.name.monkey.retromusic.model.Home
-import code.name.monkey.retromusic.model.Song
 import code.name.monkey.retromusic.util.PreferenceUtil
+import com.google.android.material.transition.MaterialSharedAxisTransition
+import org.koin.androidx.viewmodel.ext.android.sharedViewModel
 
-class HomeAdapter(private val activity: AppCompatActivity) :
-    RecyclerView.Adapter<RecyclerView.ViewHolder>(), IArtistClickListener, IAlbumClickListener,
-    IMultiArtistClickListener {
+class ArtistsFragment : AbsLibraryPagerRecyclerViewFragment<ArtistAdapter, GridLayoutManager>(),
+    IArtistClickListener {
+    private val libraryViewModel: LibraryViewModel by sharedViewModel()
+    private var _binding: FragmentArtistsBinding? = null
+    private val binding get() = _binding!!
 
-    private var list = listOf<Home>()
-
-    override fun getItemViewType(position: Int): Int {
-        return list[position].homeSection
-    }
-
-    override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): RecyclerView.ViewHolder {
-        val layout =
-            LayoutInflater.from(activity).inflate(R.layout.section_recycler_view, parent, false)
-        return when (viewType) {
-            RECENT_ARTISTS, TOP_ARTISTS -> ArtistViewHolder(layout)
-            FAVOURITES -> PlaylistViewHolder(layout)
-            TOP_ALBUMS, RECENT_ALBUMS -> AlbumViewHolder(layout)
-            else -> {
-                ArtistViewHolder(layout)
-            }
+    override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
+        super.onViewCreated(view, savedInstanceState)
+        _binding = FragmentArtistsBinding.bind(view)
+        enterTransition = MaterialSharedAxisTransition(MaterialSharedAxisTransition.Y_AXIS, true)
+        exitTransition = MaterialSharedAxisTransition(MaterialSharedAxisTransition.Y_AXIS, false)
+        libraryViewModel.artists.observe(viewLifecycleOwner) {
+            if (it.isNotEmpty())
+                onArtistsLoaded(it)
+            else
+                showEmptyView()
         }
     }
 
-    override fun onBindViewHolder(holder: RecyclerView.ViewHolder, position: Int) {
-        val home = list[position]
-        when (getItemViewType(position)) {
-            RECENT_ALBUMS -> {
-                val viewHolder = holder as AlbumViewHolder
-                viewHolder.bindView(home)
-                viewHolder.clickableArea.setOnClickListener {
-                    it.findFragment<HomeFragment>().setSharedAxisXTransitions()
-                    activity.findNavController(R.id.fragment_container).navigate(
-                        R.id.detailListFragment,
-                        bundleOf("type" to RECENT_ALBUMS)
-                    )
-                }
-            }
-            TOP_ALBUMS -> {
-                val viewHolder = holder as AlbumViewHolder
-                viewHolder.bindView(home)
-                viewHolder.clickableArea.setOnClickListener {
-                    it.findFragment<HomeFragment>().setSharedAxisXTransitions()
-                    activity.findNavController(R.id.fragment_container).navigate(
-                        R.id.detailListFragment,
-                        bundleOf("type" to TOP_ALBUMS)
-                    )
-                }
-            }
-            RECENT_ARTISTS -> {
-                val viewHolder = holder as ArtistViewHolder
-                viewHolder.bindView(home)
-                viewHolder.clickableArea.setOnClickListener {
-                    it.findFragment<HomeFragment>().setSharedAxisXTransitions()
-                    activity.findNavController(R.id.fragment_container).navigate(
-                        R.id.detailListFragment,
-                        bundleOf("type" to RECENT_ARTISTS)
-                    )
-                }
-            }
-            TOP_ARTISTS -> {
-                val viewHolder = holder as ArtistViewHolder
-                viewHolder.bindView(home)
-                viewHolder.clickableArea.setOnClickListener {
-                    it.findFragment<HomeFragment>().setSharedAxisXTransitions()
-                    activity.findNavController(R.id.fragment_container).navigate(
-                        R.id.detailListFragment,
-                        bundleOf("type" to TOP_ARTISTS)
-                    )
-                }
-            }
-            FAVOURITES -> {
-                val viewHolder = holder as PlaylistViewHolder
-                viewHolder.bindView(home)
-                viewHolder.clickableArea.setOnClickListener {
-                    it.findFragment<HomeFragment>().setSharedAxisXTransitions()
-                    activity.findNavController(R.id.fragment_container).navigate(
-                        R.id.detailListFragment,
-                        bundleOf("type" to FAVOURITES)
-                    )
-                }
-            }
+    private fun onArtistsLoaded(artists: List<Artist>) {
+        val extraArtistName = arguments?.getString(EXTRA_ARTIST_NAME, null)
+        val filtered = artists.filterByExtraArtist(extraArtistName)
+        adapter?.swapData(filtered)
+    }
+
+    override fun onPrepareMenu(menu: Menu) {
+        super.onPrepareMenu(menu)
+        menu.findItem(R.id.action_grid_size)?.isVisible = true
+        menu.findItem(R.id.action_layout_type)?.isVisible = true
+        menu.findItem(R.id.action_sort_order)?.isVisible = true
+    }
+
+    override fun onMenuItemSelected(menuItem: MenuItem): Boolean {
+        if (handleSortOrderMenuItem(menuItem)) {
+            return true
         }
+        return super.onMenuItemSelected(menuItem)
     }
 
-    override fun getItemCount(): Int {
-        return list.size
-    }
-
-    @SuppressLint("NotifyDataSetChanged")
-    fun swapData(sections: List<Home>) {
-        list = sections
-        notifyDataSetChanged()
-    }
-
-    @Suppress("UNCHECKED_CAST")
-    private inner class AlbumViewHolder(view: View) : AbsHomeViewItem(view) {
-        fun bindView(home: Home) {
-            title.setText(home.titleRes)
-            recyclerView.apply {
-                adapter = albumAdapter(home.arrayList as List<Album>)
-                layoutManager = gridLayoutManager()
-            }
+    private fun handleSortOrderMenuItem(item: MenuItem): Boolean {
+        val sortOrder: String = when (item.itemId) {
+            R.id.action_sort_order_asc -> SortOrder.ArtistSortOrder.ARTIST_A_Z
+            R.id.action_sort_order_desc -> SortOrder.ArtistSortOrder.ARTIST_Z_A
+            R.id.action_sort_order_artist_song_count -> SortOrder.ArtistSortOrder.ARTIST_NUMBER_OF_SONGS
+            R.id.action_sort_order_artist_album_count -> SortOrder.ArtistSortOrder.ARTIST_NUMBER_OF_ALBUMS
+            else -> return false
         }
+        item.isChecked = true
+        PreferenceUtil.artistSortOrder = sortOrder
+        saveSortArtistTo(sortOrder)
+        return true
     }
 
-    @Suppress("UNCHECKED_CAST")
-    private inner class ArtistViewHolder(view: View) : AbsHomeViewItem(view) {
-        fun bindView(home: Home) {
-            title.setText(home.titleRes)
-            recyclerView.apply {
-                layoutManager = linearLayoutManager()
-                adapter = artistsAdapter(home.arrayList as List<Artist>)
-            }
-        }
+    override fun createLayoutManager(): GridLayoutManager {
+        return GridLayoutManager(
+            requireActivity(),
+            getGridSize(),
+            GridLayoutManager.VERTICAL,
+            false
+        )
     }
 
-    @Suppress("UNCHECKED_CAST")
-    private inner class PlaylistViewHolder(view: View) : AbsHomeViewItem(view) {
-        fun bindView(home: Home) {
-            title.setText(home.titleRes)
-            recyclerView.apply {
-                val songAdapter = SongAdapter(
-                    activity,
-                    home.arrayList as MutableList<Song>,
-                    R.layout.item_favourite_card
-                )
-                layoutManager = linearLayoutManager()
-                adapter = songAdapter
-            }
-        }
+    override fun createAdapter(): ArtistAdapter {
+        return ArtistAdapter(
+            requireActivity(),
+            emptyList(),
+            PreferenceUtil.artistGridStyle,
+            this,
+            null,
+            null
+        )
     }
-
-    open class AbsHomeViewItem(itemView: View) : RecyclerView.ViewHolder(itemView) {
-        val recyclerView: RecyclerView = itemView.findViewById(R.id.recyclerView)
-        val title: AppCompatTextView = itemView.findViewById(R.id.title)
-        val clickableArea: ViewGroup = itemView.findViewById(R.id.clickable_area)
-    }
-
-    private fun artistsAdapter(artists: List<Artist>) =
-        ArtistAdapter(activity, artists, PreferenceUtil.homeArtistGridStyle, this, null, this)
-
-    private fun albumAdapter(albums: List<Album>) =
-        AlbumAdapter(activity, albums, PreferenceUtil.homeAlbumGridStyle, this)
-
-    private fun gridLayoutManager() =
-        GridLayoutManager(activity, 1, GridLayoutManager.HORIZONTAL, false)
-
-    private fun linearLayoutManager() =
-        LinearLayoutManager(activity, LinearLayoutManager.HORIZONTAL, false)
 
     override fun onArtist(artistId: Long, view: View) {
-        val navOptions = NavOptions.Builder()
-            .setEnterAnim(R.anim.nav_slide_in_right)
-            .setExitAnim(R.anim.nav_slide_out_left)
-            .setPopEnterAnim(R.anim.nav_slide_in_left)
-            .setPopExitAnim(R.anim.nav_slide_out_right)
-            .build()
-
-        activity.findNavController(R.id.fragment_container).navigate(
+        exitTransition = MaterialSharedAxisTransition(MaterialSharedAxisTransition.Y_AXIS, false)
+        requireView().findNavController().navigate(
             R.id.artistDetailsFragment,
             bundleOf(EXTRA_ARTIST_ID to artistId),
-            navOptions
+            null,
+            FragmentNavigatorExtras(view to artistId.toString())
         )
     }
 
-    override fun onMultiArtist(artistName: String, view: View) {
-        activity.findNavController(R.id.fragment_container).navigate(
-            R.id.multiArtistDetailsFragment,
-            bundleOf(EXTRA_ARTIST_NAME to artistName),
-            null,
-            FragmentNavigatorExtras(
-                view to artistName
-            )
-        )
+    override fun onDestroyView() {
+        super.onDestroyView()
+        _binding = null
     }
 
-    override fun onAlbumClick(albumId: Long, view: View) {
-        activity.findNavController(R.id.fragment_container).navigate(
-            R.id.albumDetailsFragment,
-            bundleOf(EXTRA_ALBUM_ID to albumId),
-            null,
-            FragmentNavigatorExtras(
-                view to albumId.toString()
-            )
-        )
+    override fun getEmptyStateDrawableRes(): Int = R.drawable.ic_empty_music
+    override fun getEmptyStateTextRes(): Int = R.string.no_artists
+
+    companion object {
+        const val TAG: String = "ArtistsFragment"
+        private const val EXTRA_ARTIST_ID = "extra_artist_id"
+        private const val EXTRA_ARTIST_NAME = "extra_artist_name"
     }
 }
