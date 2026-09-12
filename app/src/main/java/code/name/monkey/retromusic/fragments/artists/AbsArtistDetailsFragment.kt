@@ -97,6 +97,17 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
         val appearsOn: List<Album>
     )
 
+    companion object {
+        // كاش لآخر فنان اتفتحت صفحته - سلوت واحد بس، وبيتبدل تلقائيًا لما فنان
+        // تاني يتفتح. لو رجعت لنفس الفنان قبل ما تفتح فنان غيره، الصفحة بتظهر
+        // فورًا من غير أي تحميل صورة/حساب ألوان/بايندنج قوائم تاني.
+        private var lastVisitedArtistId: Long? = null
+        private var lastVisitedBitmap: Bitmap? = null
+        private var lastVisitedGradientStops: IntArray? = null
+        private var lastVisitedDominantColor: Int = Color.BLACK
+        private var lastVisitedDisplayData: ArtistDisplayData? = null
+    }
+
     private val savedSongSortOrder: String
         get() = PreferenceUtil.artistDetailSongSortOrder
 
@@ -428,6 +439,15 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
             startPostponedEnterTransition()
         }
 
+        // لو ده نفس آخر فنان اتفتحت صفحته، اعرض القوائم المحفوظة فورًا من غير
+        // أي حساب تصنيف تاني ولا تقسيم على فريمات (مش محتاج، البيانات جاهزة
+        // والصور أصلاً في كاش Glide).
+        val cachedData = lastVisitedDisplayData.takeIf { lastVisitedArtistId == artist.id }
+        if (cachedData != null) {
+            bindContentInstant(cachedData)
+            return
+        }
+
         lifecycleScope.launch(Dispatchers.Default) {
             val sortedSongsList = artist.sortedSongs
             val (albums, singles, appearsOn) = categorizeAlbums(artist)
@@ -435,9 +455,41 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
 
             withContext(Dispatchers.Main) {
                 if (_binding == null) return@withContext
+                lastVisitedArtistId = artist.id
+                lastVisitedDisplayData = data
                 bindContentStaggered(data)
             }
         }
+    }
+
+    // نسخة فورية من البايندنج، من غير تقسيم على فريمات - بتتستخدم بس لما
+    // البيانات جاية من كاش آخر فنان اتفتح، فمفيش خطر إن بايندنج تقيل يفضل
+    // شغال أثناء الترانزيشن (أصلاً محسوبة وجاهزة من قبل).
+    private fun bindContentInstant(data: ArtistDisplayData) {
+        if (_binding == null) return
+        val content = binding.fragmentArtistContent
+
+        applySongsPreview(data.songs)
+
+        val albumText = resources.getQuantityString(
+            R.plurals.albums, data.albums.size, data.albums.size
+        )
+        content.albumTitle.text = albumText
+        albumAdapter.swapDataSet(data.albums)
+        content.albumTitle.isVisible = data.albums.isNotEmpty()
+        content.albumRecyclerView.isVisible = data.albums.isNotEmpty()
+        content.albumRecyclerView.itemAnimator = DefaultItemAnimator()
+
+        singlesAdapter.swapDataSet(data.singles)
+        content.singlesTitle.isVisible = data.singles.isNotEmpty()
+        content.singlesRecyclerView.isVisible = data.singles.isNotEmpty()
+        content.singlesRecyclerView.itemAnimator = DefaultItemAnimator()
+
+        appearsOnAdapter.swapDataSet(data.appearsOn)
+        content.appearsOnTitle.isVisible = data.appearsOn.isNotEmpty()
+        content.appearsOnRecyclerView.isVisible = data.appearsOn.isNotEmpty()
+        content.appearsOnRecyclerView.itemAnimator = DefaultItemAnimator()
+        content.recyclerView.itemAnimator = DefaultItemAnimator()
     }
 
     // بايندنج مقسّم على فريمات: الأغاني المعروضة (لحد 6) خفيفة فبتتبند فورًا
@@ -508,6 +560,21 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
             return
         }
 
+        // لو ده نفس آخر فنان اتفتحت صفحته، استخدم الصورة واللون المحفوظين
+        // فورًا - من غير ما نستنى Glide ولا نعيد حساب الألوان تاني.
+        if (lastVisitedArtistId == artist.id &&
+            lastVisitedBitmap != null &&
+            lastVisitedGradientStops != null
+        ) {
+            cachedBitmap = lastVisitedBitmap
+            cachedGradientStops = lastVisitedGradientStops
+            dominantBackgroundColor = lastVisitedDominantColor
+            hasExtractedColors = true
+            binding.image.setImageBitmap(cachedBitmap)
+            setColors(dominantBackgroundColor, cachedGradientStops!!)
+            return
+        }
+
         Glide.with(requireContext())
             .asBitmap()
             .artistImageOptions(artist)
@@ -519,7 +586,7 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
                     transition: Transition<in Bitmap>?
                 ) {
                     cachedBitmap = resource
-                    extractColorsAndApplyGradient(resource)
+                    extractColorsAndApplyGradient(artist.id, resource)
                 }
 
                 override fun onLoadCleared(placeholder: Drawable?) {
@@ -530,7 +597,7 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
             })
     }
 
-    private fun extractColorsAndApplyGradient(bitmap: Bitmap) {
+    private fun extractColorsAndApplyGradient(artistId: Long, bitmap: Bitmap) {
         lifecycleScope.launch(Dispatchers.Default) {
             val dominantColor = ArtistPaletteEngine.findDominantColorAtSubtitleRegion(
                 bitmap = bitmap,
@@ -547,6 +614,13 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
                 hasExtractedColors = true
                 cachedGradientStops = gradientStops
                 dominantBackgroundColor = dominantColor
+
+                // نحدّث كاش آخر فنان بالصورة واللون الجداد، عشان لو رجعنا
+                // لنفس الفنان تاني قبل ما نفتح فنان غيره يبانوا فورًا.
+                lastVisitedArtistId = artistId
+                lastVisitedBitmap = bitmap
+                lastVisitedGradientStops = gradientStops
+                lastVisitedDominantColor = dominantColor
 
                 if (_binding != null) {
                     binding.image.setImageBitmap(bitmap)
