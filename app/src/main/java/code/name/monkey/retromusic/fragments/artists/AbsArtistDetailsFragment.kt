@@ -14,7 +14,6 @@ import androidx.core.graphics.drawable.DrawableCompat
 import androidx.core.os.bundleOf
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
-import androidx.core.view.doOnPreDraw
 import androidx.core.view.isVisible
 import androidx.core.view.updatePadding
 import androidx.lifecycle.lifecycleScope
@@ -48,8 +47,6 @@ import com.bumptech.glide.Glide
 import com.bumptech.glide.request.target.CustomTarget
 import com.bumptech.glide.request.transition.Transition
 import com.google.android.material.shape.MaterialShapeDrawable
-import com.google.android.material.transition.Hold
-import com.google.android.material.transition.MaterialContainerTransform
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -114,58 +111,11 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        sharedElementEnterTransition = MaterialContainerTransform().apply {
-            drawingViewId = R.id.fragment_container
-            scrimColor = Color.TRANSPARENT
-            setAllContainerColors(Color.TRANSPARENT)
-            setElevationShadowEnabled(false)
-            // FADE_MODE_THROUGH بيقفل محتوى الكارت الأول قبل ما يفتح محتوى الشاشة الجديدة
-            // بدل ما الاتنين يترسموا فوق بعض في نفس الوقت (overdraw) - ده بيقلل التقل
-            // خصوصًا في الشاشات اللي فيها عناصر/صور كتير.
-            fadeMode = MaterialContainerTransform.FADE_MODE_THROUGH
-
-            // بنوقف طلبات Glide مؤقتًا أثناء الحركة نفسها (بتتفعّل تاني في
-            // onEnterTransitionFinished) عشان فك تشفير الصور ميزاحمش رسم
-            // الترانزيشن على نفس الفريمات.
-            addListener(object : androidx.transition.Transition.TransitionListener {
-                override fun onTransitionStart(transition: androidx.transition.Transition) {
-                    if (isAdded) Glide.with(this@AbsArtistDetailsFragment).pauseRequestsRecursive()
-                }
-
-                override fun onTransitionEnd(transition: androidx.transition.Transition) {
-                    if (isAdded) Glide.with(this@AbsArtistDetailsFragment).resumeRequestsRecursive()
-                }
-
-                override fun onTransitionCancel(transition: androidx.transition.Transition) {
-                    if (isAdded) Glide.with(this@AbsArtistDetailsFragment).resumeRequestsRecursive()
-                }
-
-                override fun onTransitionPause(transition: androidx.transition.Transition) {}
-                override fun onTransitionResume(transition: androidx.transition.Transition) {}
-            })
-        }
-        // بنحددها صراحة (بدل الاعتماد على القيمة الافتراضية) عشان نضمن إن
-        // الصورة هترجع تصغر تاني بنفس الأنيميشن بالظبط لما نرجع للـ Artists list
-        sharedElementReturnTransition = MaterialContainerTransform().apply {
-            drawingViewId = R.id.fragment_container
-            scrimColor = Color.TRANSPARENT
-            setAllContainerColors(Color.TRANSPARENT)
-            setElevationShadowEnabled(false)
-            fadeMode = MaterialContainerTransform.FADE_MODE_THROUGH
-        }
-
-        // العنصر المشترك دلوقتي بقى الشاشة كلها (rootLayout) مش هيدر جزئي بس،
-        // فالـ MaterialContainerTransform هيحول الكارت الصغير في القائمة للشاشة
-        // بالكامل بمحتواها كلها مع بعض، فمحتاجينش أي enterTransition/returnTransition
-        // إضافية لباقي المحتوى.
-
-        // استخدام Hold للحفاظ على الشاشة الحالية صلبة وتحت الشاشة الجديدة تماماً
-        exitTransition = Hold().apply {
-            duration = 350L
-        }
-        reenterTransition = Hold().apply {
-            duration = 350L
-        }
+        // الأنيميشن بقى متحكم فيه من الـ NavOptions بتاعة الـ navigate() اللي
+        // بيفتح الصفحة دي (نفس anim resources بتاعة ArtistAllSongsFragment:
+        // nav_slide_in_right/out_left/in_left/out_right) - مش من Fragment
+        // Transition framework. فمفيش داعي لـ MaterialContainerTransform ولا
+        // Hold ولا postponeEnterTransition خالص هنا.
     }
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
@@ -260,11 +210,6 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
             }
         })
 
-        // الـ transitionName بقى على rootLayout (الشاشة كلها) مش headerContainer،
-        // عشان يتطابق مع الكارت الكامل في القائمة (itemView) بدل ما يتطابق مع صورة بس.
-        binding.rootLayout.transitionName = (artistId ?: artistName).toString()
-
-        postponeEnterTransition()
 
         detailsViewModel.getArtist().observe(viewLifecycleOwner) {
             showArtist(it)
@@ -432,12 +377,9 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
             MusicUtil.getReadableDurationString(MusicUtil.getTotalDuration(artist.songs))
         )
 
-        // الترانزيشن بيبدأ بمجرد ما الهيدر (صورة + عنوان) جاهز للرسم، من غير
-        // ما يستنى تصنيف الألبومات ولا بايندنج الـ RecyclerViews - ده اللي كان
-        // بيسبب التقطيع لما عدد الأغاني/الألبومات يزيد عن حد معين.
-        (binding.headerContainer ?: binding.rootLayout).doOnPreDraw {
-            startPostponedEnterTransition()
-        }
+        // ملحوظة: مفيش startPostponedEnterTransition هنا تاني - الأنيميشن دلوقتي
+        // View Animation (anim XML) متحكم فيه من NavOptions بتاعة الـ navigate()
+        // اللي فتح الصفحة دي، مش من Fragment Transition framework.
 
         // لو ده نفس آخر فنان اتفتحت صفحته، اعرض القوائم المحفوظة فورًا من غير
         // أي حساب تصنيف تاني ولا تقسيم على فريمات (مش محتاج، البيانات جاهزة
