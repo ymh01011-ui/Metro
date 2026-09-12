@@ -22,6 +22,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.widget.AppCompatTextView
 import androidx.core.os.bundleOf
 import androidx.fragment.app.findFragment
+import androidx.navigation.NavOptions
 import androidx.navigation.findNavController
 import androidx.navigation.fragment.FragmentNavigatorExtras
 import androidx.recyclerview.widget.GridLayoutManager
@@ -192,13 +193,17 @@ class HomeAdapter(private val activity: AppCompatActivity) :
         LinearLayoutManager(activity, LinearLayoutManager.HORIZONTAL, false)
 
     override fun onArtist(artistId: Long, view: View) {
+        val navOptions = NavOptions.Builder()
+            .setEnterAnim(R.anim.nav_slide_in_right)
+            .setExitAnim(R.anim.nav_slide_out_left)
+            .setPopEnterAnim(R.anim.nav_slide_in_left)
+            .setPopExitAnim(R.anim.nav_slide_out_right)
+            .build()
+
         activity.findNavController(R.id.fragment_container).navigate(
             R.id.artistDetailsFragment,
             bundleOf(EXTRA_ARTIST_ID to artistId),
-            null,
-            FragmentNavigatorExtras(
-                view to artistId.toString()
-            )
+            navOptions
         )
     }
 
