@@ -136,6 +136,13 @@ class ArtistsFragment : AbsRecyclerViewCustomGridSizeFragment<ArtistAdapter, Gri
     }
 
     override fun onArtist(artistId: Long, view: View) {
+        // لازم نلغي أي Transition-Framework transition افتراضية هنا قبل
+        // الـ navigate()، وإلا هتتعارض مع الـ View Animation بتاعة NavOptions
+        // وتمنعها تبان خالص - نفس الباترن المستخدم في AbsArtistDetailsFragment
+        // قبل ما ينادي على artistAllSongsFragment.
+        exitTransition = null
+        reenterTransition = null
+
         // نفس الـ anim resources بتاعة صفحة "See All Songs" - أنيميشن سلايد
         // بسيط بدل الـ Container Transform (shared element) القديم.
         val navOptions = NavOptions.Builder()
@@ -150,7 +157,6 @@ class ArtistsFragment : AbsRecyclerViewCustomGridSizeFragment<ArtistAdapter, Gri
             bundleOf(EXTRA_ARTIST_ID to artistId),
             navOptions
         )
-        reenterTransition = null
     }
 
     override fun onAlbumArtist(artistName: String, view: View) {
