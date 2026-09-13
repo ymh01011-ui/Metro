@@ -193,6 +193,14 @@ class HomeAdapter(private val activity: AppCompatActivity) :
         LinearLayoutManager(activity, LinearLayoutManager.HORIZONTAL, false)
 
     override fun onArtist(artistId: Long, view: View) {
+        // HomeAdapter مش Fragment، فبنوصل للـ Fragment المضيف (HomeFragment)
+        // عن طريق الـ view - نفس الباترن المستخدم فوق (setSharedAxisXTransitions)
+        // - عشان نلغي أي Transition-Framework transition قبل الـ navigate().
+        view.findFragment<HomeFragment>().apply {
+            exitTransition = null
+            reenterTransition = null
+        }
+
         val navOptions = NavOptions.Builder()
             .setEnterAnim(R.anim.nav_slide_in_right)
             .setExitAnim(R.anim.nav_slide_out_left)
