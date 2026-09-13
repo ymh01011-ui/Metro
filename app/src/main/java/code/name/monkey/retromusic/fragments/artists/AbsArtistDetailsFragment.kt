@@ -14,6 +14,7 @@ import androidx.core.graphics.drawable.DrawableCompat
 import androidx.core.os.bundleOf
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.doOnPreDraw
 import androidx.core.view.isVisible
 import androidx.core.view.updatePadding
 import androidx.lifecycle.lifecycleScope
@@ -121,6 +122,14 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
+
+        // مهم: postponeEnterTransition/startPostponedEnterTransition هنا مش
+        // خاصين بالـ shared element بس - هما اللي بيخلوا الـ View Animation
+        // بتاعة NavOptions تشتغل بسلاسة على layout مستقر (نفس باترن
+        // ArtistAllSongsFragment بالظبط). من غيرهم، أي تغيير layout بيحصل
+        // أثناء الحركة (bottomSpacer height, insets listener) ممكن يقطعها.
+        postponeEnterTransition()
+
         _binding = FragmentArtistDetailsBinding.bind(view)
 
         val initialColor = if (hasExtractedColors) dominantBackgroundColor else neutralFallbackColor()
@@ -378,9 +387,12 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
             MusicUtil.getReadableDurationString(MusicUtil.getTotalDuration(artist.songs))
         )
 
-        // ملحوظة: مفيش startPostponedEnterTransition هنا تاني - الأنيميشن دلوقتي
-        // View Animation (anim XML) متحكم فيه من NavOptions بتاعة الـ navigate()
-        // اللي فتح الصفحة دي، مش من Fragment Transition framework.
+        // بنبدأ الحركة (اللي كانت متأجلة من postponeEnterTransition فوق) بمجرد
+        // ما الهيدر (صورة + عنوان) جاهز للرسم - مش محتاجين نستنى تصنيف
+        // الألبومات ولا بايندنج الـ RecyclerViews عشان كده.
+        (binding.headerContainer ?: binding.rootLayout).doOnPreDraw {
+            startPostponedEnterTransition()
+        }
 
         // لو ده نفس آخر فنان اتفتحت صفحته، اعرض القوائم المحفوظة فورًا من غير
         // أي حساب تصنيف تاني ولا تقسيم على فريمات (مش محتاج، البيانات جاهزة
