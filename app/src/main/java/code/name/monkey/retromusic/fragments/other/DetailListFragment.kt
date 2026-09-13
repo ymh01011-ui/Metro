@@ -223,6 +223,9 @@ class DetailListFragment : AbsMainActivityFragment(R.layout.fragment_playlist_de
 
 
     override fun onArtist(artistId: Long, view: View) {
+        exitTransition = null
+        reenterTransition = null
+
         val navOptions = NavOptions.Builder()
             .setEnterAnim(R.anim.nav_slide_in_right)
             .setExitAnim(R.anim.nav_slide_out_left)
