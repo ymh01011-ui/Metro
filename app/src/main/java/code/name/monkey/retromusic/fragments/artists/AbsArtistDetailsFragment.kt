@@ -14,7 +14,6 @@ import androidx.core.graphics.drawable.DrawableCompat
 import androidx.core.os.bundleOf
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
-import androidx.core.view.doOnPreDraw
 import androidx.core.view.isVisible
 import androidx.core.view.updatePadding
 import androidx.lifecycle.lifecycleScope
@@ -122,14 +121,6 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
-
-        // مهم: postponeEnterTransition/startPostponedEnterTransition هنا مش
-        // خاصين بالـ shared element بس - هما اللي بيخلوا الـ View Animation
-        // بتاعة NavOptions تشتغل بسلاسة على layout مستقر (نفس باترن
-        // ArtistAllSongsFragment بالظبط). من غيرهم، أي تغيير layout بيحصل
-        // أثناء الحركة (bottomSpacer height, insets listener) ممكن يقطعها.
-        postponeEnterTransition()
-
         _binding = FragmentArtistDetailsBinding.bind(view)
 
         val initialColor = if (hasExtractedColors) dominantBackgroundColor else neutralFallbackColor()
@@ -144,13 +135,22 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
         // فالمسافة غالبًا جايه من titleMarginStart نفسه.
         toolbar.contentInsetStartWithNavigation = 0
         toolbar.setTitleMarginStart(0)
-        toolbar.inflateMenu(R.menu.menu_artist_detail)
-        setUpSortOrderMenu(toolbar.menu)
         toolbar.setNavigationOnClickListener {
             findNavController().navigateUp()
         }
-        toolbar.setOnMenuItemClickListener { item ->
-            handleSortOrderMenuItem(item)
+
+        // تضخيم الـ menu (inflateMenu) عملية بطيئة نسبيًا (تحميل XML + أيقونات)،
+        // ولو حصلت في نفس فريم فتح الصفحة ممكن تاكل وقت الأنيميشن (Animation
+        // legacy بتاخد وقتها من لحظة تنفيذ الـ transaction، مش من أول رسم فعلي)
+        // فتبان الصفحة بتفتح على طول من غير حركة. بنأجلها لفريم تاني عشان
+        // الأنيميشن ياخد وقته كامل من غير مزاحمة.
+        view.post {
+            if (_binding == null) return@post
+            toolbar.inflateMenu(R.menu.menu_artist_detail)
+            setUpSortOrderMenu(toolbar.menu)
+            toolbar.setOnMenuItemClickListener { item ->
+                handleSortOrderMenuItem(item)
+            }
         }
 
         androidx.core.view.WindowCompat.setDecorFitsSystemWindows(requireActivity().window, false)
@@ -387,12 +387,9 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
             MusicUtil.getReadableDurationString(MusicUtil.getTotalDuration(artist.songs))
         )
 
-        // بنبدأ الحركة (اللي كانت متأجلة من postponeEnterTransition فوق) بمجرد
-        // ما الهيدر (صورة + عنوان) جاهز للرسم - مش محتاجين نستنى تصنيف
-        // الألبومات ولا بايندنج الـ RecyclerViews عشان كده.
-        (binding.headerContainer ?: binding.rootLayout).doOnPreDraw {
-            startPostponedEnterTransition()
-        }
+        // ملحوظة: مفيش postponeEnterTransition/startPostponedEnterTransition
+        // هنا - جربناها وسببت مشكلة تانية (أنيميشن الرجوع بيتلخبط). الأنيميشن
+        // دلوقتي View Animation بس متحكم فيه من NavOptions بتاعة الـ navigate().
 
         // لو ده نفس آخر فنان اتفتحت صفحته، اعرض القوائم المحفوظة فورًا من غير
         // أي حساب تصنيف تاني ولا تقسيم على فريمات (مش محتاج، البيانات جاهزة
