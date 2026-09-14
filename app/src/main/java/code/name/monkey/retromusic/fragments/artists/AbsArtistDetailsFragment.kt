@@ -136,6 +136,15 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
         toolbar.contentInsetStartWithNavigation = 0
         toolbar.setTitleMarginStart(0)
         toolbar.setNavigationOnClickListener {
+            // لازم نصفّر الـ Transition Framework هنا برضه قبل الـ navigateUp():
+            // لو المستخدم كان دخل لصفحة ألبوم من هنا قبل كده (onAlbumClick)،
+            // بيكون اتحط Hold() على exitTransition/reenterTransition بتوع
+            // الـ Fragment ده، ولو رجع تاني هنا من غير ما نصفرهم، الـ Hold()
+            // هيفضل عالق على الـ instance ويتعارض مع الـ View Animation
+            // (nav_slide_out_right) اللي مفروض تشتغل وقت الرجوع لـ ArtistsFragment
+            // - وده اللي بيمنع الأنيميشن من الظهور خالص.
+            exitTransition = null
+            reenterTransition = null
             findNavController().navigateUp()
         }
 
@@ -372,6 +381,9 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
 
     private fun showArtist(artist: Artist) {
         if (artist.songCount == 0) {
+            // نفس السبب بالظبط: نصفّر أي Hold() عالق قبل ما نرجع تلقائيًا.
+            exitTransition = null
+            reenterTransition = null
             findNavController().navigateUp()
             return
         }
