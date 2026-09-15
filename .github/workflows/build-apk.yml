@@ -21,7 +21,8 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v2
         with:
-          packages: 'cmdline-tools;latest platforms;android-33 build-tools;33.0.0 platform-tools'
+          api-level: 33
+          build-tools-version: 33.0.0
           
       - name: Make gradlew executable
         run: chmod +x gradlew
