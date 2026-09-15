@@ -14,6 +14,7 @@ import androidx.core.graphics.drawable.DrawableCompat
 import androidx.core.os.bundleOf
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.doOnPreDraw
 import androidx.core.view.isVisible
 import androidx.core.view.updatePadding
 import androidx.lifecycle.lifecycleScope
@@ -88,6 +89,14 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
     // القيمة صغيرة جدًا وبالتالي البار كان بيظهر بمجرد أول سحب بسيط
     private var artistTitleBottomInScrollContent: Int = -1
 
+    // بتتحط true في onAlbumClick قبل ما ننده navigate() للألبوم (Hold()
+    // shared element). بنستخدمها عشان نعرف إننا "راجعين من ألبوم" ونمنع
+    // postponeEnterTransition من الاشتغال في الحالة دي بالذات، لأنها كانت
+    // بتتعارض مع أنيميشن الـ Hold() بتاع الرجوع من AlbumDetailsFragment.
+    // في أي حالة تانية (فتح الصفحة أول مرة من ArtistsFragment، أو fragment
+    // instance جديد) بتفضل false والـ postpone بيشتغل عادي.
+    private var cameFromAlbumReturn: Boolean = false
+
     private data class ArtistDisplayData(
         val songs: List<Song>,
         val albums: List<Album>,
@@ -115,12 +124,25 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
         // الأنيميشن بقى متحكم فيه من الـ NavOptions بتاعة الـ navigate() اللي
         // بيفتح الصفحة دي (نفس anim resources بتاعة ArtistAllSongsFragment:
         // nav_slide_in_right/out_left/in_left/out_right) - مش من Fragment
-        // Transition framework. فمفيش داعي لـ MaterialContainerTransform ولا
-        // Hold ولا postponeEnterTransition خالص هنا.
+        // Transition framework. فمفيش داعي لـ MaterialContainerTransform هنا.
     }
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
+
+        // لازم تتحط هنا (onViewCreated) مش onCreate: onCreate بيتنده مرة واحدة
+        // بس طول عمر الـ Fragment instance، لكن onViewCreated بيتنده تاني كل
+        // مرة الـ view بتتبني من جديد - وده اللي بيحصل بالظبط لما نرجع من
+        // AlbumDetailsFragment (الـ view بتاعت الصفحة دي بتتدمر لما تتغطى
+        // وبتتبني تاني لما تظهر). زي ArtistAllSongsFragment بالظبط، محتاجينها
+        // عشان الصفحة دي تقيلة (تحميل صورة + استخراج لون + بناء 4 قوائم)
+        // والـ Main Thread بيكون مشغول وقت ما الـ View Animation المفروض تشتغل،
+        // فالحركة كانت بتتقطع أو تختفي خالص. مبنعملهاش وإحنا راجعين من ألبوم
+        // عشان منرجعش لمشكلة تعارضها مع Hold() القديمة.
+        if (!cameFromAlbumReturn) {
+            postponeEnterTransition()
+        }
+
         _binding = FragmentArtistDetailsBinding.bind(view)
 
         val initialColor = if (hasExtractedColors) dominantBackgroundColor else neutralFallbackColor()
@@ -310,6 +332,18 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
 
         binding.appBarLayout?.statusBarForeground =
             MaterialShapeDrawable.createWithElevationOverlay(requireContext())
+
+        // بنستنى الفريم اللي هيترسم فيه كل حاجة (الصورة، القوائم الأربعة،
+        // الألوان) قبل ما نسيب الأنيميشن يبدأ - ده اللي ArtistAllSongsFragment
+        // بيعمله وهو اللي كان ناقص هنا. لو راجعين من ألبوم، مبنعملش حاجة
+        // خالص هنا لأن postponeEnterTransition ميتحطش في onCreate أصلاً
+        // في الحالة دي (شوف الشرط هناك).
+        if (!cameFromAlbumReturn) {
+            view.doOnPreDraw {
+                startPostponedEnterTransition()
+            }
+        }
+        cameFromAlbumReturn = false
     }
 
     private fun addArtistSongsToPlaylist() {
@@ -668,6 +702,10 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
     }
 
     override fun onAlbumClick(albumId: Long, view: View) {
+        // لما ده يحصل، يبقى الفراجمنت دي هترجع تاني (reenter) من AlbumDetailsFragment
+        // مش هتتفتح من جديد بالكامل، فمفيش داعي لـ postponeEnterTransition وقتها -
+        // وده أصلاً اللي كان بيبوظ الـ Hold() قبل كده.
+        cameFromAlbumReturn = true
         exitTransition = Hold().apply {
             duration = 350L
         }
