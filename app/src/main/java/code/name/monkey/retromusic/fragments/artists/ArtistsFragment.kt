@@ -18,7 +18,6 @@ import android.os.Bundle
 import android.view.*
 import androidx.core.os.bundleOf
 import androidx.navigation.NavOptions
-import androidx.navigation.fragment.FragmentNavigatorExtras
 import androidx.navigation.fragment.findNavController
 import androidx.recyclerview.widget.GridLayoutManager
 import code.name.monkey.retromusic.EXTRA_ARTIST_ID
@@ -175,23 +174,47 @@ class ArtistsFragment : AbsRecyclerViewCustomGridSizeFragment<ArtistAdapter, Gri
     }
 
     override fun onAlbumArtist(artistName: String, view: View) {
+        // كانت مستخدمة FragmentNavigatorExtras/shared element من غير ما يكون
+        // فيه sharedElementEnterTransition متظبطة في أي حتة (لا هنا ولا في
+        // AlbumArtistDetailsFragment) - يعني الانتقال ده معندوش أنيميشن
+        // خالص أصلاً. بنستخدم نفس الباترن بتاع onArtist() بدل كده، لأن
+        // الوجهة (AlbumArtistDetailsFragment) بترث من AbsArtistDetailsFragment
+        // اللي already متظبطة بالكامل للأنيميشن ده (postponeEnterTransition
+        // وغيرها).
+        exitTransition = null
+        reenterTransition = null
+
+        val navOptions = NavOptions.Builder()
+            .setEnterAnim(R.anim.nav_slide_in_right)
+            .setExitAnim(R.anim.nav_slide_out_left)
+            .setPopEnterAnim(R.anim.nav_slide_in_left)
+            .setPopExitAnim(R.anim.nav_slide_out_right)
+            .build()
+
         findNavController().navigate(
             R.id.albumArtistDetailsFragment,
             bundleOf(EXTRA_ARTIST_NAME to artistName),
-            null,
-            FragmentNavigatorExtras(view to artistName)
+            navOptions
         )
-        reenterTransition = null
     }
 
     override fun onMultiArtist(artistName: String, view: View) {
+        // نفس السبب بالظبط بتاع onAlbumArtist() فوق.
+        exitTransition = null
+        reenterTransition = null
+
+        val navOptions = NavOptions.Builder()
+            .setEnterAnim(R.anim.nav_slide_in_right)
+            .setExitAnim(R.anim.nav_slide_out_left)
+            .setPopEnterAnim(R.anim.nav_slide_in_left)
+            .setPopExitAnim(R.anim.nav_slide_out_right)
+            .build()
+
         findNavController().navigate(
             R.id.multiArtistDetailsFragment,
             bundleOf(EXTRA_ARTIST_NAME to artistName),
-            null,
-            FragmentNavigatorExtras(view to artistName)
+            navOptions
         )
-        reenterTransition = null
     }
 
     override fun onCreateMenu(menu: Menu, inflater: MenuInflater) {
@@ -318,8 +341,13 @@ class ArtistsFragment : AbsRecyclerViewCustomGridSizeFragment<ArtistAdapter, Gri
             PreferenceUtil.albumArtistsOnly = newValue
             item.isChecked = newValue
             if (newValue) {
-                // Mutually exclusive with multi-artist mode
+                // Mutually exclusive with multi-artist mode. كنا بنعدل الـ
+                // preference بتاع الخيار التاني بس من غير ما نحدث الـ
+                // checkbox بتاعه فعليًا، فكان فاضل شكله متفعّل (☑) في القايمة
+                // لحد ما تقفلها وتفتحها تاني - وده اللي كان بيبين إن الخيارين
+                // "مش بيشتغلوا مع بعض".
                 PreferenceUtil.multiArtistsEnabled = false
+                toolbar.menu.findItem(R.id.action_multi_artist)?.isChecked = false
             }
             libraryViewModel.forceReload(ReloadType.Artists)
             true
@@ -334,8 +362,9 @@ class ArtistsFragment : AbsRecyclerViewCustomGridSizeFragment<ArtistAdapter, Gri
             PreferenceUtil.multiArtistsEnabled = newValue
             item.isChecked = newValue
             if (newValue) {
-                // Mutually exclusive with album-artist mode
+                // نفس السبب بالظبط فوق، بالعكس.
                 PreferenceUtil.albumArtistsOnly = false
+                toolbar.menu.findItem(R.id.action_album_artist)?.isChecked = false
             }
             libraryViewModel.forceReload(ReloadType.Artists)
             true
