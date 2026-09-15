@@ -22,7 +22,7 @@ jobs:
         uses: android-actions/setup-android@v2
         with:
           packages: 'cmdline-tools;latest platforms;android-33 build-tools;33.0.0 platform-tools'
-          api-level: 33
+          api-level: 34
           build-tools-version: 34.0.0
 
       - name: Make gradlew executable
