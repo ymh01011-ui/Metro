@@ -21,9 +21,9 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v2
         with:
-          api-level: 33
-          build-tools-version: 33.0.0
-          
+          api-level: 34
+          build-tools-version: 34.0.0
+
       - name: Make gradlew executable
         run: chmod +x gradlew
 
@@ -35,8 +35,8 @@ jobs:
             -keyalg RSA \
             -keysize 2048 \
             -validity 10000 \
-            -storepass 01011412881 \
-            -keypass 01011412881 \
+            -storepass ${{ secrets.KEYSTORE_PASSWORD }} \
+            -keypass ${{ secrets.KEYSTORE_PASSWORD }} \
             -dname "CN=Metro, OU=App, O=App, L=Cairo, S=Cairo, C=EG"
 
       - name: Build Release APK
@@ -54,8 +54,8 @@ jobs:
           APKSIGNER=$(find $ANDROID_HOME/build-tools -name "apksigner" | sort -r | head -1)
           $APKSIGNER sign \
             --ks keystore.jks \
-            --ks-pass pass:01011412881 \
-            --key-pass pass:01011412881 \
+            --ks-pass pass:${{ secrets.KEYSTORE_PASSWORD }} \
+            --key-pass pass:${{ secrets.KEYSTORE_PASSWORD }} \
             --ks-key-alias metro-release \
             --out app/build/outputs/apk/release/app-release-signed.apk \
             app/build/outputs/apk/release/app-release-aligned.apk
