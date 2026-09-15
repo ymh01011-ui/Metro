@@ -38,6 +38,24 @@ import code.name.monkey.retromusic.util.RetroUtil
 
 class ArtistsFragment : AbsRecyclerViewCustomGridSizeFragment<ArtistAdapter, GridLayoutManager>(),
     IArtistClickListener, IAlbumArtistClickListener, IMultiArtistClickListener {
+
+    // بتتحط true قبل ما نفتح صفحة تفاصيل فنان (أي مسار من التلاتة). السبب:
+    // onResume() كان بينده libraryViewModel.forceReload() في كل مرة الصفحة
+    // بترجع تتفعّل - حتى لو كنا راجعين من صفحة فنان فتحناها إحنا بنفسنا،
+    // واللي مفيش سبب يخلي بيانات الفنانين تتغير بسببها. إعادة التحميل دي
+    // كانت بتحصل في نفس لحظة أنيميشن الرجوع (نص التاني تقريبًا) فبتاكل من
+    // وقت الـ Main Thread وتسبب تقطيع محسوس، وبتبان كإن القائمة "بتتمسح
+    // وتترجع من الأول". لما الفلاج ده true، بنتخطى الـ reload مرة واحدة بس.
+    //
+    // متخزنة في companion object مش property عادية - زي نفس الباترن
+    // المستخدم في AbsArtistDetailsFragment (lastVisitedArtistId وغيرها) -
+    // عشان لو الـ Navigation Component بيعمل تدمير كامل للـ Fragment
+    // instance (مش بس الـ view) وقت الانتقال ويعيد بناء نسخة جديدة تمامًا
+    // وقت الرجوع، الفلاج يفضل باقي وميترجعش false تلقائيًا.
+    private var suppressNextReload: Boolean
+        get() = pendingSuppressNextReload
+        set(value) { pendingSuppressNextReload = value }
+
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
 
@@ -143,6 +161,7 @@ class ArtistsFragment : AbsRecyclerViewCustomGridSizeFragment<ArtistAdapter, Gri
     }
 
     companion object {
+        private var pendingSuppressNextReload: Boolean = false
 
         fun newInstance(): ArtistsFragment {
             return ArtistsFragment()
@@ -156,6 +175,7 @@ class ArtistsFragment : AbsRecyclerViewCustomGridSizeFragment<ArtistAdapter, Gri
         // قبل ما ينادي على artistAllSongsFragment.
         exitTransition = null
         reenterTransition = null
+        suppressNextReload = true
 
         // نفس الـ anim resources بتاعة صفحة "See All Songs" - أنيميشن سلايد
         // بسيط بدل الـ Container Transform (shared element) القديم.
@@ -183,6 +203,7 @@ class ArtistsFragment : AbsRecyclerViewCustomGridSizeFragment<ArtistAdapter, Gri
         // وغيرها).
         exitTransition = null
         reenterTransition = null
+        suppressNextReload = true
 
         val navOptions = NavOptions.Builder()
             .setEnterAnim(R.anim.nav_slide_in_right)
@@ -202,6 +223,7 @@ class ArtistsFragment : AbsRecyclerViewCustomGridSizeFragment<ArtistAdapter, Gri
         // نفس السبب بالظبط بتاع onAlbumArtist() فوق.
         exitTransition = null
         reenterTransition = null
+        suppressNextReload = true
 
         val navOptions = NavOptions.Builder()
             .setEnterAnim(R.anim.nav_slide_in_right)
@@ -337,18 +359,13 @@ class ArtistsFragment : AbsRecyclerViewCustomGridSizeFragment<ArtistAdapter, Gri
 
     private fun handleAlbumArtistMenu(item: MenuItem): Boolean {
         return if (item.itemId == R.id.action_album_artist) {
+            // شلنا الاستبعاد المتبادل اللي كان هنا (تفعيل ده كان بيقفل
+            // "Split multiple artists" تلقائيًا) - الخيارين المفروض يشتغلوا
+            // مع بعض: تجميع حسب الـ Album Artist، ثم تقسيم أي اسم متعدد
+            // جوه التجميع ده لو الخيار التاني مفعّل.
             val newValue = !item.isChecked
             PreferenceUtil.albumArtistsOnly = newValue
             item.isChecked = newValue
-            if (newValue) {
-                // Mutually exclusive with multi-artist mode. كنا بنعدل الـ
-                // preference بتاع الخيار التاني بس من غير ما نحدث الـ
-                // checkbox بتاعه فعليًا، فكان فاضل شكله متفعّل (☑) في القايمة
-                // لحد ما تقفلها وتفتحها تاني - وده اللي كان بيبين إن الخيارين
-                // "مش بيشتغلوا مع بعض".
-                PreferenceUtil.multiArtistsEnabled = false
-                toolbar.menu.findItem(R.id.action_multi_artist)?.isChecked = false
-            }
             libraryViewModel.forceReload(ReloadType.Artists)
             true
         } else {
@@ -361,11 +378,6 @@ class ArtistsFragment : AbsRecyclerViewCustomGridSizeFragment<ArtistAdapter, Gri
             val newValue = !item.isChecked
             PreferenceUtil.multiArtistsEnabled = newValue
             item.isChecked = newValue
-            if (newValue) {
-                // نفس السبب بالظبط فوق، بالعكس.
-                PreferenceUtil.albumArtistsOnly = false
-                toolbar.menu.findItem(R.id.action_album_artist)?.isChecked = false
-            }
             libraryViewModel.forceReload(ReloadType.Artists)
             true
         } else {
@@ -433,6 +445,10 @@ class ArtistsFragment : AbsRecyclerViewCustomGridSizeFragment<ArtistAdapter, Gri
 
     override fun onResume() {
         super.onResume()
-        libraryViewModel.forceReload(ReloadType.Artists)
+        if (suppressNextReload) {
+            suppressNextReload = false
+        } else {
+            libraryViewModel.forceReload(ReloadType.Artists)
+        }
     }
 }
