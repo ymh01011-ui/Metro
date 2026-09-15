@@ -41,6 +41,21 @@ class ArtistsFragment : AbsRecyclerViewCustomGridSizeFragment<ArtistAdapter, Gri
     IArtistClickListener, IAlbumArtistClickListener, IMultiArtistClickListener {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
+
+        // الكلاس الأب (AbsRecyclerViewFragment) بيحط enterTransition/
+        // reenterTransition = MaterialFadeThrough() من غير شرط في كل مرة
+        // الـ view بتتبني - وده بيخلي FragmentManager يعتبر الصفحة دي
+        // "شغالة بـ Transition Framework" ويتجاهل الـ View Animation بتاعة
+        // NavOptions (nav_slide_in_right/out_left/...) خالص، حتى لو صفرنا
+        // exitTransition/reenterTransition بعدين في onArtist(). لازم
+        // نصفرهم هنا كمان - بعد الـ super مباشرة وفي كل مرة الـ view
+        // بتتبني (يعني كمان لما نرجع من صفحة تفاصيل الفنان) - عشان
+        // الأنيميشن بتاعنا يشتغل صح في الاتجاهين.
+        enterTransition = null
+        exitTransition = null
+        reenterTransition = null
+        returnTransition = null
+
         libraryViewModel.getArtists().observe(viewLifecycleOwner) {
             if (it.isNotEmpty())
                 adapter?.swapDataSet(it)
