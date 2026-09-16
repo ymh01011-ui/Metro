@@ -253,21 +253,24 @@ abstract class AbsRecyclerViewFragment<A : RecyclerView.Adapter<*>, LM : Recycle
         customOverflowIcon = imageView
         toolbar.overflowIcon = ColorDrawable(Color.TRANSPARENT)
 
+        val actionBarSizePx = TypedValue().let {
+            requireContext().theme.resolveAttribute(android.R.attr.actionBarSize, it, true)
+            it.getDimension(resources.displayMetrics).toInt()
+        }
+
         fun repositionOverImageView() {
             val toolbarLoc = IntArray(2)
             toolbar.getLocationInWindow(toolbarLoc)
             val rootLoc = IntArray(2)
             rootLayout.getLocationInWindow(rootLoc)
-            // بنتمركز في نص "منطقة المحتوى الحقيقية" بتاعة التولبار (من غير
-            // أي padding علوي/سفلي - زي padding الـ status bar لو متحط على
-            // التولبار نفسه مش على الـ appBarLayout)، مش نص ارتفاعه الكامل -
-            // عشان كده كانت الأيقونة نازلة شوية عن مكانها الطبيعي.
-            val contentTop = toolbar.paddingTop
-            val contentHeight = toolbar.height - toolbar.paddingTop - toolbar.paddingBottom
+            // بدل ما نتمركز بالنسبة لـ toolbar.height (اللي طلع فيه ارتفاع
+            // زيادة عن الشريط الظاهر فعليًا وخلانا نازلين لتحت)، بنتمركز
+            // بالنسبة لارتفاع الشريط القياسي (actionBarSize) نفسه، ومربوطين
+            // بحافة التولبار العلوية (toolbarLoc[1]) بس - مش بارتفاعه الكامل.
             imageView.translationX =
                 (toolbarLoc[0] - rootLoc[0] + toolbar.width - sizePx).toFloat()
             imageView.translationY =
-                (toolbarLoc[1] - rootLoc[1] + contentTop + (contentHeight - sizePx) / 2).toFloat()
+                (toolbarLoc[1] - rootLoc[1] + (actionBarSizePx - sizePx) / 2).toFloat()
         }
 
         // على عكس صفحة تفاصيل الفنان (اللي التولبار بتاعها عايم ثابت مكانه
