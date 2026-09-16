@@ -6,7 +6,6 @@ import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.Drawable
 import android.os.Bundle
 import android.util.TypedValue
-import android.view.Gravity
 import android.view.Menu
 import android.view.MenuItem
 import android.view.View
@@ -845,14 +844,20 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
         return if (resolved) typedValue.data else Color.BLACK
     }
 
-    // بنستخدم نفس أيقونة الـ overflow اللي التولبار أصلاً معمول له setup بيها
-    // (بتاعة TintableToolbar)، بس بننسخها (mutate) ونحطها في ImageView إحنا
-    // مالكينها بالكامل، عشان تلوينها يبقى بنفس آلية سهم الرجوع بالظبط. بعد
-    // كده بنخفي زرار الـ overflow الحقيقي (يفضل موجود وشغال، بس شفاف) عشان
-    // الـ ImageView بتاعتنا هي اللي الظاهرة، ونحول الضغط عليها لفتح نفس المنيو.
+    // الأيقونة كانت متحطة كـ child جوه التولبار نفسه، بس ده غلط: الـ Toolbar
+    // بيحجز مساحة لزرار الـ overflow الحقيقي (ActionMenuView) بناءً على وجود
+    // العناصر نفسها، مش على شفافية الأيقونة - يعني أي View تانية بنضيفها
+    // جواه بتتحط *قبل* المساحة المحجوزة دي، مش في نهاية التولبار فعليًا.
+    // وده كمان سبب "المنطقة الميتة": الزرار الحقيقي فاضل بحجمه الطبيعي كامل.
+    //
+    // الحل: نحط الأيقونة بتاعتنا كـ sibling للـ appBarLayout جوه rootLayout
+    // (مش جوه التولبار خالص)، وناخد مكانها الفعلي بالقياس المباشر
+    // (getLocationInWindow) من التولبار الحقيقي بعد ما يترسم - بعيد تمامًا
+    // عن أي حسابات padding/inset ممكن تغلط. وبما إنها هتتحط فوق التولبار في
+    // الترتيب (z-order)، أي ضغطة في مكانها هتوصلها هي الأول، فمش محتاجين
+    // نلاقي الزرار الحقيقي ونعطله يدوي - بيبقى تلقائيًا تحتها ومقفول فعليًا.
     private fun setUpCustomOverflowIcon(toolbar: TintableToolbar) {
         val icon = toolbar.overflowIcon?.mutate() ?: return
-
         toolbar.overflowIcon = ColorDrawable(Color.TRANSPARENT)
 
         val sizePx = (48 * resources.displayMetrics.density).toInt()
@@ -864,12 +869,6 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
 
         val imageView = ImageView(requireContext()).apply {
             setImageDrawable(icon)
-            layoutParams = Toolbar.LayoutParams(sizePx, sizePx).apply {
-                gravity = Gravity.END or Gravity.CENTER_VERTICAL
-                marginEnd = 0
-                topMargin = 0
-                bottomMargin = 0
-            }
             setPadding(iconPaddingPx, iconPaddingPx, iconPaddingPx, iconPaddingPx)
             isClickable = true
             isFocusable = true
@@ -878,27 +877,26 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
             }
             setOnClickListener { toolbar.showOverflowMenu() }
         }
-        toolbar.addView(imageView)
+
+        val rootLayout = binding.rootLayout
+        rootLayout.addView(imageView, android.widget.FrameLayout.LayoutParams(sizePx, sizePx))
+        imageView.bringToFront()
         customOverflowIcon = imageView
 
-        // نفس الحكاية اللي في صفحة قائمة الفنانين: زرار الـ overflow الحقيقي
-        // لسه موجود وشغال (بس شفاف)، فبيفضل فيه "منطقة ميتة" قابلة للضغط في
-        // مكانه القديم. بندور عليه جوه شجرة الـ Toolbar ونعطله تمامًا.
-        toolbar.post { disableRealOverflowButton(toolbar) }
-    }
-
-    private fun disableRealOverflowButton(toolbar: TintableToolbar) {
-        for (i in 0 until toolbar.childCount) {
-            val group = toolbar.getChildAt(i) as? android.view.ViewGroup ?: continue
-            for (j in 0 until group.childCount) {
-                val child = group.getChildAt(j)
-                if (child.javaClass.simpleName == "OverflowMenuButton") {
-                    child.isClickable = false
-                    child.isFocusable = false
-                    child.isEnabled = false
-                }
-            }
+        fun repositionOverImageView() {
+            val toolbarLoc = IntArray(2)
+            toolbar.getLocationInWindow(toolbarLoc)
+            val rootLoc = IntArray(2)
+            rootLayout.getLocationInWindow(rootLoc)
+            imageView.translationX =
+                (toolbarLoc[0] - rootLoc[0] + toolbar.width - sizePx).toFloat()
+            imageView.translationY =
+                (toolbarLoc[1] - rootLoc[1] + (toolbar.height - sizePx) / 2).toFloat()
         }
+        // نعيد الحساب كل مرة التولبار يتحرك/يتغير حجمه (تدوير الشاشة مثلًا)،
+        // مش مرة واحدة بس.
+        toolbar.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> repositionOverImageView() }
+        toolbar.post { repositionOverImageView() }
     }
 
     private fun clearImageCache() {
