@@ -24,7 +24,6 @@ import androidx.annotation.NonNull
 import androidx.annotation.StringRes
 import androidx.appcompat.widget.Toolbar
 import androidx.core.content.ContextCompat
-import androidx.core.graphics.drawable.DrawableCompat
 import androidx.core.view.doOnPreDraw
 import androidx.core.view.isVisible
 import androidx.core.view.updateLayoutParams
@@ -210,8 +209,12 @@ abstract class AbsRecyclerViewFragment<A : RecyclerView.Adapter<*>, LM : Recycle
     // إحنا. لو مقدرناش نقرا اللون، بنسيب النقط الحقيقية زي ما هي وميبقاش
     // فيه أي استبدال - أأمن من إننا نستبدلها بحاجة ملهاش لون صح.
     private fun setUpCustomOverflowIcon() {
-        val realIcon = toolbar.overflowIcon ?: return
-        val tintList = DrawableCompat.getColorStateList(realIcon.mutate()) ?: return
+        // زي setUpCustomOverflowIcon بتاعة TintableToolbar: بدل ما نحاول
+        // نستخرج ColorStateList من الأيقونة (مفيش API زي كده أصلاً في
+        // DrawableCompat)، بنعتمد على إن الـ tint اتحط جوه الـ Drawable
+        // نفسه لما ToolbarContentTintHelper لونها (سطر onPrepareMenu اللي
+        // فات)، فبنكتفي بعمل mutate() وناخد نفس الأيقونة دي زي ما هي.
+        val icon = toolbar.overflowIcon?.mutate() ?: return
 
         if (customOverflowIcon == null) {
             val sizePx = (48 * resources.displayMetrics.density).toInt()
@@ -222,7 +225,7 @@ abstract class AbsRecyclerViewFragment<A : RecyclerView.Adapter<*>, LM : Recycle
             )
 
             val imageView = ImageView(requireContext()).apply {
-                setImageDrawable(realIcon)
+                setImageDrawable(icon)
                 layoutParams = Toolbar.LayoutParams(sizePx, sizePx).apply {
                     gravity = Gravity.END or Gravity.CENTER_VERTICAL
                     marginEnd = 0
@@ -240,9 +243,12 @@ abstract class AbsRecyclerViewFragment<A : RecyclerView.Adapter<*>, LM : Recycle
             toolbar.addView(imageView)
             customOverflowIcon = imageView
             toolbar.overflowIcon = ColorDrawable(Color.TRANSPARENT)
+        } else {
+            // كل ما onPrepareMenu يتنده تاني وToolbarContentTintHelper يعيد
+            // تلوين النقط الحقيقية، بنحدّث نسختنا إحنا بنفس الأيقونة المتلونة
+            // الجديدة عشان يفضلوا متزامنين.
+            customOverflowIcon?.setImageDrawable(icon)
         }
-
-        customOverflowIcon?.drawable?.let { DrawableCompat.setTintList(it.mutate(), tintList) }
     }
 
     override fun onCreateMenu(menu: Menu, inflater: MenuInflater) {
