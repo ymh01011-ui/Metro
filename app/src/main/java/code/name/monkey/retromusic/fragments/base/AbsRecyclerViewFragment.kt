@@ -203,20 +203,24 @@ abstract class AbsRecyclerViewFragment<A : RecyclerView.Adapter<*>, LM : Recycle
         setUpCustomOverflowIcon()
     }
 
+    // نفس المشكلة اللي في صفحة تفاصيل الفنان بالظبط: الـ Toolbar بيحجز مساحة
+    // لزرار الـ overflow الحقيقي (ActionMenuView) بناءً على وجود العناصر
+    // نفسها، مش على شفافية الأيقونة - فأي View بنضيفها جوه التولبار بتتحط
+    // *قبل* المساحة دي، مش في نهايته فعليًا. فبنحط أيقونتنا كـ sibling
+    // للـ appBarLayout جوه الـ CoordinatorLayout (مش جوه التولبار خالص)،
+    // ونحسب مكانها بالقياس المباشر (getLocationInWindow) من التولبار الحقيقي.
+    // وبما إنها فوقه في الـ z-order، أي ضغطة في مكانها هتوصلها هي الأول -
+    // فمش محتاجين "نلاقي" الزرار الحقيقي ونعطله يدوي، بيبقى تلقائيًا مقفول
+    // عمليًا تحتها.
+    //
     // بننسخ الـ Drawable الحقيقي بعد ما الـ ToolbarContentTintHelper يخلص
     // تلوينه (constantState.newDrawable()) - كده مش محتاجين نعرف إزاي
-    // المكتبة لونته بالظبط. النسخة دي بتتاخد مرة واحدة بس (أول ما أيقونتنا
-    // تتعمل)؛ لو الثيم اتغير بعد كده (نهاري/ليلي) هي مش هتتحدث تلقائي، بس ده
-    // تنازل مقبول.
+    // المكتبة لونته بالظبط. النسخة دي بتتاخد مرة واحدة بس؛ لو الثيم اتغير
+    // بعد كده (نهاري/ليلي) هي مش هتتحدث تلقائي، بس ده تنازل مقبول.
     private fun setUpCustomOverflowIcon() {
         if (customOverflowIcon != null) return
         val realIcon = toolbar.overflowIcon ?: return
         val clonedIcon = realIcon.constantState?.newDrawable(resources)?.mutate() ?: return
-
-        // نشيل أي مسافة افتراضية التولبار بيسيبها في الآخر، عشان الأيقونة
-        // تقدر تلزق على حافة الشاشة بدل ما تبقى مزحلقة لجنب.
-        toolbar.contentInsetEndWithActions = 0
-        toolbar.setPadding(toolbar.paddingLeft, toolbar.paddingTop, 0, toolbar.paddingBottom)
 
         val sizePx = (48 * resources.displayMetrics.density).toInt()
         val paddingPx = (12 * resources.displayMetrics.density).toInt()
@@ -227,12 +231,6 @@ abstract class AbsRecyclerViewFragment<A : RecyclerView.Adapter<*>, LM : Recycle
 
         val imageView = ImageView(requireContext()).apply {
             setImageDrawable(clonedIcon)
-            layoutParams = Toolbar.LayoutParams(sizePx, sizePx).apply {
-                gravity = Gravity.END or Gravity.CENTER_VERTICAL
-                marginEnd = 0
-                topMargin = 0
-                bottomMargin = 0
-            }
             setPadding(paddingPx, paddingPx, paddingPx, paddingPx)
             isClickable = true
             isFocusable = true
@@ -241,32 +239,26 @@ abstract class AbsRecyclerViewFragment<A : RecyclerView.Adapter<*>, LM : Recycle
             }
             setOnClickListener { toolbar.showOverflowMenu() }
         }
-        toolbar.addView(imageView)
+
+        val rootLayout = binding.root
+        rootLayout.addView(imageView, sizePx, sizePx)
+        imageView.bringToFront()
         customOverflowIcon = imageView
         toolbar.overflowIcon = ColorDrawable(Color.TRANSPARENT)
 
-        // زرار الـ overflow الحقيقي لسه موجود وشغال (بس شفاف) حتى بعد ما
-        // بدلنا الأيقونة بتاعته - يعني لسه فيه "منطقة ميتة" قابلة للضغط في
-        // مكانه القديم. بندور عليه جوه شجرة الـ Toolbar (بحث عادي في
-        // children، مش reflection في حاجة خاصة) ونعطله تمامًا.
-        toolbar.post { disableRealOverflowButton(toolbar) }
-    }
-
-    private fun disableRealOverflowButton(toolbar: Toolbar) {
-        for (i in 0 until toolbar.childCount) {
-            val group = toolbar.getChildAt(i) as? ViewGroup ?: continue
-            for (j in 0 until group.childCount) {
-                val child = group.getChildAt(j)
-                if (child.javaClass.simpleName == "OverflowMenuButton") {
-                    child.isClickable = false
-                    child.isFocusable = false
-                    child.isEnabled = false
-                }
-            }
+        fun repositionOverImageView() {
+            val toolbarLoc = IntArray(2)
+            toolbar.getLocationInWindow(toolbarLoc)
+            val rootLoc = IntArray(2)
+            rootLayout.getLocationInWindow(rootLoc)
+            imageView.translationX =
+                (toolbarLoc[0] - rootLoc[0] + toolbar.width - sizePx).toFloat()
+            imageView.translationY =
+                (toolbarLoc[1] - rootLoc[1] + (toolbar.height - sizePx) / 2).toFloat()
         }
-    }
-
-    override fun onCreateMenu(menu: Menu, inflater: MenuInflater) {
+        toolbar.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> repositionOverImageView() }
+        toolbar.post { repositionOverImageView() }
+    }    override fun onCreateMenu(menu: Menu, inflater: MenuInflater) {
         inflater.inflate(R.menu.menu_main, menu)
         ToolbarContentTintHelper.handleOnCreateOptionsMenu(
             requireContext(),
