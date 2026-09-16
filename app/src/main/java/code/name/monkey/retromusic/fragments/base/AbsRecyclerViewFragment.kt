@@ -203,23 +203,20 @@ abstract class AbsRecyclerViewFragment<A : RecyclerView.Adapter<*>, LM : Recycle
         setUpCustomOverflowIcon()
     }
 
-    // بننده الدالة دي بعد ما الـ ToolbarContentTintHelper يخلص تلوين النقط
-    // الحقيقية (السطر اللي فوق)، وبنحاول نقرا اللون اللي هو حطه عليها (لو
-    // كان متحط بطريقة compat tinting عادية) عشان نطبق نفس اللون على أيقونتنا
-    // إحنا. لو مقدرناش نقرا اللون، بنسيب النقط الحقيقية زي ما هي وميبقاش
-    // فيه أي استبدال - أأمن من إننا نستبدلها بحاجة ملهاش لون صح.
-    // بنستنى الـ ToolbarContentTintHelper يلون النقط الحقيقية الأول (السطر
-    // اللي فوق)، وبعدين بننسخ الـ Drawable بعد ما اتلون (مش قبل) عن طريق
-    // constantState.newDrawable() - ده بينسخ شكل الـ Drawable زي ما هو
-    // (بما فيه أي تلوين اتحط عليه)، من غير ما نحتاج نعرف إزاي المكتبة لونته
-    // بالظبط. النسخة دي بتتاخد مرة واحدة بس (أول ما الأيقونة بتاعتنا تتعمل)،
-    // مش هي دي شغالة كـ "متابعة" مستمرة للون - يعني لو الثيم اتغير بعد كده
-    // (نهاري/ليلي) هي مش هتتحدث تلقائي، بس ده تنازل مقبول مقارنة بمخاطرة
-    // استبدال الأيقونة بحاجة ملهاش لون صح خالص.
+    // بننسخ الـ Drawable الحقيقي بعد ما الـ ToolbarContentTintHelper يخلص
+    // تلوينه (constantState.newDrawable()) - كده مش محتاجين نعرف إزاي
+    // المكتبة لونته بالظبط. النسخة دي بتتاخد مرة واحدة بس (أول ما أيقونتنا
+    // تتعمل)؛ لو الثيم اتغير بعد كده (نهاري/ليلي) هي مش هتتحدث تلقائي، بس ده
+    // تنازل مقبول.
     private fun setUpCustomOverflowIcon() {
         if (customOverflowIcon != null) return
         val realIcon = toolbar.overflowIcon ?: return
         val clonedIcon = realIcon.constantState?.newDrawable(resources)?.mutate() ?: return
+
+        // نشيل أي مسافة افتراضية التولبار بيسيبها في الآخر، عشان الأيقونة
+        // تقدر تلزق على حافة الشاشة بدل ما تبقى مزحلقة لجنب.
+        toolbar.contentInsetEndWithActions = 0
+        toolbar.setPadding(toolbar.paddingLeft, toolbar.paddingTop, 0, toolbar.paddingBottom)
 
         val sizePx = (48 * resources.displayMetrics.density).toInt()
         val paddingPx = (12 * resources.displayMetrics.density).toInt()
@@ -247,6 +244,26 @@ abstract class AbsRecyclerViewFragment<A : RecyclerView.Adapter<*>, LM : Recycle
         toolbar.addView(imageView)
         customOverflowIcon = imageView
         toolbar.overflowIcon = ColorDrawable(Color.TRANSPARENT)
+
+        // زرار الـ overflow الحقيقي لسه موجود وشغال (بس شفاف) حتى بعد ما
+        // بدلنا الأيقونة بتاعته - يعني لسه فيه "منطقة ميتة" قابلة للضغط في
+        // مكانه القديم. بندور عليه جوه شجرة الـ Toolbar (بحث عادي في
+        // children، مش reflection في حاجة خاصة) ونعطله تمامًا.
+        toolbar.post { disableRealOverflowButton(toolbar) }
+    }
+
+    private fun disableRealOverflowButton(toolbar: Toolbar) {
+        for (i in 0 until toolbar.childCount) {
+            val group = toolbar.getChildAt(i) as? ViewGroup ?: continue
+            for (j in 0 until group.childCount) {
+                val child = group.getChildAt(j)
+                if (child.javaClass.simpleName == "OverflowMenuButton") {
+                    child.isClickable = false
+                    child.isFocusable = false
+                    child.isEnabled = false
+                }
+            }
+        }
     }
 
     override fun onCreateMenu(menu: Menu, inflater: MenuInflater) {
