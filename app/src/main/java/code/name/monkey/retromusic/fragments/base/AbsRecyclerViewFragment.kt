@@ -14,11 +14,17 @@
  */
 package code.name.monkey.retromusic.fragments.base
 
+import android.graphics.Color
+import android.graphics.drawable.ColorDrawable
 import android.os.Bundle
+import android.util.TypedValue
 import android.view.*
+import android.widget.ImageView
 import androidx.annotation.NonNull
 import androidx.annotation.StringRes
 import androidx.appcompat.widget.Toolbar
+import androidx.core.content.ContextCompat
+import androidx.core.graphics.drawable.DrawableCompat
 import androidx.core.view.doOnPreDraw
 import androidx.core.view.isVisible
 import androidx.core.view.updateLayoutParams
@@ -49,6 +55,15 @@ abstract class AbsRecyclerViewFragment<A : RecyclerView.Adapter<*>, LM : Recycle
     protected var layoutManager: LM? = null
     val shuffleButton get() = binding.shuffleButton
     abstract val isShuffleVisible: Boolean
+
+    // النقط الحقيقية (overflow icon) بتاعة الـ Options Menu بتتشال فورًا لحظة
+    // ما view الفراجمنت يتدمر (لأنها مربوطة بحالة الـ MenuProvider، اللي
+    // مرتبطة بالـ Lifecycle.State.STARTED) - قبل ما أنيميشن الخروج
+    // (View Animation) حتى يبدأ يتحرك، فبتبان بتختفي فجأة. الـ ImageView دي
+    // إحنا حاطينها كـ child عادي جوه التولبار نفسه (مش مربوطة بالـ MenuProvider
+    // خالص)، فبتفضل ظاهرة طول ما الـ View نفسه لسه موجود على الشاشة - يعني
+    // طول مدة الأنيميشن كاملة، وبتختفي بس لما الـ View فعليًا يتشال.
+    private var customOverflowIcon: ImageView? = null
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
@@ -186,6 +201,48 @@ abstract class AbsRecyclerViewFragment<A : RecyclerView.Adapter<*>, LM : Recycle
 
     override fun onPrepareMenu(menu: Menu) {
         ToolbarContentTintHelper.handleOnPrepareOptionsMenu(requireActivity(), toolbar)
+        setUpCustomOverflowIcon()
+    }
+
+    // بننده الدالة دي بعد ما الـ ToolbarContentTintHelper يخلص تلوين النقط
+    // الحقيقية (السطر اللي فوق)، وبنحاول نقرا اللون اللي هو حطه عليها (لو
+    // كان متحط بطريقة compat tinting عادية) عشان نطبق نفس اللون على أيقونتنا
+    // إحنا. لو مقدرناش نقرا اللون، بنسيب النقط الحقيقية زي ما هي وميبقاش
+    // فيه أي استبدال - أأمن من إننا نستبدلها بحاجة ملهاش لون صح.
+    private fun setUpCustomOverflowIcon() {
+        val realIcon = toolbar.overflowIcon ?: return
+        val tintList = DrawableCompat.getColorStateList(realIcon.mutate()) ?: return
+
+        if (customOverflowIcon == null) {
+            val sizePx = (48 * resources.displayMetrics.density).toInt()
+            val paddingPx = (12 * resources.displayMetrics.density).toInt()
+            val backgroundTypedValue = TypedValue()
+            requireContext().theme.resolveAttribute(
+                android.R.attr.selectableItemBackgroundBorderless, backgroundTypedValue, true
+            )
+
+            val imageView = ImageView(requireContext()).apply {
+                setImageDrawable(realIcon)
+                layoutParams = Toolbar.LayoutParams(sizePx, sizePx).apply {
+                    gravity = Gravity.END or Gravity.CENTER_VERTICAL
+                    marginEnd = 0
+                    topMargin = 0
+                    bottomMargin = 0
+                }
+                setPadding(paddingPx, paddingPx, paddingPx, paddingPx)
+                isClickable = true
+                isFocusable = true
+                if (backgroundTypedValue.resourceId != 0) {
+                    background = ContextCompat.getDrawable(requireContext(), backgroundTypedValue.resourceId)
+                }
+                setOnClickListener { toolbar.showOverflowMenu() }
+            }
+            toolbar.addView(imageView)
+            customOverflowIcon = imageView
+            toolbar.overflowIcon = ColorDrawable(Color.TRANSPARENT)
+        }
+
+        customOverflowIcon?.drawable?.let { DrawableCompat.setTintList(it.mutate(), tintList) }
     }
 
     override fun onCreateMenu(menu: Menu, inflater: MenuInflater) {
@@ -224,6 +281,7 @@ abstract class AbsRecyclerViewFragment<A : RecyclerView.Adapter<*>, LM : Recycle
 
     override fun onDestroyView() {
         super.onDestroyView()
+        customOverflowIcon = null
         _binding = null
     }
 
