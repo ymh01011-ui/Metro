@@ -256,9 +256,30 @@ abstract class AbsRecyclerViewFragment<A : RecyclerView.Adapter<*>, LM : Recycle
             imageView.translationY =
                 (toolbarLoc[1] - rootLoc[1] + (toolbar.height - sizePx) / 2).toFloat()
         }
+
+        // على عكس صفحة تفاصيل الفنان (اللي التولبار بتاعها عايم ثابت مكانه
+        // طول الوقت)، التولبار هنا بيتحرك/يختفي مع السكرول (زي زرار البحث
+        // بالظبط، اللي هو جزء أصلي من نفس التولبار). التحريك ده بيحصل عن
+        // طريق الـ AppBarLayout.Behavior وهو بيغير مكانه كل فريم من غير ما
+        // يعمل layout pass كامل - يعني addOnLayoutChangeListener لوحده مش
+        // هيمسك كل حركة. فبنستخدم OnPreDrawListener عشان يعيد حساب المكان
+        // *قبل كل فريم رسم*، فيتحرك مع التولبار بالظبط لحظة بلحظة.
+        val preDrawListener = ViewTreeObserver.OnPreDrawListener {
+            repositionOverImageView()
+            true
+        }
+        rootLayout.viewTreeObserver.addOnPreDrawListener(preDrawListener)
+        imageView.addOnAttachStateChangeListener(object : View.OnAttachStateChangeListener {
+            override fun onViewAttachedToWindow(v: View) {}
+            override fun onViewDetachedFromWindow(v: View) {
+                rootLayout.viewTreeObserver.removeOnPreDrawListener(preDrawListener)
+            }
+        })
         toolbar.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> repositionOverImageView() }
         toolbar.post { repositionOverImageView() }
-    }    override fun onCreateMenu(menu: Menu, inflater: MenuInflater) {
+    }
+
+    override fun onCreateMenu(menu: Menu, inflater: MenuInflater) {
         inflater.inflate(R.menu.menu_main, menu)
         ToolbarContentTintHelper.handleOnCreateOptionsMenu(
             requireContext(),
