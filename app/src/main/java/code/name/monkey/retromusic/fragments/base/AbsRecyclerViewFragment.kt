@@ -208,47 +208,45 @@ abstract class AbsRecyclerViewFragment<A : RecyclerView.Adapter<*>, LM : Recycle
     // كان متحط بطريقة compat tinting عادية) عشان نطبق نفس اللون على أيقونتنا
     // إحنا. لو مقدرناش نقرا اللون، بنسيب النقط الحقيقية زي ما هي وميبقاش
     // فيه أي استبدال - أأمن من إننا نستبدلها بحاجة ملهاش لون صح.
+    // بنستنى الـ ToolbarContentTintHelper يلون النقط الحقيقية الأول (السطر
+    // اللي فوق)، وبعدين بننسخ الـ Drawable بعد ما اتلون (مش قبل) عن طريق
+    // constantState.newDrawable() - ده بينسخ شكل الـ Drawable زي ما هو
+    // (بما فيه أي تلوين اتحط عليه)، من غير ما نحتاج نعرف إزاي المكتبة لونته
+    // بالظبط. النسخة دي بتتاخد مرة واحدة بس (أول ما الأيقونة بتاعتنا تتعمل)،
+    // مش هي دي شغالة كـ "متابعة" مستمرة للون - يعني لو الثيم اتغير بعد كده
+    // (نهاري/ليلي) هي مش هتتحدث تلقائي، بس ده تنازل مقبول مقارنة بمخاطرة
+    // استبدال الأيقونة بحاجة ملهاش لون صح خالص.
     private fun setUpCustomOverflowIcon() {
-        // زي setUpCustomOverflowIcon بتاعة TintableToolbar: بدل ما نحاول
-        // نستخرج ColorStateList من الأيقونة (مفيش API زي كده أصلاً في
-        // DrawableCompat)، بنعتمد على إن الـ tint اتحط جوه الـ Drawable
-        // نفسه لما ToolbarContentTintHelper لونها (سطر onPrepareMenu اللي
-        // فات)، فبنكتفي بعمل mutate() وناخد نفس الأيقونة دي زي ما هي.
-        val icon = toolbar.overflowIcon?.mutate() ?: return
+        if (customOverflowIcon != null) return
+        val realIcon = toolbar.overflowIcon ?: return
+        val clonedIcon = realIcon.constantState?.newDrawable(resources)?.mutate() ?: return
 
-        if (customOverflowIcon == null) {
-            val sizePx = (48 * resources.displayMetrics.density).toInt()
-            val paddingPx = (12 * resources.displayMetrics.density).toInt()
-            val backgroundTypedValue = TypedValue()
-            requireContext().theme.resolveAttribute(
-                android.R.attr.selectableItemBackgroundBorderless, backgroundTypedValue, true
-            )
+        val sizePx = (48 * resources.displayMetrics.density).toInt()
+        val paddingPx = (12 * resources.displayMetrics.density).toInt()
+        val backgroundTypedValue = TypedValue()
+        requireContext().theme.resolveAttribute(
+            android.R.attr.selectableItemBackgroundBorderless, backgroundTypedValue, true
+        )
 
-            val imageView = ImageView(requireContext()).apply {
-                setImageDrawable(icon)
-                layoutParams = Toolbar.LayoutParams(sizePx, sizePx).apply {
-                    gravity = Gravity.END or Gravity.CENTER_VERTICAL
-                    marginEnd = 0
-                    topMargin = 0
-                    bottomMargin = 0
-                }
-                setPadding(paddingPx, paddingPx, paddingPx, paddingPx)
-                isClickable = true
-                isFocusable = true
-                if (backgroundTypedValue.resourceId != 0) {
-                    background = ContextCompat.getDrawable(requireContext(), backgroundTypedValue.resourceId)
-                }
-                setOnClickListener { toolbar.showOverflowMenu() }
+        val imageView = ImageView(requireContext()).apply {
+            setImageDrawable(clonedIcon)
+            layoutParams = Toolbar.LayoutParams(sizePx, sizePx).apply {
+                gravity = Gravity.END or Gravity.CENTER_VERTICAL
+                marginEnd = 0
+                topMargin = 0
+                bottomMargin = 0
             }
-            toolbar.addView(imageView)
-            customOverflowIcon = imageView
-            toolbar.overflowIcon = ColorDrawable(Color.TRANSPARENT)
-        } else {
-            // كل ما onPrepareMenu يتنده تاني وToolbarContentTintHelper يعيد
-            // تلوين النقط الحقيقية، بنحدّث نسختنا إحنا بنفس الأيقونة المتلونة
-            // الجديدة عشان يفضلوا متزامنين.
-            customOverflowIcon?.setImageDrawable(icon)
+            setPadding(paddingPx, paddingPx, paddingPx, paddingPx)
+            isClickable = true
+            isFocusable = true
+            if (backgroundTypedValue.resourceId != 0) {
+                background = ContextCompat.getDrawable(requireContext(), backgroundTypedValue.resourceId)
+            }
+            setOnClickListener { toolbar.showOverflowMenu() }
         }
+        toolbar.addView(imageView)
+        customOverflowIcon = imageView
+        toolbar.overflowIcon = ColorDrawable(Color.TRANSPARENT)
     }
 
     override fun onCreateMenu(menu: Menu, inflater: MenuInflater) {
