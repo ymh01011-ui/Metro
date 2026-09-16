@@ -76,6 +76,20 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
     private lateinit var singlesAdapter: HorizontalAlbumAdapter
     private lateinit var appearsOnAdapter: HorizontalAlbumAdapter
     private var forceDownload: Boolean = false
+
+    // الصفحة دي بتدير التولبار والمنيو بتاعتها بنفسها بالكامل (توولبار محلي
+    // مش الـ Action Bar المشترك)، فمفيش داعي تتسجل كـ MenuProvider على
+    // الـ MenuHost بتاع الـ Activity زي باقي فراجمنتات AbsMainActivityFragment
+    // (شوف الشرح في AbsMainActivityFragment.registersMenuProvider).
+    override val registersMenuProvider: Boolean = false
+
+    // بتتحط true لحظة ما زرار الرجوع في التولبار يتدوس، عشان نمنع
+    // navDestinationListener (تحت في onResume) من إنه يفرض
+    // applyStatusBarAppearance(false) وإحنا لسه في نص أنيميشن الخروج بتاعنا
+    // إحنا - كان بيحصل فورًا لحظة ما الـ destination يتغير للصفحة اللي
+    // راجعين لها، قبل ما الأنيميشن حتى يبدأ، فيبان كإن لون التولبار "بيرجع"
+    // فجأة قبل ما نخرج خالص.
+    private var isExitingViaBack: Boolean = false
     
     private var dominantBackgroundColor: Int = Color.BLACK
     private var navDestinationListener: NavController.OnDestinationChangedListener? = null
@@ -167,6 +181,7 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
             // - وده اللي بيمنع الأنيميشن من الظهور خالص.
             exitTransition = null
             reenterTransition = null
+            isExitingViaBack = true
             findNavController().navigateUp()
         }
 
@@ -201,6 +216,10 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
 
         binding.appBarLayout?.alpha = 1f
         binding.toolbar.isClickable = true
+        // كان فيه خط أبيض رفيع ظاهر على يمين الصفحة - ده الـ scrollbar الافتراضي
+        // بتاع الـ NestedScrollView (طول العصاية بيعكس نسبة المحتوى الظاهر لارتفاع
+        // الصفحة كله). مش لازم يبان في التصميم ده.
+        binding.content.isVerticalScrollBarEnabled = false
 
         binding.content.setOnScrollChangeListener(androidx.core.widget.NestedScrollView.OnScrollChangeListener { _, _, scrollY, _, _ ->
             // artistTitle.bottom بيرجع الموضع بالنسبة لأبوه المباشر بس (اللي هو
@@ -418,6 +437,7 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
             // نفس السبب بالظبط: نصفّر أي Hold() عالق قبل ما نرجع تلقائيًا.
             exitTransition = null
             reenterTransition = null
+            isExitingViaBack = true
             findNavController().navigateUp()
             return
         }
@@ -870,7 +890,7 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
 
         val ownDestinationId = findNavController().currentDestination?.id
         val listener = NavController.OnDestinationChangedListener { _, destination, _ ->
-            if (destination.id != ownDestinationId && destination.id != R.id.artistAllSongsFragment) {
+            if (!isExitingViaBack && destination.id != ownDestinationId && destination.id != R.id.artistAllSongsFragment) {
                 applyStatusBarAppearance(false)
             }
         }
