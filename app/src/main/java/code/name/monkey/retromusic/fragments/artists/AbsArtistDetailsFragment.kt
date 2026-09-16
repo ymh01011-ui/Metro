@@ -878,8 +878,8 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
             setOnClickListener { toolbar.showOverflowMenu() }
         }
 
-        val rootLayout = binding.rootLayout
-        rootLayout.addView(imageView, android.widget.FrameLayout.LayoutParams(sizePx, sizePx))
+        val rootLayout = binding.rootLayout as android.view.ViewGroup
+        rootLayout.addView(imageView, sizePx, sizePx)
         imageView.bringToFront()
         customOverflowIcon = imageView
 
