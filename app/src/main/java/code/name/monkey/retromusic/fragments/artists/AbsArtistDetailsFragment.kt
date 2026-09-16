@@ -184,6 +184,12 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
         // فالمسافة غالبًا جايه من titleMarginStart نفسه.
         toolbar.contentInsetStartWithNavigation = 0
         toolbar.setTitleMarginStart(0)
+        // نفس الحكاية بالظبط على الجنب التاني، عشان أيقونة النقط بتاعتنا تلزق
+        // على يمين الشاشة بنفس المسافة اللي السهم لازق بيها على الشمال -
+        // من غيرها التولبار بيسيب مسافة افتراضية (contentInsetEnd) فبتبان
+        // النقط مزحلقة لجنب شوية بدل ما تكون عند الحافة.
+        toolbar.contentInsetEndWithActions = 0
+        toolbar.contentInsetEnd = 0
         toolbar.setNavigationOnClickListener {
             // لازم نصفّر الـ Transition Framework هنا برضه قبل الـ navigateUp():
             // لو المستخدم كان دخل لصفحة ألبوم من هنا قبل كده (onAlbumClick)،
@@ -860,6 +866,9 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
             setImageDrawable(icon)
             layoutParams = Toolbar.LayoutParams(sizePx, sizePx).apply {
                 gravity = Gravity.END or Gravity.CENTER_VERTICAL
+                marginEnd = 0
+                topMargin = 0
+                bottomMargin = 0
             }
             setPadding(iconPaddingPx, iconPaddingPx, iconPaddingPx, iconPaddingPx)
             isClickable = true
