@@ -189,7 +189,6 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
         // من غيرها التولبار بيسيب مسافة افتراضية (contentInsetEnd) فبتبان
         // النقط مزحلقة لجنب شوية بدل ما تكون عند الحافة.
         toolbar.contentInsetEndWithActions = 0
-        toolbar.setContentInsetsRelative(toolbar.contentInsetStart, 0)
         toolbar.setNavigationOnClickListener {
             // لازم نصفّر الـ Transition Framework هنا برضه قبل الـ navigateUp():
             // لو المستخدم كان دخل لصفحة ألبوم من هنا قبل كده (onAlbumClick)،
