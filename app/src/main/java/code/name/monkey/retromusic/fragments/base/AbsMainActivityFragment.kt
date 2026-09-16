@@ -39,10 +39,24 @@ abstract class AbsMainActivityFragment(@LayoutRes layout: Int) : AbsMusicService
     val mainActivity: MainActivity
         get() = activity as MainActivity
 
+    // فراجمنتات زي AbsArtistDetailsFragment بتدير التولبار/المنيو بتاعتها
+    // بنفسها بالكامل (توولبار محلي منفصل عن الـ Action Bar المشترك، و
+    // onCreateMenu عندها فاضي أصلاً). تسجيلها كـ MenuProvider هنا كان
+    // بيخليها تشارك برضه في invalidateMenu() الجماعي اللي بيحصل لكل الـ
+    // providers مع بعض وقت أي تغيير حالة (add/remove) - حتى لو هي نفسها
+    // ملهاش أي عناصر تضيفها. ده كان بيسبب rebuilds زيادة على المنيو الحقيقي
+    // (زي صفحة قائمة الفنانين) وقت الانتقال بينهم، فبتبان النقط بتاعتها
+    // بتختفي/ترجع أكتر من مرة (rapid invalidations). الفراجمنتات اللي فعلاً
+    // بتضيف عناصر للمنيو المشترك (بتعمل override لـ onCreateMenu) تسيب
+    // القيمة الافتراضية true.
+    protected open val registersMenuProvider: Boolean = true
+
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
-        val menuHost: MenuHost = requireActivity() as MenuHost
-        menuHost.addMenuProvider(this, viewLifecycleOwner, Lifecycle.State.STARTED)
+        if (registersMenuProvider) {
+            val menuHost: MenuHost = requireActivity() as MenuHost
+            menuHost.addMenuProvider(this, viewLifecycleOwner, Lifecycle.State.STARTED)
+        }
     }
 
     // Provide default no-op implementations so subclasses don't have to implement them
