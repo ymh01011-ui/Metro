@@ -189,6 +189,7 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
         // من غيرها التولبار بيسيب مسافة افتراضية (contentInsetEnd) فبتبان
         // النقط مزحلقة لجنب شوية بدل ما تكون عند الحافة.
         toolbar.contentInsetEndWithActions = 0
+        toolbar.setPadding(toolbar.paddingLeft, toolbar.paddingTop, 0, toolbar.paddingBottom)
         toolbar.setNavigationOnClickListener {
             // لازم نصفّر الـ Transition Framework هنا برضه قبل الـ navigateUp():
             // لو المستخدم كان دخل لصفحة ألبوم من هنا قبل كده (onAlbumClick)،
@@ -879,6 +880,25 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
         }
         toolbar.addView(imageView)
         customOverflowIcon = imageView
+
+        // نفس الحكاية اللي في صفحة قائمة الفنانين: زرار الـ overflow الحقيقي
+        // لسه موجود وشغال (بس شفاف)، فبيفضل فيه "منطقة ميتة" قابلة للضغط في
+        // مكانه القديم. بندور عليه جوه شجرة الـ Toolbar ونعطله تمامًا.
+        toolbar.post { disableRealOverflowButton(toolbar) }
+    }
+
+    private fun disableRealOverflowButton(toolbar: TintableToolbar) {
+        for (i in 0 until toolbar.childCount) {
+            val group = toolbar.getChildAt(i) as? android.view.ViewGroup ?: continue
+            for (j in 0 until group.childCount) {
+                val child = group.getChildAt(j)
+                if (child.javaClass.simpleName == "OverflowMenuButton") {
+                    child.isClickable = false
+                    child.isFocusable = false
+                    child.isEnabled = false
+                }
+            }
+        }
     }
 
     private fun clearImageCache() {
