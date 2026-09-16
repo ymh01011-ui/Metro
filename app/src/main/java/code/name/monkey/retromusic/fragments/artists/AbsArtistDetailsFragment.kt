@@ -2,13 +2,19 @@ package code.name.monkey.retromusic.fragments.artists
 
 import android.graphics.Bitmap
 import android.graphics.Color
+import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.Drawable
 import android.os.Bundle
+import android.util.TypedValue
+import android.view.Gravity
 import android.view.Menu
 import android.view.MenuItem
 import android.view.View
+import android.widget.ImageView
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.appcompat.widget.Toolbar
+import androidx.core.content.ContextCompat
 import androidx.core.graphics.ColorUtils
 import androidx.core.graphics.drawable.DrawableCompat
 import androidx.core.os.bundleOf
@@ -76,6 +82,13 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
     private lateinit var singlesAdapter: HorizontalAlbumAdapter
     private lateinit var appearsOnAdapter: HorizontalAlbumAdapter
     private var forceDownload: Boolean = false
+
+    // النقطة التلاتة الحقيقية (overflow icon) بتاعة الـ Toolbar بنخفيها ونحط
+    // ImageView إحنا عليها بدالها، عشان نتحكم في لونها بنفس الطريقة بالظبط
+    // اللي شغالة تمام مع سهم الرجوع (DrawableCompat.setTint على Drawable
+    // إحنا عاملينه mutate)، بدل الاعتماد على toolbar.setOverflowIconTint()
+    // اللي بيترجع للون الافتراضي في ظروف معينة مش واضحة (شوف setUpCustomOverflowIcon).
+    private var customOverflowIcon: ImageView? = null
 
     // الصفحة دي بتدير التولبار والمنيو بتاعتها بنفسها بالكامل (توولبار محلي
     // مش الـ Action Bar المشترك)، فمفيش داعي تتسجل كـ MenuProvider على
@@ -197,6 +210,7 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
             toolbar.setOnMenuItemClickListener { item ->
                 handleSortOrderMenuItem(item)
             }
+            setUpCustomOverflowIcon(toolbar)
         }
 
         androidx.core.view.WindowCompat.setDecorFitsSystemWindows(requireActivity().window, false)
@@ -676,7 +690,7 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
         val iconColor = ColorUtils.setAlphaComponent(foregroundColor, TOOLBAR_ICON_ALPHA)
         if (toolbar is TintableToolbar) {
             toolbar.navigationIcon?.let { DrawableCompat.setTint(it, iconColor) }
-            toolbar.setOverflowIconTint(iconColor)
+            customOverflowIcon?.drawable?.let { DrawableCompat.setTint(it.mutate(), iconColor) }
             toolbar.setTitleTextColor(foregroundColor)
         } else if (toolbar is androidx.appcompat.widget.Toolbar) {
             toolbar.navigationIcon?.let { DrawableCompat.setTint(it, iconColor) }
@@ -825,6 +839,40 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
         return if (resolved) typedValue.data else Color.BLACK
     }
 
+    // بنستخدم نفس أيقونة الـ overflow اللي التولبار أصلاً معمول له setup بيها
+    // (بتاعة TintableToolbar)، بس بننسخها (mutate) ونحطها في ImageView إحنا
+    // مالكينها بالكامل، عشان تلوينها يبقى بنفس آلية سهم الرجوع بالظبط. بعد
+    // كده بنخفي زرار الـ overflow الحقيقي (يفضل موجود وشغال، بس شفاف) عشان
+    // الـ ImageView بتاعتنا هي اللي الظاهرة، ونحول الضغط عليها لفتح نفس المنيو.
+    private fun setUpCustomOverflowIcon(toolbar: TintableToolbar) {
+        val icon = toolbar.overflowIcon?.mutate() ?: return
+
+        toolbar.overflowIcon = ColorDrawable(Color.TRANSPARENT)
+
+        val sizePx = (48 * resources.displayMetrics.density).toInt()
+        val iconPaddingPx = (12 * resources.displayMetrics.density).toInt()
+        val backgroundTypedValue = TypedValue()
+        requireContext().theme.resolveAttribute(
+            android.R.attr.selectableItemBackgroundBorderless, backgroundTypedValue, true
+        )
+
+        val imageView = ImageView(requireContext()).apply {
+            setImageDrawable(icon)
+            layoutParams = Toolbar.LayoutParams(sizePx, sizePx).apply {
+                gravity = Gravity.END or Gravity.CENTER_VERTICAL
+            }
+            setPadding(iconPaddingPx, iconPaddingPx, iconPaddingPx, iconPaddingPx)
+            isClickable = true
+            isFocusable = true
+            if (backgroundTypedValue.resourceId != 0) {
+                background = ContextCompat.getDrawable(requireContext(), backgroundTypedValue.resourceId)
+            }
+            setOnClickListener { toolbar.showOverflowMenu() }
+        }
+        toolbar.addView(imageView)
+        customOverflowIcon = imageView
+    }
+
     private fun clearImageCache() {
         cachedBitmap = null
         cachedGradientStops = null
@@ -906,6 +954,7 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
 
     override fun onDestroyView() {
         super.onDestroyView()
+        customOverflowIcon = null
         _binding = null
     }
 }
