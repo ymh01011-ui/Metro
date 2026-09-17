@@ -252,6 +252,7 @@ abstract class AbsRecyclerViewFragment<A : RecyclerView.Adapter<*>, LM : Recycle
             }
         }
 
+        toolbar.contentInsetEndWithActions = 0
         toolbar.addView(imageView)
         customOverflowIcon = imageView
         toolbar.overflowIcon = ColorDrawable(Color.TRANSPARENT)
