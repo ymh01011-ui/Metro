@@ -203,15 +203,23 @@ abstract class AbsRecyclerViewFragment<A : RecyclerView.Adapter<*>, LM : Recycle
         setUpCustomOverflowIcon()
     }
 
-    // نفس المشكلة اللي في صفحة تفاصيل الفنان بالظبط: الـ Toolbar بيحجز مساحة
-    // لزرار الـ overflow الحقيقي (ActionMenuView) بناءً على وجود العناصر
-    // نفسها، مش على شفافية الأيقونة - فأي View بنضيفها جوه التولبار بتتحط
-    // *قبل* المساحة دي، مش في نهايته فعليًا. فبنحط أيقونتنا كـ sibling
-    // للـ appBarLayout جوه الـ CoordinatorLayout (مش جوه التولبار خالص)،
-    // ونحسب مكانها بالقياس المباشر (getLocationInWindow) من التولبار الحقيقي.
-    // وبما إنها فوقه في الـ z-order، أي ضغطة في مكانها هتوصلها هي الأول -
-    // فمش محتاجين "نلاقي" الزرار الحقيقي ونعطله يدوي، بيبقى تلقائيًا مقفول
-    // عمليًا تحتها.
+    // آخر مرتين حاولت أحسب مكانها يدوي (جوه الـ toolbar، وبعدين كـ sibling
+    // منفصل بالقياس المباشر) وغلطت في الاتنين - المشكلة إني كنت بحاول
+    // "أخمن" أو "أقيس" ارتفاع/مكان حاجة الـ Toolbar نفسه أصلاً عارف يحطها
+    // صح، بدل ما أسيبه هو يعملها.
+    //
+    // الحل الحقيقي: نرجعها child عادية جوه التولبار نفسه (زي ما كانت أول
+    // مرة)، عشان تاخد نفس نظام التمركز الرأسي المضمون بتاع الـ Toolbar
+    // (بالظبط زي زرار البحث، لأنه هو نفسه جزء من نفس النظام ده). المشكلة
+    // الوحيدة اللي كانت حقيقية فعلاً هي أفقية: الـ ActionMenuView بتحجز
+    // مساحة قدر مربع لمسة قياسي (48dp) لزرار الـ overflow في الآخر، حتى لو
+    // أيقونته شفافة - فبنسحب أيقونتنا بنفس المقدار ده بالظبط (margin سالب)
+    // عشان تقف مكانه بدل ما تتحط قبله. رقم معروف وثابت، مش تخمين.
+    //
+    // وبما إنها بقت جزء حقيقي من نفس الـ Toolbar، هي بتتحرك معاه تلقائي مع
+    // أي سكرول/إخفاء من غير أي كود إضافي، ومحتاجاش نلاقي الزرار الحقيقي
+    // ونعطله - هي آخر حاجة بتتضاف (بعد inflateMenu)، فبتترسم فوقه وبتاخد
+    // اللمسة قبله تلقائيًا.
     //
     // بننسخ الـ Drawable الحقيقي بعد ما الـ ToolbarContentTintHelper يخلص
     // تلوينه (constantState.newDrawable()) - كده مش محتاجين نعرف إزاي
@@ -238,61 +246,15 @@ abstract class AbsRecyclerViewFragment<A : RecyclerView.Adapter<*>, LM : Recycle
                 background = ContextCompat.getDrawable(requireContext(), backgroundTypedValue.resourceId)
             }
             setOnClickListener { toolbar.showOverflowMenu() }
+            layoutParams = Toolbar.LayoutParams(sizePx, sizePx).apply {
+                gravity = Gravity.END or Gravity.CENTER_VERTICAL
+                marginEnd = -sizePx
+            }
         }
 
-        val rootLayout = binding.root
-        rootLayout.addView(imageView, sizePx, sizePx)
-        imageView.bringToFront()
-        // bringToFront() بترتب مكانها في شجرة الـ views بس، لكن الـ AppBarLayout
-        // عنده elevation (بيتغير مع السكرول)، والـ Z-ordering الحقيقي وقت
-        // الرسم (hardware acceleration) بيحترم الـ elevation مش ترتيب الشجرة -
-        // فكان بيرسم فوق أيقونتنا برغم bringToFront(). بنديها elevation أعلى
-        // بشكل واضح عشان تفضل هي الأعلى مهما الـ AppBarLayout اتغير.
-        imageView.elevation = (16 * resources.displayMetrics.density) +
-            (binding.appBarLayout.elevation)
+        toolbar.addView(imageView)
         customOverflowIcon = imageView
         toolbar.overflowIcon = ColorDrawable(Color.TRANSPARENT)
-
-        val actionBarSizePx = TypedValue().let {
-            requireContext().theme.resolveAttribute(android.R.attr.actionBarSize, it, true)
-            it.getDimension(resources.displayMetrics).toInt()
-        }
-
-        fun repositionOverImageView() {
-            val toolbarLoc = IntArray(2)
-            toolbar.getLocationInWindow(toolbarLoc)
-            val rootLoc = IntArray(2)
-            rootLayout.getLocationInWindow(rootLoc)
-            // بدل ما نتمركز بالنسبة لـ toolbar.height (اللي طلع فيه ارتفاع
-            // زيادة عن الشريط الظاهر فعليًا وخلانا نازلين لتحت)، بنتمركز
-            // بالنسبة لارتفاع الشريط القياسي (actionBarSize) نفسه، ومربوطين
-            // بحافة التولبار العلوية (toolbarLoc[1]) بس - مش بارتفاعه الكامل.
-            imageView.translationX =
-                (toolbarLoc[0] - rootLoc[0] + toolbar.width - sizePx).toFloat()
-            imageView.translationY =
-                (toolbarLoc[1] - rootLoc[1] + (actionBarSizePx - sizePx) / 2).toFloat()
-        }
-
-        // على عكس صفحة تفاصيل الفنان (اللي التولبار بتاعها عايم ثابت مكانه
-        // طول الوقت)، التولبار هنا بيتحرك/يختفي مع السكرول (زي زرار البحث
-        // بالظبط، اللي هو جزء أصلي من نفس التولبار). التحريك ده بيحصل عن
-        // طريق الـ AppBarLayout.Behavior وهو بيغير مكانه كل فريم من غير ما
-        // يعمل layout pass كامل - يعني addOnLayoutChangeListener لوحده مش
-        // هيمسك كل حركة. فبنستخدم OnPreDrawListener عشان يعيد حساب المكان
-        // *قبل كل فريم رسم*، فيتحرك مع التولبار بالظبط لحظة بلحظة.
-        val preDrawListener = ViewTreeObserver.OnPreDrawListener {
-            repositionOverImageView()
-            true
-        }
-        rootLayout.viewTreeObserver.addOnPreDrawListener(preDrawListener)
-        imageView.addOnAttachStateChangeListener(object : View.OnAttachStateChangeListener {
-            override fun onViewAttachedToWindow(v: View) {}
-            override fun onViewDetachedFromWindow(v: View) {
-                rootLayout.viewTreeObserver.removeOnPreDrawListener(preDrawListener)
-            }
-        })
-        toolbar.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> repositionOverImageView() }
-        toolbar.post { repositionOverImageView() }
     }
 
     override fun onCreateMenu(menu: Menu, inflater: MenuInflater) {
