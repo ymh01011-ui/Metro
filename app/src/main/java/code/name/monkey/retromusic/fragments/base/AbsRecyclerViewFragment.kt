@@ -203,28 +203,22 @@ abstract class AbsRecyclerViewFragment<A : RecyclerView.Adapter<*>, LM : Recycle
         setUpCustomOverflowIcon()
     }
 
-    // آخر مرتين حاولت أحسب مكانها يدوي (جوه الـ toolbar، وبعدين كـ sibling
-    // منفصل بالقياس المباشر) وغلطت في الاتنين - المشكلة إني كنت بحاول
-    // "أخمن" أو "أقيس" ارتفاع/مكان حاجة الـ Toolbar نفسه أصلاً عارف يحطها
-    // صح، بدل ما أسيبه هو يعملها.
+    // في صفحة تفاصيل الفنان اللي اشتغلت صح، استخدمنا أسلوب الـ sibling
+    // overlay (تحطها بره التولبار خالص وتقيس مكانها بـ getLocationInWindow)
+    // + إعطائها elevation أعلى من الـ AppBarLayout. الأفقي والـ z-order في
+    // الأسلوب ده كانوا مظبوطين هنا برضه من غير أي تعديل - المشكلة كانت في
+    // حساب الارتفاع بس: افترضنا إن مركز التولبار = toolbar.height / 2، وده
+    // صحيح لتولبار صفحة التفاصيل بس غلط هنا - الـ toolbar بتاع TopAppBarLayout
+    // ظاهر إن ارتفاعه المقاس (toolbar.height) أكبر من الشريط الظاهر فعليًا
+    // (سبب مش عارفينه من غير كود TopAppBarLayout نفسه)، فكل تخمين مبني عليه
+    // (height، أو actionBarSize، أو طرح padding) طلع غلط بنفس القد تقريبًا.
     //
-    // الحل الحقيقي: نرجعها child عادية جوه التولبار نفسه (زي ما كانت أول
-    // مرة)، عشان تاخد نفس نظام التمركز الرأسي المضمون بتاع الـ Toolbar
-    // (بالظبط زي زرار البحث، لأنه هو نفسه جزء من نفس النظام ده). المشكلة
-    // الوحيدة اللي كانت حقيقية فعلاً هي أفقية: الـ ActionMenuView بتحجز
-    // مساحة قدر مربع لمسة قياسي (48dp) لزرار الـ overflow في الآخر، حتى لو
-    // أيقونته شفافة - فبنسحب أيقونتنا بنفس المقدار ده بالظبط (margin سالب)
-    // عشان تقف مكانه بدل ما تتحط قبله. رقم معروف وثابت، مش تخمين.
-    //
-    // وبما إنها بقت جزء حقيقي من نفس الـ Toolbar، هي بتتحرك معاه تلقائي مع
-    // أي سكرول/إخفاء من غير أي كود إضافي، ومحتاجاش نلاقي الزرار الحقيقي
-    // ونعطله - هي آخر حاجة بتتضاف (بعد inflateMenu)، فبتترسم فوقه وبتاخد
-    // اللمسة قبله تلقائيًا.
-    //
-    // بننسخ الـ Drawable الحقيقي بعد ما الـ ToolbarContentTintHelper يخلص
-    // تلوينه (constantState.newDrawable()) - كده مش محتاجين نعرف إزاي
-    // المكتبة لونته بالظبط. النسخة دي بتتاخد مرة واحدة بس؛ لو الثيم اتغير
-    // بعد كده (نهاري/ليلي) هي مش هتتحدث تلقائي، بس ده تنازل مقبول.
+    // بدل ما نفضل نخمن رقم صحيح، بنسيب الـ Toolbar نفسه يحسبه لينا: بنضيف
+    // View شفافة (INVISIBLE، مش GONE عشان تاخد مكانها في الحساب) جواه
+    // كـ "مسبار" بس، بنديها Gravity.CENTER_VERTICAL زي أي عنصر حقيقي، وبعد
+    // كده بنقرا مكانها الفعلي (getLocationInWindow) - ده نفس نظام التمركز
+    // اللي بيحط زرار البحث في مكانه الصح، فمضمون يطلع صح هنا كمان من غير
+    // أي تخمين ارتفاعات.
     private fun setUpCustomOverflowIcon() {
         if (customOverflowIcon != null) return
         val realIcon = toolbar.overflowIcon ?: return
@@ -237,6 +231,16 @@ abstract class AbsRecyclerViewFragment<A : RecyclerView.Adapter<*>, LM : Recycle
             android.R.attr.selectableItemBackgroundBorderless, backgroundTypedValue, true
         )
 
+        // المسبار: مش هيتشاف خالص (INVISIBLE)، غرضه الوحيد إننا نقرا مكانه
+        // بعد ما الـ Toolbar يتمركزه رأسيًا بنفسه.
+        val probe = View(requireContext()).apply {
+            visibility = View.INVISIBLE
+            layoutParams = Toolbar.LayoutParams(1, sizePx).apply {
+                gravity = Gravity.CENTER_VERTICAL
+            }
+        }
+        toolbar.addView(probe)
+
         val imageView = ImageView(requireContext()).apply {
             setImageDrawable(clonedIcon)
             setPadding(paddingPx, paddingPx, paddingPx, paddingPx)
@@ -246,16 +250,47 @@ abstract class AbsRecyclerViewFragment<A : RecyclerView.Adapter<*>, LM : Recycle
                 background = ContextCompat.getDrawable(requireContext(), backgroundTypedValue.resourceId)
             }
             setOnClickListener { toolbar.showOverflowMenu() }
-            layoutParams = Toolbar.LayoutParams(sizePx, sizePx).apply {
-                gravity = Gravity.END or Gravity.CENTER_VERTICAL
-                marginEnd = -sizePx
-            }
         }
 
-        toolbar.contentInsetEndWithActions = 0
-        toolbar.addView(imageView)
+        val rootLayout = binding.root
+        rootLayout.addView(imageView, sizePx, sizePx)
+        imageView.bringToFront()
+        // نفس سبب إعطاء الـ elevation اللي اشتغل في صفحة تفاصيل الفنان:
+        // الـ AppBarLayout عنده elevation بيتغير مع السكرول، والرسم الحقيقي
+        // (hardware acceleration) بيحترم الـ elevation مش ترتيب الشجرة.
+        imageView.elevation = (16 * resources.displayMetrics.density) +
+            binding.appBarLayout.elevation
         customOverflowIcon = imageView
         toolbar.overflowIcon = ColorDrawable(Color.TRANSPARENT)
+
+        fun repositionOverImageView() {
+            val toolbarLoc = IntArray(2)
+            toolbar.getLocationInWindow(toolbarLoc)
+            val probeLoc = IntArray(2)
+            probe.getLocationInWindow(probeLoc)
+            val rootLoc = IntArray(2)
+            rootLayout.getLocationInWindow(rootLoc)
+            imageView.translationX =
+                (toolbarLoc[0] - rootLoc[0] + toolbar.width - sizePx).toFloat()
+            imageView.translationY = (probeLoc[1] - rootLoc[1]).toFloat()
+        }
+
+        // التولبار هنا بيتحرك/يختفي مع السكرول (زي زرار البحث)، والحركة دي
+        // بتحصل كل فريم من غير layout pass كامل - فبنستخدم OnPreDrawListener
+        // عشان يعيد الحساب قبل كل فريم رسم.
+        val preDrawListener = ViewTreeObserver.OnPreDrawListener {
+            repositionOverImageView()
+            true
+        }
+        rootLayout.viewTreeObserver.addOnPreDrawListener(preDrawListener)
+        imageView.addOnAttachStateChangeListener(object : View.OnAttachStateChangeListener {
+            override fun onViewAttachedToWindow(v: View) {}
+            override fun onViewDetachedFromWindow(v: View) {
+                rootLayout.viewTreeObserver.removeOnPreDrawListener(preDrawListener)
+            }
+        })
+        toolbar.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> repositionOverImageView() }
+        toolbar.post { repositionOverImageView() }
     }
 
     override fun onCreateMenu(menu: Menu, inflater: MenuInflater) {
