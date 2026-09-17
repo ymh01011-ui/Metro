@@ -14,14 +14,13 @@
  */
 package code.name.monkey.retromusic.fragments.base
 
-import android.graphics.Color
-import android.graphics.drawable.ColorDrawable
 import android.os.Bundle
 import android.util.TypedValue
 import android.view.*
 import android.widget.ImageView
 import androidx.annotation.NonNull
 import androidx.annotation.StringRes
+import androidx.appcompat.widget.PopupMenu
 import androidx.appcompat.widget.Toolbar
 import androidx.core.content.ContextCompat
 import androidx.core.view.doOnPreDraw
@@ -29,8 +28,6 @@ import androidx.core.view.isVisible
 import androidx.core.view.updateLayoutParams
 import androidx.navigation.fragment.findNavController
 import androidx.recyclerview.widget.RecyclerView
-import code.name.monkey.appthemehelper.common.ATHToolbarActivity
-import code.name.monkey.appthemehelper.util.ToolbarContentTintHelper
 import code.name.monkey.retromusic.R
 import code.name.monkey.retromusic.adapter.base.AbsMultiSelectAdapter
 import code.name.monkey.retromusic.databinding.FragmentMainRecyclerBinding
@@ -48,6 +45,22 @@ import me.zhanghai.android.fastscroll.FastScrollerBuilder
 abstract class AbsRecyclerViewFragment<A : RecyclerView.Adapter<*>, LM : RecyclerView.LayoutManager> :
     AbsMainActivityFragment(R.layout.fragment_main_recycler), IScrollHelper {
 
+    // *الحل الجذري*: المشكلة الحقيقية طول الوقت كانت إن toolbar.menu فيه
+    // عناصر حقيقية (Sort, Grid, إلخ) بـ showAsAction="never" - وده اللي
+    // بيخلي الـ ActionMenuView تحجز مساحة زرار overflow حقيقي، بغض النظر عن
+    // شفافية أيقونته. أي حل كان بيحاول "يتحايل" حوالين المساحة المحجوزة دي
+    // (margin سالب، قياس يدوي، sibling overlay) هيفضل عرضة لأي تغيير بسيط.
+    //
+    // الحل الصح: نوقف نظام الـ MenuProvider الحقيقي خالص (registersMenuProvider
+    // = false تحت)، ونستخدم PopupMenu منفصل تمامًا بدل toolbar.menu. كده
+    // toolbar.menu بيفضل فاضي طول الوقت - الـ ActionMenuView عمرها ما هتحجز
+    // أي مساحة، وأيقونتنا بتاخد مكانها الصح تلقائيًا من نظام التمركز العادي
+    // بتاع الـ Toolbar (بالظبط زي زرار البحث) من غير أي حسابات يدوية.
+    // onCreateMenu/onMenuItemSelected لسه نفسهم (فـ ArtistsFragment ومشتقاتها
+    // مش محتاجين يتغيروا خالص) - بس بننده عليهم إحنا يدوي على منيو الـ
+    // PopupMenu بدل ما الإطار ينده عليهم على toolbar.menu.
+    override val registersMenuProvider: Boolean = false
+
     private var _binding: FragmentMainRecyclerBinding? = null
     private val binding get() = _binding!!
     protected var adapter: A? = null
@@ -55,13 +68,6 @@ abstract class AbsRecyclerViewFragment<A : RecyclerView.Adapter<*>, LM : Recycle
     val shuffleButton get() = binding.shuffleButton
     abstract val isShuffleVisible: Boolean
 
-    // النقط الحقيقية (overflow icon) بتاعة الـ Options Menu بتتشال فورًا لحظة
-    // ما view الفراجمنت يتدمر (لأنها مربوطة بحالة الـ MenuProvider، اللي
-    // مرتبطة بالـ Lifecycle.State.STARTED) - قبل ما أنيميشن الخروج
-    // (View Animation) حتى يبدأ يتحرك، فبتبان بتختفي فجأة. الـ ImageView دي
-    // إحنا حاطينها كـ child عادي جوه التولبار نفسه (مش مربوطة بالـ MenuProvider
-    // خالص)، فبتفضل ظاهرة طول ما الـ View نفسه لسه موجود على الشاشة - يعني
-    // طول مدة الأنيميشن كاملة، وبتختفي بس لما الـ View فعليًا يتشال.
     private var customOverflowIcon: ImageView? = null
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
@@ -78,6 +84,7 @@ abstract class AbsRecyclerViewFragment<A : RecyclerView.Adapter<*>, LM : Recycle
         checkForMargins()
         setUpRecyclerView()
         setupToolbar()
+        setUpCustomOverflowIcon()
         binding.shuffleButton.fitsSystemWindows = PreferenceUtil.isFullScreenMode
         // Add listeners when shuffle is visible
         if (isShuffleVisible) {
@@ -198,31 +205,30 @@ abstract class AbsRecyclerViewFragment<A : RecyclerView.Adapter<*>, LM : Recycle
         binding.appBarLayout.setExpanded(true, true)
     }
 
-    override fun onPrepareMenu(menu: Menu) {
-        ToolbarContentTintHelper.handleOnPrepareOptionsMenu(requireActivity(), toolbar)
-        setUpCustomOverflowIcon()
-    }
-
-    // في صفحة تفاصيل الفنان اللي اشتغلت صح، استخدمنا أسلوب الـ sibling
-    // overlay (تحطها بره التولبار خالص وتقيس مكانها بـ getLocationInWindow)
-    // + إعطائها elevation أعلى من الـ AppBarLayout. الأفقي والـ z-order في
-    // الأسلوب ده كانوا مظبوطين هنا برضه من غير أي تعديل - المشكلة كانت في
-    // حساب الارتفاع بس: افترضنا إن مركز التولبار = toolbar.height / 2، وده
-    // صحيح لتولبار صفحة التفاصيل بس غلط هنا - الـ toolbar بتاع TopAppBarLayout
-    // ظاهر إن ارتفاعه المقاس (toolbar.height) أكبر من الشريط الظاهر فعليًا
-    // (سبب مش عارفينه من غير كود TopAppBarLayout نفسه)، فكل تخمين مبني عليه
-    // (height، أو actionBarSize، أو طرح padding) طلع غلط بنفس القد تقريبًا.
+    // *الحل الجذري*: toolbar.menu دلوقتي بيفضل فاضي طول الوقت (شوف الشرح
+    // فوق الكلاس)، يعني الـ ActionMenuView مش هتحجز أي مساحة overflow
+    // خالص. فمجرد ما نضيف الأيقونة كـ child عادي بـ Gravity.END مع
+    // CENTER_VERTICAL، الـ Toolbar بيحطها في مكانها الصح تلقائيًا - أفقيًا
+    // ورأسيًا - بنفس نظام التمركز اللي بيحط زرار البحث في مكانه، من غير أي
+    // قياس يدوي، margin سالب، أو sibling overlay. وبما إنها جزء حقيقي من
+    // نفس الـ View، بتتحرك مع أي سكرول/إخفاء تلقائيًا.
     //
-    // بدل ما نفضل نخمن رقم صحيح، بنسيب الـ Toolbar نفسه يحسبه لينا: بنضيف
-    // View شفافة (INVISIBLE، مش GONE عشان تاخد مكانها في الحساب) جواه
-    // كـ "مسبار" بس، بنديها Gravity.CENTER_VERTICAL زي أي عنصر حقيقي، وبعد
-    // كده بنقرا مكانها الفعلي (getLocationInWindow) - ده نفس نظام التمركز
-    // اللي بيحط زرار البحث في مكانه الصح، فمضمون يطلع صح هنا كمان من غير
-    // أي تخمين ارتفاعات.
+    // الضغط عليها بيفتح PopupMenu منفصل (مش toolbar.showOverflowMenu())،
+    // وبنملاه بنفس المنطق اللي كان بيملى toolbar.menu بالظبط
+    // (onCreateMenu/onMenuItemSelected) - يعني ArtistsFragment ومشتقاتها
+    // مش محتاجين أي تعديل خالص، أوامرهم بتتنفذ زي ما هي.
+    //
+    // عشان ناخد شكل أيقونة الـ overflow الافتراضية بتاعة الثيم (من غير ما
+    // نخمن اسم resource)، بنضيف عنصر وهمي فاضي مؤقت لحد ما نلاقي شكلها،
+    // وبعدين بنمسحه فورًا - toolbar.menu بيرجع فاضي زي ما كان.
     private fun setUpCustomOverflowIcon() {
         if (customOverflowIcon != null) return
-        val realIcon = toolbar.overflowIcon ?: return
-        val clonedIcon = realIcon.constantState?.newDrawable(resources)?.mutate() ?: return
+
+        val probeMenu = toolbar.menu
+        probeMenu.add(0, View.NO_ID, 0, "").setShowAsAction(MenuItem.SHOW_AS_ACTION_NEVER)
+        val clonedIcon = toolbar.overflowIcon?.constantState?.newDrawable(resources)?.mutate()
+        probeMenu.clear()
+        if (clonedIcon == null) return
 
         val sizePx = (48 * resources.displayMetrics.density).toInt()
         val paddingPx = (12 * resources.displayMetrics.density).toInt()
@@ -230,16 +236,6 @@ abstract class AbsRecyclerViewFragment<A : RecyclerView.Adapter<*>, LM : Recycle
         requireContext().theme.resolveAttribute(
             android.R.attr.selectableItemBackgroundBorderless, backgroundTypedValue, true
         )
-
-        // المسبار: مش هيتشاف خالص (INVISIBLE)، غرضه الوحيد إننا نقرا مكانه
-        // بعد ما الـ Toolbar يتمركزه رأسيًا بنفسه.
-        val probe = View(requireContext()).apply {
-            visibility = View.INVISIBLE
-            layoutParams = Toolbar.LayoutParams(1, sizePx).apply {
-                gravity = Gravity.CENTER_VERTICAL
-            }
-        }
-        toolbar.addView(probe)
 
         val imageView = ImageView(requireContext()).apply {
             setImageDrawable(clonedIcon)
@@ -249,58 +245,22 @@ abstract class AbsRecyclerViewFragment<A : RecyclerView.Adapter<*>, LM : Recycle
             if (backgroundTypedValue.resourceId != 0) {
                 background = ContextCompat.getDrawable(requireContext(), backgroundTypedValue.resourceId)
             }
-            setOnClickListener { toolbar.showOverflowMenu() }
-        }
-
-        val rootLayout = binding.root
-        rootLayout.addView(imageView, sizePx, sizePx)
-        imageView.bringToFront()
-        // نفس سبب إعطاء الـ elevation اللي اشتغل في صفحة تفاصيل الفنان:
-        // الـ AppBarLayout عنده elevation بيتغير مع السكرول، والرسم الحقيقي
-        // (hardware acceleration) بيحترم الـ elevation مش ترتيب الشجرة.
-        imageView.elevation = (16 * resources.displayMetrics.density) +
-            binding.appBarLayout.elevation
-        customOverflowIcon = imageView
-        toolbar.overflowIcon = ColorDrawable(Color.TRANSPARENT)
-
-        fun repositionOverImageView() {
-            val toolbarLoc = IntArray(2)
-            toolbar.getLocationInWindow(toolbarLoc)
-            val probeLoc = IntArray(2)
-            probe.getLocationInWindow(probeLoc)
-            val rootLoc = IntArray(2)
-            rootLayout.getLocationInWindow(rootLoc)
-            imageView.translationX =
-                (toolbarLoc[0] - rootLoc[0] + toolbar.width - sizePx).toFloat()
-            imageView.translationY = (probeLoc[1] - rootLoc[1]).toFloat()
-        }
-
-        // التولبار هنا بيتحرك/يختفي مع السكرول (زي زرار البحث)، والحركة دي
-        // بتحصل كل فريم من غير layout pass كامل - فبنستخدم OnPreDrawListener
-        // عشان يعيد الحساب قبل كل فريم رسم.
-        val preDrawListener = ViewTreeObserver.OnPreDrawListener {
-            repositionOverImageView()
-            true
-        }
-        rootLayout.viewTreeObserver.addOnPreDrawListener(preDrawListener)
-        imageView.addOnAttachStateChangeListener(object : View.OnAttachStateChangeListener {
-            override fun onViewAttachedToWindow(v: View) {}
-            override fun onViewDetachedFromWindow(v: View) {
-                rootLayout.viewTreeObserver.removeOnPreDrawListener(preDrawListener)
+            layoutParams = Toolbar.LayoutParams(sizePx, sizePx).apply {
+                gravity = Gravity.END or Gravity.CENTER_VERTICAL
             }
-        })
-        toolbar.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> repositionOverImageView() }
-        toolbar.post { repositionOverImageView() }
+            setOnClickListener {
+                val popup = PopupMenu(requireContext(), this)
+                onCreateMenu(popup.menu, popup.menuInflater)
+                popup.setOnMenuItemClickListener { item -> onMenuItemSelected(item) }
+                popup.show()
+            }
+        }
+        toolbar.addView(imageView)
+        customOverflowIcon = imageView
     }
 
     override fun onCreateMenu(menu: Menu, inflater: MenuInflater) {
         inflater.inflate(R.menu.menu_main, menu)
-        ToolbarContentTintHelper.handleOnCreateOptionsMenu(
-            requireContext(),
-            toolbar,
-            menu,
-            ATHToolbarActivity.getToolbarBackgroundColor(toolbar)
-        )
     }
 
     override fun onMenuItemSelected(item: MenuItem): Boolean {
