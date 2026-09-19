@@ -15,6 +15,7 @@
 package code.name.monkey.retromusic.fragments.base
 
 import android.os.Bundle
+import android.os.Parcelable
 import android.util.TypedValue
 import android.view.*
 import android.widget.ImageView
@@ -22,6 +23,7 @@ import androidx.annotation.NonNull
 import androidx.annotation.StringRes
 import androidx.appcompat.widget.PopupMenu
 import androidx.appcompat.widget.Toolbar
+import androidx.coordinatorlayout.widget.CoordinatorLayout
 import androidx.core.content.ContextCompat
 import androidx.core.view.doOnPreDraw
 import androidx.core.view.isVisible
@@ -38,6 +40,7 @@ import code.name.monkey.retromusic.extensions.dip
 import code.name.monkey.retromusic.interfaces.IScrollHelper
 import code.name.monkey.retromusic.util.PreferenceUtil
 import code.name.monkey.retromusic.util.ThemedFastScroller.create
+import com.google.android.material.appbar.AppBarLayout
 import com.google.android.material.transition.MaterialFadeThrough
 import me.zhanghai.android.fastscroll.FastScroller
 import me.zhanghai.android.fastscroll.FastScrollerBuilder
@@ -70,6 +73,16 @@ abstract class AbsRecyclerViewFragment<A : RecyclerView.Adapter<*>, LM : Recycle
 
     private var customOverflowIcon: ImageView? = null
 
+    // كل مرة تدخل صفحة فنان وترجع، الـ Navigation Component بيدمر View
+    // الصفحة دي بالكامل ويبنيه تاني من الصفر (نفس نسخة الـ Fragment
+    // نفسها بس View جديد) - يعني الـ LayoutManager والـ AppBarLayout
+    // بيرجعوا لحالتهم الافتراضية (سكرول = صفر، بار مفتوح بالكامل)، حتى لو
+    // كنت لسه نازل تحت قبل ما تفتح صفحة الفنان. بنخزن مكان السكرول وحالة
+    // البار هنا (خصائص على مستوى الـ Fragment نفسه، فبتفضل موجودة حتى لو
+    // الـ View اتدمر) وبنرجعهم تاني لما الـ View الجديد يتبني.
+    private var savedRecyclerLayoutState: Parcelable? = null
+    private var savedAppBarOffset: Int? = null
+
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
         _binding = FragmentMainRecyclerBinding.bind(view)
@@ -85,6 +98,7 @@ abstract class AbsRecyclerViewFragment<A : RecyclerView.Adapter<*>, LM : Recycle
         setUpRecyclerView()
         setupToolbar()
         setUpCustomOverflowIcon()
+        restoreScrollAndAppBarState()
         binding.shuffleButton.fitsSystemWindows = PreferenceUtil.isFullScreenMode
         // Add listeners when shuffle is visible
         if (isShuffleVisible) {
@@ -288,9 +302,25 @@ abstract class AbsRecyclerViewFragment<A : RecyclerView.Adapter<*>, LM : Recycle
     }
 
     override fun onDestroyView() {
+        // بنسجل مكان السكرول وحالة البار قبل ما الـ View يتدمر خالص، عشان
+        // نرجعهم لما الـ View الجديد يتبني (شوف restoreScrollAndAppBarState).
+        savedRecyclerLayoutState = layoutManager?.onSaveInstanceState()
+        savedAppBarOffset = ((binding.appBarLayout.layoutParams as? CoordinatorLayout.LayoutParams)
+            ?.behavior as? AppBarLayout.Behavior)?.topAndBottomOffset
         super.onDestroyView()
         customOverflowIcon = null
         _binding = null
+    }
+
+    private fun restoreScrollAndAppBarState() {
+        savedRecyclerLayoutState?.let { layoutManager?.onRestoreInstanceState(it) }
+        val offset = savedAppBarOffset ?: return
+        // لازم نستنى الـ Behavior يتربط بالـ View الجديد الأول (بيحصل في
+        // الـ layout pass)، فبنأجلها لحد بعد أول رسم.
+        binding.appBarLayout.doOnPreDraw {
+            val params = binding.appBarLayout.layoutParams as? CoordinatorLayout.LayoutParams
+            (params?.behavior as? AppBarLayout.Behavior)?.topAndBottomOffset = offset
+        }
     }
 
     override fun onPause() {
