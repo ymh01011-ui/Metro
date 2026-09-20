@@ -21,7 +21,6 @@ import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.PixelFormat
 import android.graphics.RectF
-import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.Drawable
 import android.util.TypedValue
 import android.view.ViewGroup
@@ -57,8 +56,9 @@ object ThemedFastScroller {
         // وتقدر تمسحه).
         fastScrollerBuilder.setThumbDrawable(ThumbDrawable(context, bodyColor, arrowColor))
         // الخط الأبيض الشفاف اللي كان ظاهر تحت الشكل هو الـ track الافتراضي
-        // للمكتبة، فبنستبدله بـ drawable شفاف تمامًا.
-        fastScrollerBuilder.setTrackDrawable(ColorDrawable(Color.TRANSPARENT))
+        // للمكتبة، فبنستبدله بـ drawable شفاف تمامًا. لازم مقاسه يبقى 0 مش
+        // سالب (ColorDrawable بيرجع -1 والمكتبة بترمي IllegalArgumentException).
+        fastScrollerBuilder.setTrackDrawable(EmptyTrackDrawable())
         fastScrollerBuilder.setPopupStyle { popupText ->
             PopupStyles.MD2.accept(popupText)
             popupText.background = PopupBackground(context, color)
@@ -85,6 +85,18 @@ object ThemedFastScroller {
             steps++
         }
         return result
+    }
+
+    /** track شفاف تمامًا ومقاسه 0 (المكتبة بترفض المقاس السالب). */
+    private class EmptyTrackDrawable : Drawable() {
+        override fun draw(canvas: Canvas) {}
+        override fun getIntrinsicWidth() = 0
+        override fun getIntrinsicHeight() = 0
+        override fun setAlpha(alpha: Int) {}
+        override fun setColorFilter(colorFilter: ColorFilter?) {}
+
+        @Suppress("OVERRIDE_DEPRECATION")
+        override fun getOpacity() = PixelFormat.TRANSPARENT
     }
 
     /**
