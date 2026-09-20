@@ -136,7 +136,7 @@ class ArtistDetailsViewModel(
         fetchArtist(delayMs = if (cachedArtist != null) REFRESH_DELAY_AFTER_CACHE_HIT_MS else 0L)
     }
 
-    private fun loadArtist(): Artist? {
+    private suspend fun loadArtist(): Artist? {
         return when {
             // Multi-artist mode: the artist we want may only appear inside
             // a combined tag (e.g. "Amr Diab, Jana Diab"), not as the
