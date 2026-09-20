@@ -9,10 +9,17 @@
     android:padding="2dp"
     tools:ignore="MissingPrefix">
 
+    <!-- الصورة كانت لاصقة في حواف الكارد (بالكاد فيه فرق بينها وبين اللي
+    جنبها). التطبيق المرجعي سايب مسافة واضحة حوالين الدايرة نفسها - فبدل ما
+    نضيق الكارد كله، بنضيف margin أفقي على الصورة بس، فتصغر الدايرة وتفضل
+    مسافة واضحة حواليها من غير ما نأثر على منطقة اللمس بتاعة الكارد. -->
     <code.name.monkey.retromusic.views.RetroShapeableImageView
         android:id="@+id/image"
         android:layout_width="0dp"
         android:layout_height="0dp"
+        android:layout_marginStart="14dp"
+        android:layout_marginTop="4dp"
+        android:layout_marginEnd="14dp"
         android:scaleType="centerCrop"
         app:civ_border="false"
         app:civ_shadow="false"
@@ -24,10 +31,10 @@
         tools:src="@tools:sample/avatars" />
 
     <!-- المقاس الرئيسي بتاع الكارد (كام كارد في الصف) بيتحدد فعليًا من
-    Grid Size في المنيو (⋮ → Grid size)، مش من هنا - الملف ده بيظبط حجم
-    النص/المسافات بس عشان تتماشى مع كارد أصغر. حجم النص هنا متحط صريح
+    Grid Size في المنيو (⋮ → Grid size)، مش من هنا. حجم النص هنا متحط صريح
     (مش من TextViewSubtitle1 المشتركة) عشان التصغير يفضل خاص بالكارد ده
-    بس ومايأثرش على شاشات تانية بتستخدم نفس الـ style. -->
+    بس ومايأثرش على شاشات تانية بتستخدم نفس الـ style؛ شلت الـ bold عشان
+    يبقى قريب من وزن الخط في الصورة المرجعية. -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
@@ -45,7 +52,6 @@
             android:gravity="center"
             android:singleLine="true"
             android:textSize="13sp"
-            android:textStyle="bold"
             tools:text="@tools:sample/full_names" />
 
         <com.google.android.material.textview.MaterialTextView
