@@ -152,12 +152,21 @@ abstract class AbsRecyclerViewFragment<A : RecyclerView.Adapter<*>, LM : Recycle
         binding.recyclerView.apply {
             layoutManager = this@AbsRecyclerViewFragment.layoutManager
             adapter = this@AbsRecyclerViewFragment.adapter
-            // لو الـ scroller اتعمل قبل أول layout pass، بيتعامل مع أول حساب
-            // للمساحة/السكرول (وقت فتح الصفحة أو الرجوع لها) كأنه "سكرول"
-            // حقيقي، فبيظهر لحظة وبعدين يختفي - حتى لو المستخدم لسه ملمسش
-            // الشاشة. بتأجيل إنشاءه لحد بعد أول رسم، بيتفادى الحدث ده
-            // ومايظهرش إلا لما فيه سكرول فعلي بعد كده.
-            doOnPreDraw { create(this) }
+            // الـ FastScroller بيعتبر أي حدث layout/تحميل بيانات (حتى لو مفيش
+            // سكرول حقيقي) إنه سكرول، فكان بيظهر لحظة مع فتح الصفحة أو
+            // الرجوع من صفحة فنان (لأن الـ View بيتبني من الصفر وبيانات
+            // الفنانين بتتحمل وبيترجع مكان السكرول). عشان كده مش بنعمله
+            // خالص لحد ما المستخدم يلمس القايمة ويبدأ يسحبها فعليًا
+            // (SCROLL_STATE_DRAGGING) - وقتها بس بنعمله، فبيظهر مع السكرول
+            // الحقيقي بس. الـ listener بيشيل نفسه بعد أول مرة.
+            addOnScrollListener(object : RecyclerView.OnScrollListener() {
+                override fun onScrollStateChanged(recyclerView: RecyclerView, newState: Int) {
+                    if (newState == RecyclerView.SCROLL_STATE_DRAGGING) {
+                        recyclerView.removeOnScrollListener(this)
+                        create(recyclerView)
+                    }
+                }
+            })
         }
     }
 
