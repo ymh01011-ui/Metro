@@ -17,10 +17,12 @@ import android.view.ViewGroup
 import code.name.monkey.appthemehelper.ThemeStore.Companion.accentColor
 import code.name.monkey.appthemehelper.util.ColorUtil.isColorLight
 import code.name.monkey.appthemehelper.util.MaterialValueHelper.getPrimaryTextColor
+import code.name.monkey.retromusic.R
 import code.name.monkey.retromusic.views.PopupBackground
 import me.zhanghai.android.fastscroll.FastScroller
 import me.zhanghai.android.fastscroll.FastScrollerBuilder
 import me.zhanghai.android.fastscroll.PopupStyles
+import androidx.core.content.ContextCompat
 
 object ThemedFastScroller {
     fun create(view: ViewGroup): FastScroller {
@@ -28,14 +30,14 @@ object ThemedFastScroller {
         val color = accentColor(context)
         val textColor = getPrimaryTextColor(context, isColorLight(color))
         val fastScrollerBuilder = FastScrollerBuilder(view)
-        // useMd2Style() وتلوين الـ thumb بلون الـ accent كانوا بيدوا شكل
-        // "قطرة" ملونة. الشكل المطلوب (سهمين فوق وتحت) هو شكل المكتبة
-        // الافتراضي، فبنشيل useMd2Style() والـ thumb drawable المخصص خالص
-        // - الـ popup (فقاعة الحرف اللي بتظهر وانت بتسحب) سايبينها زي ما
-        // هي لأن الطلب كان عن الخط/الـ thumb بس.
-        //
-        // ملحوظة: الكلاس ده مشترك، يعني أي صفحة بتستخدم ThemedFastScroller
-        // (مش بس الفنانين) شكلها هيتغير معاه.
+        // بدل ما نعتمد على شكل المكتبة الجاهز (MD2 أو الافتراضي) اللي مش
+        // متأكدين منه فعليًا من غير معاينة، بنستخدم رسمة مخصصة بالكامل
+        // (afs_custom_thumb.xml): نص دائرة بارزة من الحافة، فيها سهمين فوق
+        // وتحت، من غير أي خط/track. الشكل والألوان متحطين صريح في ملف
+        // الـ drawable نفسه، فسهل تتعدل من هناك لو الشكل محتاج ضبط.
+        fastScrollerBuilder.setThumbDrawable(
+            ContextCompat.getDrawable(context, R.drawable.afs_custom_thumb)!!
+        )
         fastScrollerBuilder.setPopupStyle { popupText ->
             PopupStyles.MD2.accept(popupText)
             popupText.background = PopupBackground(context, color)
