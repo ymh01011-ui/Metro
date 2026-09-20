@@ -32,6 +32,7 @@ import code.name.monkey.retromusic.helper.SortOrder.ArtistSortOrder
 import code.name.monkey.retromusic.interfaces.IAlbumArtistClickListener
 import code.name.monkey.retromusic.interfaces.IArtistClickListener
 import code.name.monkey.retromusic.interfaces.IMultiArtistClickListener
+import code.name.monkey.retromusic.model.Artist
 import code.name.monkey.retromusic.service.MusicService
 import code.name.monkey.retromusic.util.PreferenceUtil
 import code.name.monkey.retromusic.util.RetroUtil
@@ -168,7 +169,17 @@ class ArtistsFragment : AbsRecyclerViewCustomGridSizeFragment<ArtistAdapter, Gri
         }
     }
 
+    // الفنان اللي المستخدم داس عليه متحمّل بالكامل أصلاً في قايمة الفنانين،
+    // فبنسلّمه لكاش صفحة التفاصيل قبل الـ navigate عشان الصفحة تفتح ببياناتها
+    // جاهزة من أول فريم بدل ما تستنى استعلام MediaStore. لو لقت الصفحة إن
+    // فيه اختلاف بعد كده بتتحدث لوحدها.
+    private fun seedDetailsCache(key: String, matcher: (Artist) -> Boolean) {
+        val artist = libraryViewModel.getArtists().value?.firstOrNull(matcher) ?: return
+        ArtistDetailsCache.put(key, artist)
+    }
+
     override fun onArtist(artistId: Long, view: View) {
+        seedDetailsCache(ArtistDetailsCache.keyForId(artistId)) { it.id == artistId }
         // لازم نلغي أي Transition-Framework transition افتراضية هنا قبل
         // الـ navigate()، وإلا هتتعارض مع الـ View Animation بتاعة NavOptions
         // وتمنعها تبان خالص - نفس الباترن المستخدم في AbsArtistDetailsFragment
@@ -194,6 +205,9 @@ class ArtistsFragment : AbsRecyclerViewCustomGridSizeFragment<ArtistAdapter, Gri
     }
 
     override fun onAlbumArtist(artistName: String, view: View) {
+        seedDetailsCache(ArtistDetailsCache.keyForAlbumArtist(artistName)) {
+            it.name.equals(artistName, ignoreCase = true)
+        }
         // كانت مستخدمة FragmentNavigatorExtras/shared element من غير ما يكون
         // فيه sharedElementEnterTransition متظبطة في أي حتة (لا هنا ولا في
         // AlbumArtistDetailsFragment) - يعني الانتقال ده معندوش أنيميشن
@@ -220,6 +234,9 @@ class ArtistsFragment : AbsRecyclerViewCustomGridSizeFragment<ArtistAdapter, Gri
     }
 
     override fun onMultiArtist(artistName: String, view: View) {
+        seedDetailsCache(ArtistDetailsCache.keyForMultiArtist(artistName)) {
+            it.name.equals(artistName, ignoreCase = true)
+        }
         // نفس السبب بالظبط بتاع onAlbumArtist() فوق.
         exitTransition = null
         reenterTransition = null
