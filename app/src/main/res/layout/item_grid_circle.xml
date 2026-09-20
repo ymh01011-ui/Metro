@@ -9,17 +9,17 @@
     android:padding="2dp"
     tools:ignore="MissingPrefix">
 
-    <!-- الصورة كانت لاصقة في حواف الكارد (بالكاد فيه فرق بينها وبين اللي
-    جنبها). التطبيق المرجعي سايب مسافة واضحة حوالين الدايرة نفسها - فبدل ما
-    نضيق الكارد كله، بنضيف margin أفقي على الصورة بس، فتصغر الدايرة وتفضل
-    مسافة واضحة حواليها من غير ما نأثر على منطقة اللمس بتاعة الكارد. -->
+    <!-- المسافة الأفقية حوالين الدايرة قللتها من 14dp لـ 8dp عشان الصورة تكبر
+    شوية وتبقى قريبة من حجمها في التطبيق المرجعي (الدايرة بقت حوالي 98dp
+    بدل 86dp على شاشة 3 أعمدة). لو عايزها أكبر/أصغر، غيّر الـ 8dp دي بس
+    (كل ما القيمة تقل الدايرة تكبر). -->
     <code.name.monkey.retromusic.views.RetroShapeableImageView
         android:id="@+id/image"
         android:layout_width="0dp"
         android:layout_height="0dp"
-        android:layout_marginStart="14dp"
+        android:layout_marginStart="8dp"
         android:layout_marginTop="4dp"
-        android:layout_marginEnd="14dp"
+        android:layout_marginEnd="8dp"
         android:scaleType="centerCrop"
         app:civ_border="false"
         app:civ_shadow="false"
