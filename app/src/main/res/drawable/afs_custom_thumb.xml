@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  شكل مخصص لخط السكرول: نص دائرة (بروزة) لاصقة في حافة الشاشة، فيها سهمين
+  فوق وتحت، من غير أي خط/track حواليها. اللون الرمادي شبه الشفاف قابل
+  للتعديل بسهولة (fillColor بتاع أول <path>).
+
+  المقاسات (32dp عرض × 56dp ارتفاع) تقريبية بردو - لو حسيتها كبيرة/صغيرة
+  أو السهمين مش واضحين كفاية، قولي وأظبطها.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="28dp"
+    android:height="52dp"
+    android:viewportWidth="28"
+    android:viewportHeight="52">
+
+    <!-- جسم الشكل: نص دائرة بارزة من الحافة اليمين -->
+    <path
+        android:fillColor="#99FFFFFF"
+        android:pathData="M0,0 L10,0 A26,26 0 0 1 10,52 L0,52 Z" />
+
+    <!-- سهم لفوق -->
+    <path
+        android:fillColor="#4D4D4D"
+        android:pathData="M6,20 L11,12 L16,20 Z" />
+
+    <!-- سهم لتحت -->
+    <path
+        android:fillColor="#4D4D4D"
+        android:pathData="M6,32 L11,40 L16,32 Z" />
+
+</vector>
