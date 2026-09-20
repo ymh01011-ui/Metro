@@ -51,8 +51,20 @@ class RealArtistRepository(
     private val albumRepository: RealAlbumRepository
 ) : ArtistRepository {
 
+    // الـ sort order بتاع الفنانين بيتبعت كـ ORDER BY لـ MediaStore، وترتيب
+    // "Song count" مش عمود في الجدول (بيتحسب بالكود في sortArtists())، فلو
+    // كان هو المختار بنستخدم A-Z للـ SQL عشان الـ query ماتكراشش.
+    private fun getSqlArtistSortOrder(): String {
+        val order = PreferenceUtil.artistSortOrder
+        return if (order == SortOrder.ArtistSortOrder.ARTIST_SONG_COUNT) {
+            SortOrder.ArtistSortOrder.ARTIST_A_Z
+        } else {
+            order
+        }
+    }
+
     private fun getSongLoaderSortOrder(): String {
-        return PreferenceUtil.artistSortOrder + ", " +
+        return getSqlArtistSortOrder() + ", " +
                 PreferenceUtil.artistAlbumSortOrder + ", " +
                 PreferenceUtil.artistSongSortOrder
     }
@@ -124,7 +136,7 @@ class RealArtistRepository(
                 null,
                 null,
                 "lower($ALBUM_ARTIST)" +
-                        if (PreferenceUtil.artistSortOrder == SortOrder.ArtistSortOrder.ARTIST_A_Z) "" else " DESC"
+                        if (PreferenceUtil.artistSortOrder == SortOrder.ArtistSortOrder.ARTIST_Z_A) " DESC" else ""
             )
         )
         val artists = splitIntoAlbumArtists(albumRepository.splitIntoAlbums(songs))
@@ -285,6 +297,13 @@ class RealArtistRepository(
             }
             SortOrder.ArtistSortOrder.ARTIST_Z_A -> {
                 artists.sortedWith { a1, a2 -> collator.compare(a2.name, a1.name) }
+            }
+            SortOrder.ArtistSortOrder.ARTIST_SONG_COUNT -> {
+                // الأكتر أغاني الأول، ولو متساويين بالاسم A-Z.
+                artists.sortedWith { a1, a2 ->
+                    val byCount = a2.songs.size.compareTo(a1.songs.size)
+                    if (byCount != 0) byCount else collator.compare(a1.name, a2.name)
+                }
             }
             else -> artists
         }
