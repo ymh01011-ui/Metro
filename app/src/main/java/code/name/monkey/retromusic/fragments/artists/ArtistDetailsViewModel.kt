@@ -125,15 +125,18 @@ class ArtistDetailsViewModel(
     init {
         // لو الفنان ده في الكاش، بنعرضه فورًا (بشكل متزامن، قبل أول رسم)
         // وبعدين بنراجع في الخلفية لو حاجة اتغيرت.
-        val cachedArtist = ArtistDetailsCache.get(cacheKey)
-        if (cachedArtist != null) {
+        var hasCachedArtist = false
+        ArtistDetailsCache.get(cacheKey)?.let { cachedArtist ->
             artistDetails.value = cachedArtist
-            ArtistDetailsCache.getBiography(cacheKey)?.let {
-                biography.value = it
+            hasCachedArtist = true
+        }
+        if (hasCachedArtist) {
+            ArtistDetailsCache.getBiography(cacheKey)?.let { cachedBiography ->
+                biography.value = cachedBiography
                 biographyRequested = true
             }
         }
-        fetchArtist(delayMs = if (cachedArtist != null) REFRESH_DELAY_AFTER_CACHE_HIT_MS else 0L)
+        fetchArtist(delayMs = if (hasCachedArtist) REFRESH_DELAY_AFTER_CACHE_HIT_MS else 0L)
     }
 
     private suspend fun loadArtist(): Artist? {
