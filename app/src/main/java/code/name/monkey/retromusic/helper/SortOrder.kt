@@ -32,6 +32,12 @@ class SortOrder {
             /* Artist sort order Z-A */
             const val ARTIST_Z_A = "$ARTIST_A_Z DESC"
 
+            /* Artist sort order by song count (descending).
+             * ملاحظة: دي قيمة "علامة" بس بتتخزن في الـ Preferences، مش عمود في
+             * MediaStore - الترتيب الفعلي بيتم بالكود في
+             * RealArtistRepository.sortArtists(). مينفعش تتبعت كـ SQL. */
+            const val ARTIST_SONG_COUNT = "artist_song_count_desc"
+
             /* Artist sort order number of songs */
             const val ARTIST_NUMBER_OF_SONGS = MediaStore.Audio.Artists.NUMBER_OF_TRACKS + " DESC"
 
