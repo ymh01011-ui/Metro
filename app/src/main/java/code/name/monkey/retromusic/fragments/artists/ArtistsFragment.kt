@@ -284,6 +284,12 @@ class ArtistsFragment : AbsRecyclerViewCustomGridSizeFragment<ArtistAdapter, Gri
             1,
             R.string.sort_order_z_a
         ).isChecked = currentSortOrder.equals(ArtistSortOrder.ARTIST_Z_A)
+        sortOrderMenu.add(
+            0,
+            R.id.action_artist_sort_order_song_count,
+            2,
+            R.string.artist_sort_song_count
+        ).isChecked = currentSortOrder.equals(ArtistSortOrder.ARTIST_SONG_COUNT)
         sortOrderMenu.setGroupCheckable(0, true, true)
     }
 
@@ -391,6 +397,7 @@ class ArtistsFragment : AbsRecyclerViewCustomGridSizeFragment<ArtistAdapter, Gri
         val sortOrder: String = when (item.itemId) {
             R.id.action_artist_sort_order_asc -> ArtistSortOrder.ARTIST_A_Z
             R.id.action_artist_sort_order_desc -> ArtistSortOrder.ARTIST_Z_A
+            R.id.action_artist_sort_order_song_count -> ArtistSortOrder.ARTIST_SONG_COUNT
             else -> PreferenceUtil.artistSortOrder
         }
         if (sortOrder != PreferenceUtil.artistSortOrder) {
