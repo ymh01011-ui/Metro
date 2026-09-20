@@ -152,7 +152,12 @@ abstract class AbsRecyclerViewFragment<A : RecyclerView.Adapter<*>, LM : Recycle
         binding.recyclerView.apply {
             layoutManager = this@AbsRecyclerViewFragment.layoutManager
             adapter = this@AbsRecyclerViewFragment.adapter
-            create(this)
+            // لو الـ scroller اتعمل قبل أول layout pass، بيتعامل مع أول حساب
+            // للمساحة/السكرول (وقت فتح الصفحة أو الرجوع لها) كأنه "سكرول"
+            // حقيقي، فبيظهر لحظة وبعدين يختفي - حتى لو المستخدم لسه ملمسش
+            // الشاشة. بتأجيل إنشاءه لحد بعد أول رسم، بيتفادى الحدث ده
+            // ومايظهرش إلا لما فيه سكرول فعلي بعد كده.
+            doOnPreDraw { create(this) }
         }
     }
 
