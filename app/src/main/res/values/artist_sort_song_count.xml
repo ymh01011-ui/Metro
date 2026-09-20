@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- ملف جديد: حطه في res/values/ باسم artist_sort_song_count.xml -->
+<resources>
+    <string name="artist_sort_song_count">Song count</string>
+    <item name="action_artist_sort_order_song_count" type="id" />
+</resources>
