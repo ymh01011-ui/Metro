@@ -50,6 +50,7 @@ import code.name.monkey.retromusic.repository.RealRepository
 import code.name.monkey.retromusic.util.*
 import code.name.monkey.retromusic.views.TintableToolbar
 import com.bumptech.glide.Glide
+import com.bumptech.glide.load.resource.bitmap.DownsampleStrategy
 import com.bumptech.glide.request.target.CustomTarget
 import com.bumptech.glide.request.transition.Transition
 import com.google.android.material.shape.MaterialShapeDrawable
@@ -134,7 +135,17 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
         // كاش لآخر فنان اتفتحت صفحته - سلوت واحد بس، وبيتبدل تلقائيًا لما فنان
         // تاني يتفتح. لو رجعت لنفس الفنان قبل ما تفتح فنان غيره، الصفحة بتظهر
         // فورًا من غير أي تحميل صورة/حساب ألوان/بايندنج قوائم تاني.
-        private var lastVisitedArtistId: Long? = null
+        //
+        // المفتاح هو detailsViewModel.cacheKey (نوع الصفحة + id/اسم) مش
+        // artist.id لوحده، لأن صفحات الـ Album Artist والـ Multi Artist ممكن
+        // ids بتاعتها تتكرر أو تتعارض مع بعض.
+        //
+        // الصورة/الألوان (lastVisitedKey) وبيانات القوائم (lastVisitedDataKey)
+        // ليهم مفتاحين منفصلين لأنهم بيتحدثوا في أوقات مختلفة (استخراج الألوان
+        // async) - لو اتشاركوا في مفتاح واحد ممكن نعرض قوائم فنان تاني.
+        private var lastVisitedKey: String? = null
+        private var lastVisitedDataKey: String? = null
+        private var lastVisitedDataSignature: Int = 0
         private var lastVisitedBitmap: Bitmap? = null
         private var lastVisitedGradientStops: IntArray? = null
         private var lastVisitedDominantColor: Int = Color.BLACK
@@ -171,6 +182,15 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
 
         _binding = FragmentArtistDetailsBinding.bind(view)
 
+        // لو راجعين لنفس آخر فنان اتفتحت صفحته، لونه جاهز في الكاش - بنطبقه
+        // قبل أول رسم عشان الخلفية ماتبانش رمادي/محايدة لحظة وبعدين تتغير.
+        if (!hasExtractedColors &&
+            lastVisitedKey == detailsViewModel.cacheKey &&
+            lastVisitedGradientStops != null
+        ) {
+            dominantBackgroundColor = lastVisitedDominantColor
+            hasExtractedColors = true
+        }
         val initialColor = if (hasExtractedColors) dominantBackgroundColor else neutralFallbackColor()
         binding.rootLayout.setBackgroundColor(initialColor)
 
@@ -479,7 +499,13 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
         // لو ده نفس آخر فنان اتفتحت صفحته، اعرض القوائم المحفوظة فورًا من غير
         // أي حساب تصنيف تاني ولا تقسيم على فريمات (مش محتاج، البيانات جاهزة
         // والصور أصلاً في كاش Glide).
-        val cachedData = lastVisitedDisplayData.takeIf { lastVisitedArtistId == artist.id }
+        // الكاش بيتطابق بالمفتاح + بصمة المحتوى، فلو الأغاني/الألبومات اتغيرت
+        // (إضافة/مسح/تعديل تاج) بنعيد الحساب بدل ما نعرض بيانات قديمة.
+        val dataKey = detailsViewModel.cacheKey
+        val dataSignature = artist.contentSignature()
+        val cachedData = lastVisitedDisplayData.takeIf {
+            lastVisitedDataKey == dataKey && lastVisitedDataSignature == dataSignature
+        }
         if (cachedData != null) {
             bindContentInstant(cachedData)
             return
@@ -492,7 +518,8 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
 
             withContext(Dispatchers.Main) {
                 if (_binding == null) return@withContext
-                lastVisitedArtistId = artist.id
+                lastVisitedDataKey = dataKey
+                lastVisitedDataSignature = dataSignature
                 lastVisitedDisplayData = data
                 bindContentStaggered(data)
             }
@@ -599,7 +626,7 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
 
         // لو ده نفس آخر فنان اتفتحت صفحته، استخدم الصورة واللون المحفوظين
         // فورًا - من غير ما نستنى Glide ولا نعيد حساب الألوان تاني.
-        if (lastVisitedArtistId == artist.id &&
+        if (lastVisitedKey == detailsViewModel.cacheKey &&
             lastVisitedBitmap != null &&
             lastVisitedGradientStops != null
         ) {
@@ -612,10 +639,19 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
             return
         }
 
+        // كان Glide بيفك الصورة بحجمها الأصلي (ممكن 3000px+ = عشرات الميجا في
+        // الذاكرة، وبتتحول لـ texture ضخمة وقت الأنيميشن، وكمان استخراج
+        // الألوان بيشتغل على بيكسلات أكتر بكتير من اللازم). بنحدد سقف للحجم
+        // (1.5× عرض الشاشة، بحد أقصى 2048) من غير قص ولا تغيير في النسبة، فالصورة
+        // والألوان المستخرجة شكلهم ما بيتغيرش، والفك أسرع بكتير.
+        val maxImageSide = minOf((resources.displayMetrics.widthPixels * 3) / 2, 2048)
+        val cacheKey = detailsViewModel.cacheKey
         Glide.with(requireContext())
             .asBitmap()
             .artistImageOptions(artist)
             .load(RetroGlideExtension.getArtistModel(artist))
+            .override(maxImageSide)
+            .downsample(DownsampleStrategy.CENTER_INSIDE)
             .dontAnimate()
             .into(object : CustomTarget<Bitmap>() {
                 override fun onResourceReady(
@@ -623,7 +659,7 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
                     transition: Transition<in Bitmap>?
                 ) {
                     cachedBitmap = resource
-                    extractColorsAndApplyGradient(artist.id, resource)
+                    extractColorsAndApplyGradient(cacheKey, resource)
                 }
 
                 override fun onLoadCleared(placeholder: Drawable?) {
@@ -634,7 +670,7 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
             })
     }
 
-    private fun extractColorsAndApplyGradient(artistId: Long, bitmap: Bitmap) {
+    private fun extractColorsAndApplyGradient(key: String, bitmap: Bitmap) {
         lifecycleScope.launch(Dispatchers.Default) {
             val dominantColor = ArtistPaletteEngine.findDominantColorAtSubtitleRegion(
                 bitmap = bitmap,
@@ -654,7 +690,7 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
 
                 // نحدّث كاش آخر فنان بالصورة واللون الجداد، عشان لو رجعنا
                 // لنفس الفنان تاني قبل ما نفتح فنان غيره يبانوا فورًا.
-                lastVisitedArtistId = artistId
+                lastVisitedKey = key
                 lastVisitedBitmap = bitmap
                 lastVisitedGradientStops = gradientStops
                 lastVisitedDominantColor = dominantColor
@@ -900,6 +936,11 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
     }
 
     private fun clearImageCache() {
+        // لازم نمسح كاش آخر فنان (الـ static) كمان، وإلا بعد تغيير/إعادة ضبط
+        // صورة الفنان الصفحة هترجع تعرض الصورة القديمة من الكاش.
+        lastVisitedKey = null
+        lastVisitedBitmap = null
+        lastVisitedGradientStops = null
         cachedBitmap = null
         cachedGradientStops = null
         hasExtractedColors = false
@@ -980,6 +1021,10 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
 
     override fun onDestroyView() {
         super.onDestroyView()
+        // الـ ViewModel كان بيتسجل كـ listener في onViewCreated ومبيتشالش أبدًا،
+        // فكل فنان بتفتحه كان بيفضل شغال في الخلفية ويعمل استعلام MediaStore
+        // + طلب سيرة ذاتية مع كل تغيير في المكتبة (وبيزيد مع كل صفحة تفتحها).
+        mainActivity.removeMusicServiceEventListener(detailsViewModel)
         customOverflowIcon = null
         _binding = null
     }
