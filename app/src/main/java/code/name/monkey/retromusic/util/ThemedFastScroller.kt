@@ -50,6 +50,11 @@ object ThemedFastScroller {
         val arrowColor = ensureContrast(color, bodyColor)
 
         val fastScrollerBuilder = FastScrollerBuilder(view)
+        // بعض الشاشات (زي شبكة الفنانين الدايرية) بتحط padding جانبي على الـ
+        // RecyclerView، والمكتبة كانت هتزق الشكل لجوه بنفس المقدار. بنثبت
+        // الجوانب على صفر عشان الشكل يفضل لاصق في حافة الشاشة، ونحافظ على
+        // الـ padding الرأسي زي ما هو.
+        fastScrollerBuilder.setPadding(0, view.paddingTop, 0, view.paddingBottom)
         // الشكل: نص دائرة لاصق في حافة الشاشة اليمين فيه سهمين (الرسم في
         // ThumbDrawable تحت). ألوانه بتتحسب من الثيم وقت الإنشاء - عشان كده
         // اتعمل بالكود بدل ملف XML ثابت (afs_custom_thumb.xml بقى مش مستخدم
