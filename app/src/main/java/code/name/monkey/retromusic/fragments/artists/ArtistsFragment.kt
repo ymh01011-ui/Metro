@@ -17,6 +17,7 @@ package code.name.monkey.retromusic.fragments.artists
 import android.os.Bundle
 import android.view.*
 import androidx.core.os.bundleOf
+import androidx.core.view.updatePadding
 import androidx.navigation.NavOptions
 import androidx.navigation.fragment.findNavController
 import androidx.recyclerview.widget.GridLayoutManager
@@ -73,6 +74,8 @@ class ArtistsFragment : AbsRecyclerViewCustomGridSizeFragment<ArtistAdapter, Gri
         exitTransition = null
         reenterTransition = null
         returnTransition = null
+
+        applyCircleGridPadding(itemLayoutRes())
 
         libraryViewModel.getArtists().observe(viewLifecycleOwner) {
             if (it.isNotEmpty())
@@ -155,7 +158,23 @@ class ArtistsFragment : AbsRecyclerViewCustomGridSizeFragment<ArtistAdapter, Gri
         return PreferenceUtil.artistGridStyle.layoutResId
     }
 
+    // الـ Grid الدايري (item_grid_circle) في تطبيق Oto Music (المرجع) ليه
+    // padding جانبي 8dp حوالين الشبكة كلها، وده اللي بيخلي الأعمدة أقرب لبعض
+    // من غير ما الدواير نفسها تكبر. بنطبقه هنا على الـ RecyclerView بس لما
+    // يكون الستايل ده هو المختار (باقي الستايلات مابتتأثرش).
+    private fun applyCircleGridPadding(layoutRes: Int) {
+        if (view == null) return
+        val sidePadding = if (layoutRes == R.layout.item_grid_circle) {
+            (8 * resources.displayMetrics.density).toInt()
+        } else {
+            0
+        }
+        recyclerView.clipToPadding = false
+        recyclerView.updatePadding(left = sidePadding, right = sidePadding)
+    }
+
     override fun saveLayoutRes(layoutRes: Int) {
+        applyCircleGridPadding(layoutRes)
         PreferenceUtil.artistGridStyle = GridStyle.values().first { gridStyle ->
             gridStyle.layoutResId == layoutRes
         }
