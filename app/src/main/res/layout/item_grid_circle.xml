@@ -9,16 +9,18 @@
     android:padding="2dp"
     tools:ignore="MissingPrefix">
 
-    <!-- المسافة الأفقية حوالين الدايرة بقت 4dp (كانت 14dp في الأصل) عشان
-    الدواير تكبر (حوالي 106dp على شاشة 3 أعمدة) وتقرب من بعض. لو عايزها
-    أكبر/أصغر غيّر الـ 4dp دي بس (كل ما القيمة تقل الدايرة تكبر). -->
+    <!-- المقاسات مضبوطة على تطبيق Oto Music (المرجع) على شاشة 360dp و3 أعمدة:
+    الدايرة حوالي 99dp، والمسافة بين الدواير حوالي 16dp. مسافة الـ 5dp دي
+    شغالة مع padding جانبي 8dp على الـ RecyclerView بيتحط من ArtistsFragment
+    (applyCircleGridPadding). لو عايز الدايرة أكبر/أصغر غيّر الـ 5dp بس
+    (كل ما القيمة تقل الدايرة تكبر). -->
     <code.name.monkey.retromusic.views.RetroShapeableImageView
         android:id="@+id/image"
         android:layout_width="0dp"
         android:layout_height="0dp"
-        android:layout_marginStart="4dp"
+        android:layout_marginStart="5dp"
         android:layout_marginTop="4dp"
-        android:layout_marginEnd="4dp"
+        android:layout_marginEnd="5dp"
         android:scaleType="centerCrop"
         app:civ_border="false"
         app:civ_shadow="false"
@@ -39,7 +41,7 @@
         android:layout_height="wrap_content"
         android:gravity="center"
         android:orientation="vertical"
-        android:padding="4dp"
+        android:padding="4.5dp"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toBottomOf="@id/image">
@@ -50,7 +52,7 @@
             android:layout_height="wrap_content"
             android:gravity="center"
             android:singleLine="true"
-            android:textSize="13sp"
+            android:textSize="14sp"
             tools:text="@tools:sample/full_names" />
 
         <com.google.android.material.textview.MaterialTextView
