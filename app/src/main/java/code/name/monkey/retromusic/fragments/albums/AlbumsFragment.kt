@@ -17,6 +17,7 @@ package code.name.monkey.retromusic.fragments.albums
 import android.os.Bundle
 import android.view.*
 import androidx.core.os.bundleOf
+import androidx.core.view.updatePadding
 import androidx.navigation.fragment.FragmentNavigatorExtras
 import androidx.navigation.fragment.findNavController
 import androidx.recyclerview.widget.GridLayoutManager
@@ -38,6 +39,7 @@ class AlbumsFragment : AbsRecyclerViewCustomGridSizeFragment<AlbumAdapter, GridL
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
+        applyAlbumGridPadding(itemLayoutRes())
         libraryViewModel.getAlbums().observe(viewLifecycleOwner) {
             if (it.isNotEmpty())
                 adapter?.swapDataSet(it)
@@ -75,9 +77,29 @@ class AlbumsFragment : AbsRecyclerViewCustomGridSizeFragment<AlbumAdapter, GridL
         return AlbumAdapter(
             requireActivity(),
             dataSet,
-            itemLayoutRes(),
+            albumItemLayoutRes(itemLayoutRes()),
             this
         )
+    }
+
+    // ستايل الـ Grid العادي (item_grid) بيتعرض هنا بكارد ألبوم مخصوص شكله زي
+    // Oto Music (item_grid_album.xml). item_grid نفسه ماتغيرش لأنه مشترك مع
+    // شاشات تانية.
+    private fun albumItemLayoutRes(layoutRes: Int): Int {
+        return if (layoutRes == R.layout.item_grid) R.layout.item_grid_album else layoutRes
+    }
+
+    // Oto Music بيحط padding جانبي 8dp حوالين شبكة الألبومات كلها. بنطبقه
+    // هنا مع الكارد الجديد بس، وبيتشال لو غيّرت الستايل من المنيو.
+    private fun applyAlbumGridPadding(layoutRes: Int) {
+        if (view == null) return
+        val sidePadding = if (layoutRes == R.layout.item_grid) {
+            (8 * resources.displayMetrics.density).toInt()
+        } else {
+            0
+        }
+        recyclerView.clipToPadding = false
+        recyclerView.updatePadding(left = sidePadding, right = sidePadding)
     }
 
     override fun setGridSize(gridSize: Int) {
@@ -118,6 +140,7 @@ class AlbumsFragment : AbsRecyclerViewCustomGridSizeFragment<AlbumAdapter, GridL
     }
 
     override fun saveLayoutRes(layoutRes: Int) {
+        applyAlbumGridPadding(layoutRes)
         PreferenceUtil.albumGridStyle = GridStyle.values().first { gridStyle ->
             gridStyle.layoutResId == layoutRes
         }
