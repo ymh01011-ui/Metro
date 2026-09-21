@@ -19,8 +19,10 @@ import android.view.LayoutInflater
 import android.view.MenuItem
 import android.view.View
 import android.view.ViewGroup
+import androidx.appcompat.widget.PopupMenu
 import androidx.core.view.isVisible
 import androidx.fragment.app.FragmentActivity
+import androidx.recyclerview.widget.RecyclerView
 import code.name.monkey.retromusic.R
 import code.name.monkey.retromusic.adapter.base.AbsMultiSelectAdapter
 import code.name.monkey.retromusic.adapter.base.MediaEntryViewHolder
@@ -28,11 +30,13 @@ import code.name.monkey.retromusic.glide.RetroGlideExtension
 import code.name.monkey.retromusic.glide.RetroGlideExtension.albumCoverOptions
 import code.name.monkey.retromusic.glide.RetroGlideExtension.asBitmapPalette
 import code.name.monkey.retromusic.glide.RetroMusicColoredTarget
+import code.name.monkey.retromusic.helper.MusicPlayerRemote
 import code.name.monkey.retromusic.helper.SortOrder
 import code.name.monkey.retromusic.helper.menu.SongsMenuHelper
 import code.name.monkey.retromusic.interfaces.IAlbumClickListener
 import code.name.monkey.retromusic.model.Album
 import code.name.monkey.retromusic.model.Song
+import code.name.monkey.retromusic.service.MusicService
 import code.name.monkey.retromusic.util.MusicUtil
 import code.name.monkey.retromusic.util.PreferenceUtil
 import code.name.monkey.retromusic.util.color.MediaNotificationProcessor
@@ -173,10 +177,56 @@ open class AlbumAdapter(
         return MusicUtil.getSectionName(sectionName)
     }
 
+    private fun playAlbum(position: Int) {
+        if (position == RecyclerView.NO_POSITION) return
+        MusicPlayerRemote.setShuffleMode(MusicService.SHUFFLE_MODE_NONE)
+        MusicPlayerRemote.openQueue(
+            queue = dataSet[position].songs,
+            startPosition = 0,
+            startPlaying = true
+        )
+    }
+
+    private fun showAlbumMenu(anchor: View, position: Int) {
+        if (position == RecyclerView.NO_POSITION) return
+        val album = dataSet[position]
+        PopupMenu(activity, anchor).apply {
+            inflate(R.menu.menu_media_selection)
+            setOnMenuItemClickListener { item ->
+                onMultipleItemAction(item, listOf(album))
+                true
+            }
+            show()
+        }
+    }
+
     inner class ViewHolder(itemView: View) : MediaEntryViewHolder(itemView) {
 
+        // زرار التشغيل موجود بس في الكارد الجديد (item_grid_album.xml) اللي
+        // شكله زي Oto Music. باقي الستايلات مفيهاش الزرار ده، فبتفضل زي ما
+        // كانت (المنيو مخفي).
+        private val playButton: View? = itemView.findViewById(R.id.albumPlayButton)
+
         init {
-            menu?.isVisible = false
+            if (playButton != null) {
+                menu?.isVisible = true
+                menu?.setOnClickListener { anchor ->
+                    if (isInQuickSelectMode) {
+                        toggleChecked(layoutPosition)
+                    } else {
+                        showAlbumMenu(anchor, layoutPosition)
+                    }
+                }
+                playButton.setOnClickListener {
+                    if (isInQuickSelectMode) {
+                        toggleChecked(layoutPosition)
+                    } else {
+                        playAlbum(layoutPosition)
+                    }
+                }
+            } else {
+                menu?.isVisible = false
+            }
         }
 
         override fun onClick(v: View?) {
