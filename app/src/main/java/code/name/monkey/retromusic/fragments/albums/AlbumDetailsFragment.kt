@@ -16,10 +16,13 @@ package code.name.monkey.retromusic.fragments.albums
 
 import android.app.ActivityOptions
 import android.content.Intent
+import android.content.res.ColorStateList
 import android.graphics.Color
+import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
 import android.view.*
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.graphics.ColorUtils
 import androidx.core.os.bundleOf
 import androidx.core.view.doOnPreDraw
 import androidx.lifecycle.lifecycleScope
@@ -47,7 +50,6 @@ import code.name.monkey.retromusic.extensions.*
 import code.name.monkey.retromusic.fragments.base.AbsMainActivityFragment
 import code.name.monkey.retromusic.glide.RetroGlideExtension
 import code.name.monkey.retromusic.glide.RetroGlideExtension.albumCoverOptions
-import code.name.monkey.retromusic.glide.RetroGlideExtension.artistImageOptions
 import code.name.monkey.retromusic.glide.RetroGlideExtension.asBitmapPalette
 import code.name.monkey.retromusic.glide.SingleColorTarget
 import code.name.monkey.retromusic.helper.MusicPlayerRemote
@@ -110,21 +112,24 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
         binding.toolbar.title = " "
         binding.albumCoverContainer.transitionName = arguments.extraAlbumId.toString()
         postponeEnterTransition()
+
+        // لو الألبوم ده في الكاش، لونه جاهز - بنطبقه فورًا قبل ما الصورة نفسها
+        // تتحمل، عشان الأزرار والخلفية ما تبانش بلونها الافتراضي لحظة وبعدين
+        // تتغير.
+        AlbumDetailsCache.getColor(arguments.extraAlbumId)?.let { cachedColor ->
+            setColors(cachedColor)
+        }
+
         detailsViewModel.getAlbum().observe(viewLifecycleOwner) { album ->
             view.doOnPreDraw {
                 startPostponedEnterTransition()
             }
             albumArtistExists = !album.albumArtist.isNullOrEmpty()
             showAlbum(album)
-            binding.artistImage.transitionName = if (albumArtistExists) {
-                album.albumArtist
-            } else {
-                album.artistId.toString()
-            }
         }
 
         setupRecyclerView()
-        binding.artistImage.setOnClickListener { artistView ->
+        binding.albumText.setOnClickListener {
             // If this album's artist tag is actually a combined tag (e.g.
             // "Alan Walker, Au/Ra, Tomine Harket") and multi-artist mode is
             // on, let the user pick which one to open - same behavior as the
@@ -144,8 +149,8 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
                         }
                     }
 
-                    splitNames.size == 1 -> goToMultiArtistFromAlbum(artistView, splitNames[0])
-                    else -> goToMultiArtistFromAlbum(artistView, album.artistName)
+                    splitNames.size == 1 -> goToMultiArtistFromAlbum(splitNames[0])
+                    else -> goToMultiArtistFromAlbum(album.artistName)
                 }
                 return@setOnClickListener
             }
@@ -154,20 +159,15 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
                 findActivityNavController(R.id.fragment_container)
                     .navigate(
                         R.id.albumArtistDetailsFragment,
-                        bundleOf(EXTRA_ARTIST_NAME to album.albumArtist),
-                        null,
-                        FragmentNavigatorExtras(artistView to album.albumArtist.toString())
+                        bundleOf(EXTRA_ARTIST_NAME to album.albumArtist)
                     )
             } else {
                 findActivityNavController(R.id.fragment_container)
                     .navigate(
                         R.id.artistDetailsFragment,
-                        bundleOf(EXTRA_ARTIST_ID to album.artistId),
-                        null,
-                        FragmentNavigatorExtras(artistView to album.artistId.toString())
+                        bundleOf(EXTRA_ARTIST_ID to album.artistId)
                     )
             }
-
         }
         binding.fragmentAlbumContent.playAction.setOnClickListener {
             MusicPlayerRemote.openQueue(album.songs, 0, true)
@@ -177,6 +177,9 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
                 album.songs,
                 true
             )
+        }
+        binding.fragmentAlbumContent.addAction.setOnClickListener {
+            addAlbumSongsToPlaylist()
         }
 
         binding.appBarLayout?.statusBarForeground =
@@ -196,14 +199,22 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
             .show()
     }
 
-    private fun goToMultiArtistFromAlbum(artistView: View, artistName: String) {
+    private fun goToMultiArtistFromAlbum(artistName: String) {
         findActivityNavController(R.id.fragment_container)
             .navigate(
                 R.id.multiArtistDetailsFragment,
-                bundleOf(EXTRA_ARTIST_NAME to artistName),
-                null,
-                FragmentNavigatorExtras(artistView to artistName)
+                bundleOf(EXTRA_ARTIST_NAME to artistName)
             )
+    }
+
+    private fun addAlbumSongsToPlaylist() {
+        lifecycleScope.launch(Dispatchers.IO) {
+            val playlists = get<RealRepository>().fetchPlaylists()
+            withContext(Dispatchers.Main) {
+                AddToPlaylistDialog.create(playlists, album.songs)
+                    .show(childFragmentManager, "ADD_PLAYLIST")
+            }
+        }
     }
 
     override fun onDestroy() {
@@ -215,7 +226,10 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
         simpleSongAdapter = SimpleSongAdapter(
             requireActivity() as AppCompatActivity,
             ArrayList(),
-            R.layout.item_song
+            // ليها layout خاص بيها (item_song_album_details) بدل item_song
+            // العام: رقم المسار بدل صورة الأغنية زي Apple Music، وده كمان
+            // بيلغي تحميل Glide لكل صف فالقايمة أخف بكتير وقت أنيميشن الفتح.
+            R.layout.item_song_album_details
         )
         binding.fragmentAlbumContent.recyclerView.apply {
             layoutManager = LinearLayoutManager(requireContext())
@@ -233,6 +247,8 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
         this.album = album
 
         binding.albumTitle.text = album.title
+        binding.albumText.text = if (albumArtistExists) album.albumArtist else album.artistName
+
         val songText = resources.getQuantityString(
             R.plurals.albumSongs,
             album.songCount,
@@ -240,13 +256,13 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
         )
         binding.fragmentAlbumContent.songTitle.text = songText
         if (MusicUtil.getYearString(album.year) == "-") {
-            binding.albumText.text = String.format(
+            binding.fragmentAlbumContent.albumFooterText.text = String.format(
                 "%s • %s",
                 if (albumArtistExists) album.albumArtist else album.artistName,
                 MusicUtil.getReadableDurationString(MusicUtil.getTotalDuration(album.songs))
             )
         } else {
-            binding.albumText.text = String.format(
+            binding.fragmentAlbumContent.albumFooterText.text = String.format(
                 "%s • %s • %s",
                 if (albumArtistExists) album.albumArtist else album.artistName,
                 MusicUtil.getYearString(album.year),
@@ -258,11 +274,11 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
         if (albumArtistExists) {
             detailsViewModel.getAlbumArtist(album.albumArtist.toString())
                 .observe(viewLifecycleOwner) {
-                    loadArtistImage(it)
+                    loadMoreAlbums(it)
                 }
         } else {
             detailsViewModel.getArtist(album.artistId).observe(viewLifecycleOwner) {
-                loadArtistImage(it)
+                loadMoreAlbums(it)
             }
         }
     }
@@ -284,38 +300,58 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
         binding.fragmentAlbumContent.moreRecyclerView.adapter = albumAdapter
     }
 
-    private fun loadArtistImage(artist: Artist) {
+    // كانت الدالة دي بتحمّل صورة الفنان الدائرية اللي كانت جنب العنوان، لكن
+    // التصميم الجديد (زي Apple Music) مفيهوش الصورة دي، فبقت مسؤوليتها
+    // الوحيدة إنها تجيب "More by Artist" - الاسم اتغير عشان يوضح كده.
+    private fun loadMoreAlbums(artist: Artist) {
         detailsViewModel.getMoreAlbums(artist).observe(viewLifecycleOwner) {
             moreAlbums(it)
         }
-        Glide.with(requireContext())
-            //.forceDownload(PreferenceUtil.isAllowedToDownloadMetadata())
-            .load(
-                RetroGlideExtension.getArtistModel(artist)
-            )
-            .artistImageOptions(artist)
-            .dontAnimate()
-            .dontTransform()
-            .into(binding.artistImage)
     }
 
     private fun loadAlbumCover(album: Album) {
+        // كان Glide بيفك صورة الغلاف بحجمها الأصلي. بنحدد سقف للحجم (1.5× عرض
+        // الشاشة، بحد أقصى 2048) من غير قص ولا تغيير في النسبة، فالفك أسرع
+        // بكتير من غير ما شكل الغلاف ولا اللون المستخرج منه يتغيروا.
+        val maxImageSide = minOf((resources.displayMetrics.widthPixels * 3) / 2, 2048)
+        val albumId = album.id
         Glide.with(requireContext())
             .asBitmapPalette()
             .albumCoverOptions(album.safeGetFirstSong())
             //.checkIgnoreMediaStore()
             .load(RetroGlideExtension.getSongModel(album.safeGetFirstSong()))
+            .override(maxImageSide)
             .into(object : SingleColorTarget(binding.image) {
                 override fun onColorReady(color: Int) {
                     setColors(color)
+                    AlbumDetailsCache.putColor(albumId, color)
                 }
             })
     }
 
     private fun setColors(color: Int) {
-        _binding?.fragmentAlbumContent?.apply {
-            shuffleAction.applyColor(color)
-            playAction.applyOutlineColor(color)
+        _binding?.apply {
+            // خلفية الصفحة: تدرّج من لون الغلاف (شفافية جزئية) لحد لون
+            // الخلفية العادي، زي خلفية صفحة الألبوم في Apple Music.
+            val gradient = GradientDrawable(
+                GradientDrawable.Orientation.TOP_BOTTOM,
+                intArrayOf(ColorUtils.setAlphaComponent(color, 130), surfaceColor())
+            )
+            contentRoot.background = gradient
+
+            val onColor = if (ColorUtils.calculateLuminance(color) > 0.5) {
+                Color.BLACK
+            } else {
+                Color.WHITE
+            }
+            fragmentAlbumContent.playAction.apply {
+                backgroundTintList = ColorStateList.valueOf(color)
+                setTextColor(onColor)
+                iconTint = ColorStateList.valueOf(onColor)
+            }
+            fragmentAlbumContent.shuffleAction.imageTintList = ColorStateList.valueOf(color)
+            fragmentAlbumContent.addAction.imageTintList = ColorStateList.valueOf(color)
+            albumText.setTextColor(color)
         }
     }
 
@@ -362,13 +398,7 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
             }
 
             R.id.action_add_to_playlist -> {
-                lifecycleScope.launch(Dispatchers.IO) {
-                    val playlists = get<RealRepository>().fetchPlaylists()
-                    withContext(Dispatchers.Main) {
-                        AddToPlaylistDialog.create(playlists, songs)
-                            .show(childFragmentManager, "ADD_PLAYLIST")
-                    }
-                }
+                addAlbumSongsToPlaylist()
                 return true
             }
 
