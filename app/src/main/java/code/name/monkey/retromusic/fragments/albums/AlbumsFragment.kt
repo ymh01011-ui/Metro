@@ -18,7 +18,7 @@ import android.os.Bundle
 import android.view.*
 import androidx.core.os.bundleOf
 import androidx.core.view.updatePadding
-import androidx.navigation.fragment.FragmentNavigatorExtras
+import androidx.navigation.NavOptions
 import androidx.navigation.fragment.findNavController
 import androidx.recyclerview.widget.GridLayoutManager
 import code.name.monkey.retromusic.EXTRA_ALBUM_ID
@@ -152,16 +152,22 @@ class AlbumsFragment : AbsRecyclerViewCustomGridSizeFragment<AlbumAdapter, GridL
         }
     }
 
+    // نفس أنيميشن الدخول/الخروج بتاع صفحة الفنان بالظبط (nav_slide_*)، بدل
+    // الـ Shared Element القديمة اللي مبقتش منطقية بعد ما بقى هيدر صفحة
+    // الألبوم edge-to-edge (مفيش كارت تربيعي نقل منه/له).
     override fun onAlbumClick(albumId: Long, view: View) {
+        val navOptions = NavOptions.Builder()
+            .setEnterAnim(R.anim.nav_slide_in_right)
+            .setExitAnim(R.anim.nav_slide_out_left)
+            .setPopEnterAnim(R.anim.nav_slide_in_left)
+            .setPopExitAnim(R.anim.nav_slide_out_right)
+            .build()
+
         findNavController().navigate(
             R.id.albumDetailsFragment,
             bundleOf(EXTRA_ALBUM_ID to albumId),
-            null,
-            FragmentNavigatorExtras(
-                view to albumId.toString()
-            )
+            navOptions
         )
-        reenterTransition = null
     }
 
     override fun onCreateMenu(menu: Menu, inflater: MenuInflater) {
