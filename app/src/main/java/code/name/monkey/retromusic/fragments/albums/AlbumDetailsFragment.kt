@@ -21,6 +21,7 @@ import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
 import android.view.*
+import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.graphics.ColorUtils
 import androidx.core.os.bundleOf
@@ -247,7 +248,12 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
         this.album = album
 
         binding.albumTitle.text = album.title
-        binding.albumText.text = if (albumArtistExists) album.albumArtist else album.artistName
+        // albumText بيتحول لنوع View عام في الـ ViewBinding مش TextView، على
+        // الأغلب لأن فيه نسخة تانية من fragment_album_details.xml (land أو
+        // sw600dp) بتعرّف نفس الـ id بنوع مختلف أو من غيره خالص. الـ cast
+        // الآمن ده بيتخطى المشكلة من غير ما نلمس الملف اللي مش موجود عندي.
+        (binding.albumText as? TextView)?.text =
+            if (albumArtistExists) album.albumArtist else album.artistName
 
         val songText = resources.getQuantityString(
             R.plurals.albumSongs,
@@ -337,7 +343,9 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
                 GradientDrawable.Orientation.TOP_BOTTOM,
                 intArrayOf(ColorUtils.setAlphaComponent(color, 130), surfaceColor())
             )
-            contentRoot.background = gradient
+            // contentRoot نفس القصة: nullable لأنه على الأغلب مش معرّف في نسخة
+            // تانية من الـ layout.
+            contentRoot?.background = gradient
 
             val onColor = if (ColorUtils.calculateLuminance(color) > 0.5) {
                 Color.BLACK
@@ -351,7 +359,7 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
             }
             fragmentAlbumContent.shuffleAction.imageTintList = ColorStateList.valueOf(color)
             fragmentAlbumContent.addAction.imageTintList = ColorStateList.valueOf(color)
-            albumText.setTextColor(color)
+            (albumText as? TextView)?.setTextColor(color)
         }
     }
 
