@@ -1,148 +1,167 @@
 <?xml version="1.0" encoding="utf-8"?>
-<code.name.monkey.retromusic.views.insets.InsetsConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<LinearLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
-    android:layout_height="match_parent"
+    android:layout_height="wrap_content"
     android:orientation="vertical"
-    android:paddingBottom="@dimen/mini_player_height">
+    android:paddingBottom="32dp">
 
-    <!--
-        شكل Apple Music: أيقونة Shuffle - زرار Play بيضاوي في النص - أيقونة
-        Add، التلاتة متوسطين في السطر (chainStyle=packed). الألوان بتتظبط
-        بالكود (AlbumDetailsFragment.setColors) من لون الغلاف.
-    -->
-    <androidx.appcompat.widget.AppCompatImageView
-        android:id="@+id/shuffleAction"
-        android:layout_width="44dp"
-        android:layout_height="44dp"
-        android:layout_marginEnd="16dp"
-        android:background="?attr/selectableItemBackgroundBorderless"
-        android:contentDescription="@string/shuffle"
-        android:padding="10dp"
-        android:src="@drawable/ic_shuffle"
-        app:layout_constraintBottom_toBottomOf="@id/playAction"
-        app:layout_constraintEnd_toStartOf="@id/playAction"
-        app:layout_constraintHorizontal_chainStyle="packed"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toTopOf="@id/playAction" />
+    <!-- نفس فكرة صفحة الفنان بالظبط: تلات دواير 58dp، كل واحدة LiquidGlassView
+         زجاجي حقيقي جواه، والزرار اللي فوقه بخلفية شفافة تمامًا. الكود في
+         AlbumDetailsFragment.kt بينادي setBackdropColor بعد استخراج لون الغلاف. -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center"
+        android:orientation="horizontal"
+        android:paddingTop="8dp"
+        android:paddingBottom="20dp"
+        android:paddingStart="16dp"
+        android:paddingEnd="16dp">
 
-    <com.google.android.material.button.MaterialButton
-        android:id="@+id/playAction"
-        style="@style/Widget.Material3.Button"
-        android:layout_width="wrap_content"
-        android:layout_height="48dp"
-        android:layout_marginTop="8dp"
-        android:minWidth="140dp"
-        android:paddingHorizontal="24dp"
-        android:text="@string/action_play_all"
-        android:textAppearance="@style/TextViewButton"
-        app:cornerRadius="24dp"
-        app:icon="@drawable/ic_play_arrow"
-        app:layout_constraintEnd_toStartOf="@id/addAction"
-        app:layout_constraintStart_toEndOf="@id/shuffleAction"
-        app:layout_constraintTop_toTopOf="parent" />
+        <FrameLayout
+            android:layout_width="58dp"
+            android:layout_height="58dp"
+            android:layout_marginEnd="10dp">
 
-    <androidx.appcompat.widget.AppCompatImageView
-        android:id="@+id/addAction"
-        android:layout_width="44dp"
-        android:layout_height="44dp"
-        android:layout_marginStart="16dp"
-        android:background="?attr/selectableItemBackgroundBorderless"
-        android:contentDescription="@string/action_add_to_playlist"
-        android:padding="10dp"
-        android:src="@drawable/ic_album_add"
-        app:layout_constraintBottom_toBottomOf="@id/playAction"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintStart_toEndOf="@id/playAction"
-        app:layout_constraintTop_toTopOf="@id/playAction" />
+            <code.name.monkey.retromusic.views.LiquidGlassView
+                android:id="@+id/shuffleActionGlass"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent" />
 
-    <!--
-        Apple Music مفيهوش عنوان "Songs" فوق القايمة، فمخفي هنا. النص لسه
-        بيتحط عليه (لو حبيت ترجعه ظاهر تاني، امسح visibility="gone").
-    -->
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/shuffleAction"
+                style="@style/Widget.Material3.Button.IconButton"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:backgroundTint="@android:color/transparent"
+                app:cornerRadius="29dp"
+                app:icon="@drawable/ic_shuffle"
+                app:iconGravity="textStart"
+                app:iconPadding="0dp"
+                app:iconSize="22dp"
+                app:iconTint="@android:color/white"
+                app:strokeWidth="0dp" />
+        </FrameLayout>
+
+        <FrameLayout
+            android:layout_width="58dp"
+            android:layout_height="58dp">
+
+            <code.name.monkey.retromusic.views.LiquidGlassView
+                android:id="@+id/playActionGlass"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent" />
+
+            <com.google.android.material.floatingactionbutton.FloatingActionButton
+                android:id="@+id/playAction"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                app:backgroundTint="@android:color/transparent"
+                app:tint="@android:color/white"
+                app:elevation="0dp"
+                app:pressedTranslationZ="0dp"
+                app:shapeAppearanceOverlay="@style/ShapeAppearance.Material3.Corner.Full"
+                app:fabCustomSize="58dp"
+                app:iconSize="80dp"
+                app:srcCompat="@drawable/ic_play_arrow" />
+        </FrameLayout>
+
+        <FrameLayout
+            android:layout_width="58dp"
+            android:layout_height="58dp"
+            android:layout_marginStart="10dp">
+
+            <code.name.monkey.retromusic.views.LiquidGlassView
+                android:id="@+id/addActionGlass"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/addAction"
+                style="@style/Widget.Material3.Button.IconButton"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:backgroundTint="@android:color/transparent"
+                app:cornerRadius="29dp"
+                app:icon="@drawable/ic_album_add"
+                app:iconGravity="textStart"
+                app:iconPadding="0dp"
+                app:iconSize="22dp"
+                app:iconTint="@android:color/white"
+                app:strokeWidth="0dp" />
+        </FrameLayout>
+    </LinearLayout>
+
+    <!-- عنوان "Songs" - مخفي زي ما كان في التصميم القديم، الكود ممكن يظهره
+         لو حبيت. -->
     <com.google.android.material.textview.MaterialTextView
         android:id="@+id/songTitle"
-        android:layout_width="0dp"
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:padding="16dp"
         android:text="@string/songs"
         android:textAppearance="@style/TextViewHeadline6"
-        android:textColor="?android:attr/textColorPrimary"
         android:textStyle="bold"
         android:visibility="gone"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@id/playAction"
         tools:visibility="visible" />
 
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/recyclerView"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="16dp"
+        android:paddingStart="16dp"
+        android:paddingEnd="16dp"
         android:nestedScrollingEnabled="false"
-        android:overScrollMode="@integer/overScrollMode"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@id/playAction"
-        tools:listitem="@layout/item_song_album_details"/>
+        tools:listitem="@layout/item_song_album_details" />
 
-    <!--
-        سطر ميتاداتا الألبوم (فنان • سنة • مدة) - في Apple Music بتظهر تحت
-        القايمة مش فوقها، فنقلناها هنا من مكانها القديم جنب العنوان.
-    -->
+    <!-- سطر ميتاداتا الألبوم (فنان • سنة • مدة) تحت القايمة زي Apple Music. -->
     <com.google.android.material.textview.MaterialTextView
         android:id="@+id/albumFooterText"
-        android:layout_width="0dp"
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="4dp"
         android:paddingHorizontal="16dp"
         android:paddingVertical="8dp"
         android:textAlignment="center"
         android:textAppearance="@style/TextViewCaption"
-        android:textColor="?android:attr/textColorSecondary"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@id/recyclerView"
-        tools:text="Taylor Swift • 2024 • 43 min" />
+        tools:text="Ava Max • 2020 • 43 min" />
 
     <com.google.android.material.textview.MaterialTextView
         android:id="@+id/moreTitle"
-        style="@style/SubTitleTextAppearance"
-        android:layout_width="0dp"
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:padding="16dp"
-        android:text="@string/songs"
+        android:layout_marginTop="24dp"
+        android:paddingStart="16dp"
+        android:paddingEnd="16dp"
         android:textAppearance="@style/TextViewHeadline6"
-        android:textColor="?android:attr/textColorPrimary"
         android:textStyle="bold"
         android:visibility="gone"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@id/albumFooterText"
-        tools:text="More by Artist"
+        tools:text="More by Ava Max"
         tools:visibility="visible" />
 
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/moreRecyclerView"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:nestedScrollingEnabled="false"
+        android:layout_marginTop="12dp"
+        android:clipToPadding="false"
+        android:paddingStart="4dp"
+        android:paddingEnd="16dp"
         android:visibility="gone"
         app:layoutManager="androidx.recyclerview.widget.GridLayoutManager"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@id/moreTitle"
         app:spanCount="3"
         tools:itemCount="3"
         tools:listitem="@layout/item_album_card"
         tools:visibility="visible" />
 
-    <Space
+    <!-- مساحة فاضية تحت المحتوى كله - الارتفاع بيتحدد من الكود (ربع ارتفاع
+         الشاشة تقريبًا)، بنفس الطريقة بالظبط اللي في صفحة الفنان. -->
+    <View
+        android:id="@+id/bottomSpacer"
         android:layout_width="match_parent"
-        android:layout_height="72dp"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@id/moreRecyclerView" />
-</code.name.monkey.retromusic.views.insets.InsetsConstraintLayout>
+        android:layout_height="0dp" />
+
+</LinearLayout>
