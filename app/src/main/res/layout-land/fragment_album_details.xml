@@ -1,121 +1,107 @@
 <?xml version="1.0" encoding="utf-8"?>
-<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<FrameLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/rootLayout"
     android:layout_width="match_parent"
-    android:layout_height="match_parent"
-    android:fitsSystemWindows="true"
-    android:orientation="vertical"
-    android:transitionGroup="true"
-    android:transitionName="@string/transition_album_art">
-
-    <com.google.android.material.appbar.MaterialToolbar
-        android:id="@+id/toolbar"
-        style="@style/Toolbar"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toTopOf="parent"
-        app:navigationIcon="@drawable/ic_arrow_back" />
-
-    <com.google.android.material.card.MaterialCardView
-        android:id="@+id/albumCoverContainer"
-        android:layout_width="0dp"
-        android:layout_height="0dp"
-        android:layout_marginStart="16dp"
-        android:layout_marginTop="8dp"
-        android:layout_marginBottom="@dimen/mini_player_height"
-        app:cardCornerRadius="@dimen/m3_card_large_radius"
-        app:layout_constraintBottom_toBottomOf="parent"
-        app:layout_constraintDimensionRatio="1:1"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@id/toolbar">
-
-        <androidx.appcompat.widget.AppCompatImageView
-            android:id="@+id/image"
-            android:layout_width="match_parent"
-            android:layout_height="match_parent"
-            android:scaleType="centerCrop"
-            tools:srcCompat="@tools:sample/backgrounds/scenic[5]" />
-
-    </com.google.android.material.card.MaterialCardView>
+    android:layout_height="match_parent">
 
     <androidx.core.widget.NestedScrollView
         android:id="@+id/content"
-        android:layout_width="0dp"
-        android:layout_height="0dp"
-        android:layout_marginStart="16dp"
-        android:descendantFocusability="beforeDescendants"
-        android:fillViewport="true"
-        android:focusableInTouchMode="true"
-        android:overScrollMode="@integer/overScrollMode"
-        app:layout_constraintBottom_toBottomOf="parent"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintHorizontal_bias="0.5"
-        app:layout_constraintStart_toEndOf="@+id/albumCoverContainer"
-        app:layout_constraintTop_toBottomOf="@id/toolbar">
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:overScrollMode="never"
+        android:transitionGroup="true">
 
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="vertical">
 
-            <LinearLayout
+            <FrameLayout
+                android:id="@+id/headerContainer"
                 android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:gravity="center_vertical"
-                android:orientation="horizontal">
+                android:layout_height="380dp">
 
-                <code.name.monkey.retromusic.views.RetroShapeableImageView
-                    android:id="@+id/artistImage"
-                    android:layout_width="52dp"
-                    android:layout_height="52dp"
-                    android:layout_marginStart="8dp"
+                <androidx.appcompat.widget.AppCompatImageView
+                    android:id="@+id/image"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
                     android:scaleType="centerCrop"
-                    app:retroCornerSize="26dp"
-                    tools:srcCompat="@tools:sample/backgrounds/scenic[11]" />
+                    tools:srcCompat="@tools:sample/backgrounds/scenic" />
+
+                <View
+                    android:id="@+id/headerGradient"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:background="@drawable/header_gradient_bg" />
 
                 <LinearLayout
-                    android:layout_width="0dp"
+                    android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_gravity="bottom"
-                    android:layout_weight="1"
+                    android:gravity="center"
                     android:orientation="vertical"
-                    android:paddingStart="12dp"
-                    android:paddingEnd="12dp"
-                    android:paddingBottom="8dp">
+                    android:paddingStart="24dp"
+                    android:paddingEnd="24dp"
+                    android:paddingBottom="12dp">
 
                     <code.name.monkey.retromusic.views.BaselineGridTextView
                         android:id="@+id/albumTitle"
-                        android:layout_width="match_parent"
+                        android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:maxLines="2"
-                        android:textAppearance="@style/TextViewHeadline5"
+                        android:gravity="center"
+                        android:maxLines="3"
+                        android:textAlignment="center"
+                        android:textAppearance="@style/TextViewHeadline4"
+                        android:textColor="@android:color/white"
                         android:textStyle="bold"
-                        app:lineHeightHint="28sp"
-                        tools:ignore="MissingPrefix"
-                        tools:text="Album name" />
+                        tools:text="Heaven &amp; Hell" />
 
-                    <code.name.monkey.retromusic.views.BaselineGridTextView
+                    <com.google.android.material.textview.MaterialTextView
                         android:id="@+id/albumText"
-                        android:layout_width="match_parent"
+                        android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:ellipsize="end"
-                        android:paddingTop="4dp"
-                        android:singleLine="true"
+                        android:background="?attr/selectableItemBackgroundBorderless"
+                        android:clickable="true"
+                        android:focusable="true"
+                        android:gravity="center"
+                        android:maxLines="1"
+                        android:padding="4dp"
+                        android:paddingTop="2dp"
                         android:textAppearance="@style/TextViewCaption"
-                        android:textColor="?android:attr/textColorSecondary"
-                        app:lineHeightHint="24sp"
-                        tools:ignore="MissingPrefix"
-                        tools:text="Album details name" />
+                        android:textColor="#B3FFFFFF"
+                        tools:text="Ava Max" />
                 </LinearLayout>
-            </LinearLayout>
+            </FrameLayout>
 
             <include
                 android:id="@+id/fragment_album_content"
                 layout="@layout/fragment_album_content" />
+
         </LinearLayout>
     </androidx.core.widget.NestedScrollView>
-</androidx.constraintlayout.widget.ConstraintLayout>
 
+    <!-- الـ toolbar جوه rootLayout مباشرة، مش جوه الصورة/الهيدر، بنفس فلسفة
+         صفحة الفنان بالظبط: عايم edge-to-edge فوق الشاشة كلها طول الوقت،
+         شفاف في الأول وبيتلون تدريجيًا وأنت بتسحب لتحت. -->
+    <com.google.android.material.appbar.AppBarLayout
+        android:id="@+id/appBarLayout"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="top"
+        android:background="@android:color/transparent"
+        android:elevation="0dp">
+
+        <code.name.monkey.retromusic.views.TintableToolbar
+            android:id="@+id/toolbar"
+            style="@style/Toolbar"
+            android:layout_width="match_parent"
+            android:layout_height="?attr/actionBarSize"
+            android:background="@android:color/transparent"
+            app:navigationIcon="@drawable/ic_arrow_back" />
+
+    </com.google.android.material.appbar.AppBarLayout>
+
+</FrameLayout>
