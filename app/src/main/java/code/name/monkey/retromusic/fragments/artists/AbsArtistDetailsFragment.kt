@@ -25,7 +25,6 @@ import androidx.core.view.updatePadding
 import androidx.lifecycle.lifecycleScope
 import androidx.navigation.NavController
 import androidx.navigation.NavOptions
-import androidx.navigation.fragment.FragmentNavigatorExtras
 import androidx.navigation.fragment.findNavController
 import androidx.recyclerview.widget.DefaultItemAnimator
 import androidx.recyclerview.widget.GridLayoutManager
@@ -54,7 +53,6 @@ import com.bumptech.glide.load.resource.bitmap.DownsampleStrategy
 import com.bumptech.glide.request.target.CustomTarget
 import com.bumptech.glide.request.transition.Transition
 import com.google.android.material.shape.MaterialShapeDrawable
-import com.google.android.material.transition.Hold
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -116,14 +114,6 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
     // القيمة صغيرة جدًا وبالتالي البار كان بيظهر بمجرد أول سحب بسيط
     private var artistTitleBottomInScrollContent: Int = -1
 
-    // بتتحط true في onAlbumClick قبل ما ننده navigate() للألبوم (Hold()
-    // shared element). بنستخدمها عشان نعرف إننا "راجعين من ألبوم" ونمنع
-    // postponeEnterTransition من الاشتغال في الحالة دي بالذات، لأنها كانت
-    // بتتعارض مع أنيميشن الـ Hold() بتاع الرجوع من AlbumDetailsFragment.
-    // في أي حالة تانية (فتح الصفحة أول مرة من ArtistsFragment، أو fragment
-    // instance جديد) بتفضل false والـ postpone بيشتغل عادي.
-    private var cameFromAlbumReturn: Boolean = false
-
     private data class ArtistDisplayData(
         val songs: List<Song>,
         val albums: List<Album>,
@@ -174,11 +164,8 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
         // وبتتبني تاني لما تظهر). زي ArtistAllSongsFragment بالظبط، محتاجينها
         // عشان الصفحة دي تقيلة (تحميل صورة + استخراج لون + بناء 4 قوائم)
         // والـ Main Thread بيكون مشغول وقت ما الـ View Animation المفروض تشتغل،
-        // فالحركة كانت بتتقطع أو تختفي خالص. مبنعملهاش وإحنا راجعين من ألبوم
-        // عشان منرجعش لمشكلة تعارضها مع Hold() القديمة.
-        if (!cameFromAlbumReturn) {
-            postponeEnterTransition()
-        }
+        // فالحركة كانت بتتقطع أو تختفي خالص.
+        postponeEnterTransition()
 
         _binding = FragmentArtistDetailsBinding.bind(view)
 
@@ -393,15 +380,10 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
 
         // بنستنى الفريم اللي هيترسم فيه كل حاجة (الصورة، القوائم الأربعة،
         // الألوان) قبل ما نسيب الأنيميشن يبدأ - ده اللي ArtistAllSongsFragment
-        // بيعمله وهو اللي كان ناقص هنا. لو راجعين من ألبوم، مبنعملش حاجة
-        // خالص هنا لأن postponeEnterTransition ميتحطش في onCreate أصلاً
-        // في الحالة دي (شوف الشرط هناك).
-        if (!cameFromAlbumReturn) {
-            view.doOnPreDraw {
-                startPostponedEnterTransition()
-            }
+        // بيعمله بالظبط.
+        view.doOnPreDraw {
+            startPostponedEnterTransition()
         }
-        cameFromAlbumReturn = false
     }
 
     private fun addArtistSongsToPlaylist() {
@@ -776,24 +758,21 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
         appearsOnAdapter.setDynamicTextColors(foregroundColor, secondaryForegroundColor)
     }
 
+    // نفس أنيميشن الدخول/الخروج بتاع "See all" بالظبط (nav_slide_*)، بدل
+    // الـ Hold()/Shared Element القديمة اللي مبقتش منطقية بعد ما بقى هيدر
+    // صفحة الألبوم edge-to-edge زي هنا بالظبط (مفيش كارت تربيعي نقل منه/له).
     override fun onAlbumClick(albumId: Long, view: View) {
-        // لما ده يحصل، يبقى الفراجمنت دي هترجع تاني (reenter) من AlbumDetailsFragment
-        // مش هتتفتح من جديد بالكامل، فمفيش داعي لـ postponeEnterTransition وقتها -
-        // وده أصلاً اللي كان بيبوظ الـ Hold() قبل كده.
-        cameFromAlbumReturn = true
-        exitTransition = Hold().apply {
-            duration = 350L
-        }
-        reenterTransition = Hold().apply {
-            duration = 350L
-        }
+        val navOptions = NavOptions.Builder()
+            .setEnterAnim(R.anim.nav_slide_in_right)
+            .setExitAnim(R.anim.nav_slide_out_left)
+            .setPopEnterAnim(R.anim.nav_slide_in_left)
+            .setPopExitAnim(R.anim.nav_slide_out_right)
+            .build()
+
         findNavController().navigate(
             R.id.albumDetailsFragment,
             bundleOf(EXTRA_ALBUM_ID to albumId),
-            null,
-            FragmentNavigatorExtras(
-                view to albumId.toString()
-            )
+            navOptions
         )
     }
 
