@@ -16,9 +16,12 @@ package code.name.monkey.retromusic.adapter.song
 
 import android.content.res.ColorStateList
 import android.view.LayoutInflater
+import android.view.View
 import android.view.ViewGroup
+import com.google.android.material.textview.MaterialTextView
 import androidx.core.widget.ImageViewCompat
 import androidx.fragment.app.FragmentActivity
+import code.name.monkey.retromusic.R
 import code.name.monkey.retromusic.glide.RetroGlideExtension
 import code.name.monkey.retromusic.glide.RetroGlideExtension.songCoverOptions
 import code.name.monkey.retromusic.model.Song
@@ -58,7 +61,20 @@ class SimpleSongAdapter(
     override fun onBindViewHolder(holder: ViewHolder, position: Int) {
         super.onBindViewHolder(holder, position)
 
-        // Track number removed — only the duration is shown now.
+        // Track number removed from item_song — only the duration is shown there.
+        // item_song_album_details (صفحة تفاصيل الألبوم بتصميم Apple Music)
+        // بس هو اللي فيه trackNumber، فبنملاها هنا لو موجودة في الـ layout
+        // الحالي، وبنسيبها من غير حاجة في أي layout تاني (زي item_song).
+        holder.itemView.findViewById<MaterialTextView>(R.id.trackNumber)?.let { trackNumberView ->
+            val song = dataSet[position]
+            trackNumberView.text = if (song.trackNumber > 0) {
+                song.trackNumber.toString()
+            } else {
+                (position + 1).toString()
+            }
+            dynamicSecondaryTextColor?.let { trackNumberView.setTextColor(it) }
+        }
+
         holder.time?.text = MusicUtil.getReadableDurationString(dataSet[position].duration)
         holder.text2?.text = dataSet[position].artistName
 
