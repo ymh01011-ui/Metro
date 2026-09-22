@@ -20,7 +20,72 @@ import code.name.monkey.retromusic.model.Album
 import code.name.monkey.retromusic.model.Artist
 import code.name.monkey.retromusic.repository.RealRepository
 import kotlinx.coroutines.Dispatchers.IO
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+
+// نفس الفكرة اللي طبقناها في صفحة الفنان: لو الألبوم راجع من الكاش، بنأجل
+// إعادة التحميل من MediaStore شوية عشان الاستعلام ما ينافسش أنيميشن الفتح.
+// لو حاجة اتغيرت فعلًا الصفحة بتتحدث بعد نص ثانية بس.
+private const val REFRESH_DELAY_AFTER_CACHE_HIT_MS = 500L
+
+/**
+ * بصمة خفيفة لمحتوى الألبوم، بنقارن بيها بدل الاعتماد على equals() عشان
+ * نعرف هل البيانات اتغيرت فعلًا قبل ما نعيد رسم الصفحة من الأول.
+ */
+internal fun Album.contentSignature(): Int {
+    var hash = 17
+    hash = 31 * hash + title.hashCode()
+    hash = 31 * hash + artistName.hashCode()
+    hash = 31 * hash + (albumArtist?.hashCode() ?: 0)
+    hash = 31 * hash + year
+    for (song in songs) {
+        hash = 31 * hash + song.id.hashCode()
+        hash = 31 * hash + song.title.hashCode()
+        hash = 31 * hash + song.trackNumber.hashCode()
+        hash = 31 * hash + song.duration.hashCode()
+        hash = 31 * hash + song.dateModified.hashCode()
+    }
+    return hash
+}
+
+/**
+ * كاش في الذاكرة لآخر [MAX_ENTRIES] ألبومات اتفتحت صفحاتهم: بياناتهم ولون
+ * الخلفية المستخرج من الغلاف. بيخلي الصفحة تظهر فورًا (بيانات + لون) لما
+ * ترجع لنفس الألبوم، من غير ما تستنى استعلام MediaStore ولا استخراج اللون
+ * من الصورة تاني.
+ */
+object AlbumDetailsCache {
+    private const val MAX_ENTRIES = 6
+
+    private class Entry(val album: Album, val signature: Int, var color: Int? = null)
+
+    private val entries = object : LinkedHashMap<Long, Entry>(8, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<Long, Entry>?): Boolean {
+            return size > MAX_ENTRIES
+        }
+    }
+
+    @Synchronized
+    fun get(albumId: Long): Album? = entries[albumId]?.album
+
+    @Synchronized
+    fun getColor(albumId: Long): Int? = entries[albumId]?.color
+
+    /** بترجع true لو الألبوم جديد أو محتواه اتغير عن اللي متخزن. */
+    @Synchronized
+    fun put(albumId: Long, album: Album): Boolean {
+        val signature = album.contentSignature()
+        val existing = entries[albumId]
+        if (existing != null && existing.signature == signature) return false
+        entries[albumId] = Entry(album, signature, existing?.color)
+        return true
+    }
+
+    @Synchronized
+    fun putColor(albumId: Long, color: Int) {
+        entries[albumId]?.color = color
+    }
+}
 
 class AlbumDetailsViewModel(
     private val repository: RealRepository,
@@ -29,12 +94,23 @@ class AlbumDetailsViewModel(
     private val albumDetails = MutableLiveData<Album>()
 
     init {
-        fetchAlbum()
+        var hasCachedAlbum = false
+        AlbumDetailsCache.get(albumId)?.let { cachedAlbum ->
+            albumDetails.value = cachedAlbum
+            hasCachedAlbum = true
+        }
+        fetchAlbum(delayMs = if (hasCachedAlbum) REFRESH_DELAY_AFTER_CACHE_HIT_MS else 0L)
     }
 
-    private fun fetchAlbum() {
+    private fun fetchAlbum(delayMs: Long = 0L) {
         viewModelScope.launch(IO) {
-            albumDetails.postValue(repository.albumByIdAsync(albumId))
+            if (delayMs > 0) delay(delayMs)
+            val album = repository.albumByIdAsync(albumId)
+            // بنبعت القيمة للصفحة بس لو جديدة أو اتغيرت، عشان مانعيدش بناء
+            // الصفحة على الفاضي وهي بتعمل أنيميشن.
+            if (AlbumDetailsCache.put(albumId, album)) {
+                albumDetails.postValue(album)
+            }
         }
     }
 
