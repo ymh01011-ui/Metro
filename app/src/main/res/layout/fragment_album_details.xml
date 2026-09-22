@@ -1,148 +1,107 @@
 <?xml version="1.0" encoding="utf-8"?>
-<androidx.coordinatorlayout.widget.CoordinatorLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<FrameLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/rootLayout"
     android:layout_width="match_parent"
-    android:layout_height="match_parent"
-    android:fitsSystemWindows="true"
-    android:transitionGroup="true">
-
-    <com.google.android.material.appbar.AppBarLayout
-        android:id="@+id/appBarLayout"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:fitsSystemWindows="true"
-        app:liftOnScroll="true">
-
-        <com.google.android.material.appbar.MaterialToolbar
-            android:id="@+id/toolbar"
-            style="@style/Toolbar"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            app:navigationIcon="@drawable/ic_arrow_back" />
-
-    </com.google.android.material.appbar.AppBarLayout>
+    android:layout_height="match_parent">
 
     <androidx.core.widget.NestedScrollView
-        android:id="@+id/container"
+        android:id="@+id/content"
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:descendantFocusability="beforeDescendants"
-        android:focusableInTouchMode="true"
-        android:overScrollMode="@integer/overScrollMode"
-        app:layout_behavior="com.google.android.material.appbar.AppBarLayout$ScrollingViewBehavior">
+        android:layout_height="match_parent"
+        android:overScrollMode="never"
+        android:transitionGroup="true">
 
-        <!--
-            contentRoot: الخلفية بتاعته بتتظبط بالكود (AlbumDetailsFragment.applyGradient)
-            بتدرّج من لون الغلاف المستخرج لحد لون خلفية التطبيق العادي، زي خلفية
-            صفحة الألبوم في Apple Music. قبل ما اللون يتحسب، بتترك بلون الخلفية
-            العادي (مفيش تغيير محسوس).
-        -->
-        <androidx.constraintlayout.widget.ConstraintLayout
-            android:id="@+id/contentRoot"
+        <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="vertical">
 
-            <!--
-                خطين استرشاديين بيحددوا عرض الغلاف: كل ما القيمتين يقربوا من
-                بعض (0.5) الغلاف يصغر، وكل ما يبعدوا الغلاف يكبر. القيم دي
-                (18% و82%) بتدّي غلاف حوالي 64% من عرض الشاشة، قريب من نسبة
-                الغلاف في Apple Music.
-            -->
-            <androidx.constraintlayout.widget.Guideline
-                android:id="@+id/coverStartGuideline"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:orientation="vertical"
-                app:layout_constraintGuide_percent="0.18" />
-
-            <androidx.constraintlayout.widget.Guideline
-                android:id="@+id/coverEndGuideline"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:orientation="vertical"
-                app:layout_constraintGuide_percent="0.82" />
-
-            <com.google.android.material.card.MaterialCardView
-                android:id="@+id/albumCoverContainer"
-                android:layout_width="0dp"
-                android:layout_height="0dp"
-                android:layout_marginTop="24dp"
-                app:cardCornerRadius="@dimen/m3_card_large_radius"
-                app:cardElevation="6dp"
-                app:layout_constraintDimensionRatio="1:1"
-                app:layout_constraintEnd_toEndOf="@id/coverEndGuideline"
-                app:layout_constraintStart_toStartOf="@id/coverStartGuideline"
-                app:layout_constraintTop_toTopOf="parent">
+            <FrameLayout
+                android:id="@+id/headerContainer"
+                android:layout_width="match_parent"
+                android:layout_height="380dp">
 
                 <androidx.appcompat.widget.AppCompatImageView
                     android:id="@+id/image"
                     android:layout_width="match_parent"
                     android:layout_height="match_parent"
                     android:scaleType="centerCrop"
-                    tools:srcCompat="@tools:sample/backgrounds/scenic[5]" />
+                    tools:srcCompat="@tools:sample/backgrounds/scenic" />
 
-            </com.google.android.material.card.MaterialCardView>
+                <View
+                    android:id="@+id/headerGradient"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:background="@drawable/header_gradient_bg" />
 
-            <code.name.monkey.retromusic.views.BaselineGridTextView
-                android:id="@+id/albumTitle"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_marginStart="24dp"
-                android:layout_marginTop="20dp"
-                android:layout_marginEnd="24dp"
-                android:gravity="center"
-                android:maxLines="3"
-                android:textAlignment="center"
-                android:textAppearance="@style/TextViewHeadline6"
-                android:textColor="?android:attr/textColorPrimary"
-                android:textStyle="bold"
-                app:layout_constraintEnd_toEndOf="parent"
-                app:layout_constraintStart_toStartOf="parent"
-                app:layout_constraintTop_toBottomOf="@id/albumCoverContainer"
-                tools:ignore="MissingPrefix"
-                tools:text="@tools:sample/full_names" />
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="bottom"
+                    android:gravity="center"
+                    android:orientation="vertical"
+                    android:paddingStart="24dp"
+                    android:paddingEnd="24dp"
+                    android:paddingBottom="12dp">
 
-            <!--
-                اسم الفنان: بلون التمييز (بيتظبط بالكود على accentColor)، وقابل
-                للدوس عليه زي ما كان زرار/صورة الفنان بيعمل قبل كده. مفيش
-                Shared Element Transition لصفحة الفنان دلوقتي لأن مفيش صورة
-                نقلها منها - لو عايزها ترجع تفتح صفحة الفنان بأنيميشن transform
-                من صورة، سيبلي.
-            -->
-            <com.google.android.material.textview.MaterialTextView
-                android:id="@+id/albumText"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_marginStart="24dp"
-                android:layout_marginTop="4dp"
-                android:layout_marginEnd="24dp"
-                android:background="?attr/selectableItemBackgroundBorderless"
-                android:clickable="true"
-                android:focusable="true"
-                android:gravity="center"
-                android:maxLines="1"
-                android:padding="4dp"
-                android:textAlignment="center"
-                android:textAppearance="@style/TextViewSubtitle1"
-                android:textStyle="bold"
-                app:layout_constraintEnd_toEndOf="parent"
-                app:layout_constraintStart_toStartOf="parent"
-                app:layout_constraintTop_toBottomOf="@id/albumTitle"
-                tools:ignore="MissingPrefix"
-                tools:text="@tools:sample/full_names" />
+                    <code.name.monkey.retromusic.views.BaselineGridTextView
+                        android:id="@+id/albumTitle"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:gravity="center"
+                        android:maxLines="3"
+                        android:textAlignment="center"
+                        android:textAppearance="@style/TextViewHeadline4"
+                        android:textColor="@android:color/white"
+                        android:textStyle="bold"
+                        tools:text="Heaven &amp; Hell" />
+
+                    <com.google.android.material.textview.MaterialTextView
+                        android:id="@+id/albumText"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:background="?attr/selectableItemBackgroundBorderless"
+                        android:clickable="true"
+                        android:focusable="true"
+                        android:gravity="center"
+                        android:maxLines="1"
+                        android:padding="4dp"
+                        android:paddingTop="2dp"
+                        android:textAppearance="@style/TextViewCaption"
+                        android:textColor="#B3FFFFFF"
+                        tools:text="Ava Max" />
+                </LinearLayout>
+            </FrameLayout>
 
             <include
                 android:id="@+id/fragment_album_content"
-                layout="@layout/fragment_album_content"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="20dp"
-                app:layout_constraintEnd_toEndOf="parent"
-                app:layout_constraintStart_toStartOf="parent"
-                app:layout_constraintTop_toBottomOf="@+id/albumText" />
+                layout="@layout/fragment_album_content" />
 
-        </androidx.constraintlayout.widget.ConstraintLayout>
+        </LinearLayout>
     </androidx.core.widget.NestedScrollView>
-</androidx.coordinatorlayout.widget.CoordinatorLayout>
+
+    <!-- الـ toolbar جوه rootLayout مباشرة، مش جوه الصورة/الهيدر، بنفس فلسفة
+         صفحة الفنان بالظبط: عايم edge-to-edge فوق الشاشة كلها طول الوقت،
+         شفاف في الأول وبيتلون تدريجيًا وأنت بتسحب لتحت. -->
+    <com.google.android.material.appbar.AppBarLayout
+        android:id="@+id/appBarLayout"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="top"
+        android:background="@android:color/transparent"
+        android:elevation="0dp">
+
+        <code.name.monkey.retromusic.views.TintableToolbar
+            android:id="@+id/toolbar"
+            style="@style/Toolbar"
+            android:layout_width="match_parent"
+            android:layout_height="?attr/actionBarSize"
+            android:background="@android:color/transparent"
+            app:navigationIcon="@drawable/ic_arrow_back" />
+
+    </com.google.android.material.appbar.AppBarLayout>
+
+</FrameLayout>
