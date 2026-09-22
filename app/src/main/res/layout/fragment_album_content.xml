@@ -7,41 +7,60 @@
     android:orientation="vertical"
     android:paddingBottom="@dimen/mini_player_height">
 
+    <!--
+        شكل Apple Music: أيقونة Shuffle - زرار Play بيضاوي في النص - أيقونة
+        Add، التلاتة متوسطين في السطر (chainStyle=packed). الألوان بتتظبط
+        بالكود (AlbumDetailsFragment.setColors) من لون الغلاف.
+    -->
+    <androidx.appcompat.widget.AppCompatImageView
+        android:id="@+id/shuffleAction"
+        android:layout_width="44dp"
+        android:layout_height="44dp"
+        android:layout_marginEnd="16dp"
+        android:background="?attr/selectableItemBackgroundBorderless"
+        android:contentDescription="@string/shuffle"
+        android:padding="10dp"
+        android:src="@drawable/ic_shuffle"
+        app:layout_constraintBottom_toBottomOf="@id/playAction"
+        app:layout_constraintEnd_toStartOf="@id/playAction"
+        app:layout_constraintHorizontal_chainStyle="packed"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="@id/playAction" />
+
     <com.google.android.material.button.MaterialButton
         android:id="@+id/playAction"
-        style="@style/Widget.Material3.Button.OutlinedButton"
-        android:layout_width="0dp"
-        android:layout_height="wrap_content"
-        android:layout_marginStart="16dp"
-        android:layout_marginEnd="4dp"
-        android:paddingVertical="10dp"
+        style="@style/Widget.Material3.Button"
+        android:layout_width="wrap_content"
+        android:layout_height="48dp"
+        android:layout_marginTop="8dp"
+        android:minWidth="140dp"
+        android:paddingHorizontal="24dp"
         android:text="@string/action_play_all"
         android:textAppearance="@style/TextViewButton"
-        android:textColor="?android:attr/textColorPrimary"
+        app:cornerRadius="24dp"
         app:icon="@drawable/ic_play_arrow"
-        app:layout_constraintEnd_toStartOf="@+id/shuffleAction"
-        app:layout_constraintHorizontal_bias="0.5"
-        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toStartOf="@id/addAction"
+        app:layout_constraintStart_toEndOf="@id/shuffleAction"
         app:layout_constraintTop_toTopOf="parent" />
 
-    <com.google.android.material.button.MaterialButton
-        android:id="@+id/shuffleAction"
-        style="@style/Widget.Material3.Button.Icon"
-        android:layout_width="0dp"
-        android:layout_height="0dp"
-        android:layout_marginStart="4dp"
-        android:layout_marginEnd="16dp"
-        android:paddingVertical="10dp"
-        android:text="@string/shuffle"
-        android:textAppearance="@style/TextViewButton"
-        app:icon="@drawable/ic_shuffle"
-        app:layout_constraintBottom_toBottomOf="@+id/playAction"
+    <androidx.appcompat.widget.AppCompatImageView
+        android:id="@+id/addAction"
+        android:layout_width="44dp"
+        android:layout_height="44dp"
+        android:layout_marginStart="16dp"
+        android:background="?attr/selectableItemBackgroundBorderless"
+        android:contentDescription="@string/action_add_to_playlist"
+        android:padding="10dp"
+        android:src="@drawable/ic_album_add"
+        app:layout_constraintBottom_toBottomOf="@id/playAction"
         app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintHorizontal_bias="0.5"
-        app:layout_constraintStart_toEndOf="@+id/playAction"
-        app:layout_constraintTop_toTopOf="@+id/playAction" />
+        app:layout_constraintStart_toEndOf="@id/playAction"
+        app:layout_constraintTop_toTopOf="@id/playAction" />
 
-
+    <!--
+        Apple Music مفيهوش عنوان "Songs" فوق القايمة، فمخفي هنا. النص لسه
+        بيتحط عليه (لو حبيت ترجعه ظاهر تاني، امسح visibility="gone").
+    -->
     <com.google.android.material.textview.MaterialTextView
         android:id="@+id/songTitle"
         android:layout_width="0dp"
@@ -51,20 +70,42 @@
         android:textAppearance="@style/TextViewHeadline6"
         android:textColor="?android:attr/textColorPrimary"
         android:textStyle="bold"
+        android:visibility="gone"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@id/playAction" />
+        app:layout_constraintTop_toBottomOf="@id/playAction"
+        tools:visibility="visible" />
 
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/recyclerView"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
+        android:layout_marginTop="16dp"
         android:nestedScrollingEnabled="false"
         android:overScrollMode="@integer/overScrollMode"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@id/songTitle"
-        tools:listitem="@layout/item_song"/>
+        app:layout_constraintTop_toBottomOf="@id/playAction"
+        tools:listitem="@layout/item_song_album_details"/>
+
+    <!--
+        سطر ميتاداتا الألبوم (فنان • سنة • مدة) - في Apple Music بتظهر تحت
+        القايمة مش فوقها، فنقلناها هنا من مكانها القديم جنب العنوان.
+    -->
+    <com.google.android.material.textview.MaterialTextView
+        android:id="@+id/albumFooterText"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="4dp"
+        android:paddingHorizontal="16dp"
+        android:paddingVertical="8dp"
+        android:textAlignment="center"
+        android:textAppearance="@style/TextViewCaption"
+        android:textColor="?android:attr/textColorSecondary"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/recyclerView"
+        tools:text="Taylor Swift • 2024 • 43 min" />
 
     <com.google.android.material.textview.MaterialTextView
         android:id="@+id/moreTitle"
@@ -79,7 +120,7 @@
         android:visibility="gone"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@id/recyclerView"
+        app:layout_constraintTop_toBottomOf="@id/albumFooterText"
         tools:text="More by Artist"
         tools:visibility="visible" />
 
