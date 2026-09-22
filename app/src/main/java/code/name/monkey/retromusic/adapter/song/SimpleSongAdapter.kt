@@ -67,11 +67,17 @@ class SimpleSongAdapter(
         // الحالي، وبنسيبها من غير حاجة في أي layout تاني (زي item_song).
         holder.itemView.findViewById<MaterialTextView>(R.id.trackNumber)?.let { trackNumberView ->
             val song = dataSet[position]
-            trackNumberView.text = if (song.trackNumber > 0) {
-                song.trackNumber.toString()
+            // trackNumber بييجي من MediaStore بالصيغة (رقم الاسطوانة × 1000) +
+            // رقم المسار (يعني 1001 معناها اسطوانة 1، مسار 1) - عشان كده كان
+            // ظاهر 1001 بدل 1. بناخد باقي القسمة على 1000 عشان نعرض رقم
+            // المسار لوحده زي Apple Music.
+            val displayNumber = if (song.trackNumber > 0) {
+                val withinDisc = song.trackNumber % 1000
+                if (withinDisc > 0) withinDisc else song.trackNumber
             } else {
-                (position + 1).toString()
+                position + 1
             }
+            trackNumberView.text = displayNumber.toString()
             dynamicSecondaryTextColor?.let { trackNumberView.setTextColor(it) }
         }
 
