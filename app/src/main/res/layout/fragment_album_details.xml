@@ -32,22 +32,48 @@
         android:overScrollMode="@integer/overScrollMode"
         app:layout_behavior="com.google.android.material.appbar.AppBarLayout$ScrollingViewBehavior">
 
+        <!--
+            contentRoot: الخلفية بتاعته بتتظبط بالكود (AlbumDetailsFragment.applyGradient)
+            بتدرّج من لون الغلاف المستخرج لحد لون خلفية التطبيق العادي، زي خلفية
+            صفحة الألبوم في Apple Music. قبل ما اللون يتحسب، بتترك بلون الخلفية
+            العادي (مفيش تغيير محسوس).
+        -->
         <androidx.constraintlayout.widget.ConstraintLayout
+            android:id="@+id/contentRoot"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="vertical">
+
+            <!--
+                خطين استرشاديين بيحددوا عرض الغلاف: كل ما القيمتين يقربوا من
+                بعض (0.5) الغلاف يصغر، وكل ما يبعدوا الغلاف يكبر. القيم دي
+                (18% و82%) بتدّي غلاف حوالي 64% من عرض الشاشة، قريب من نسبة
+                الغلاف في Apple Music.
+            -->
+            <androidx.constraintlayout.widget.Guideline
+                android:id="@+id/coverStartGuideline"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                app:layout_constraintGuide_percent="0.18" />
+
+            <androidx.constraintlayout.widget.Guideline
+                android:id="@+id/coverEndGuideline"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                app:layout_constraintGuide_percent="0.82" />
 
             <com.google.android.material.card.MaterialCardView
                 android:id="@+id/albumCoverContainer"
                 android:layout_width="0dp"
                 android:layout_height="0dp"
-                android:layout_marginStart="16dp"
-                android:layout_marginTop="8dp"
-                android:layout_marginEnd="16dp"
+                android:layout_marginTop="24dp"
                 app:cardCornerRadius="@dimen/m3_card_large_radius"
+                app:cardElevation="6dp"
                 app:layout_constraintDimensionRatio="1:1"
-                app:layout_constraintEnd_toEndOf="parent"
-                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintEnd_toEndOf="@id/coverEndGuideline"
+                app:layout_constraintStart_toStartOf="@id/coverStartGuideline"
                 app:layout_constraintTop_toTopOf="parent">
 
                 <androidx.appcompat.widget.AppCompatImageView
@@ -59,49 +85,51 @@
 
             </com.google.android.material.card.MaterialCardView>
 
-            <code.name.monkey.retromusic.views.RetroShapeableImageView
-                android:id="@+id/artistImage"
-                android:layout_width="52dp"
-                android:layout_height="52dp"
-                android:layout_marginStart="16dp"
-                android:layout_marginTop="24dp"
-                android:scaleType="centerCrop"
-                app:layout_constraintStart_toStartOf="parent"
-                app:layout_constraintTop_toBottomOf="@id/albumCoverContainer"
-                app:retroCornerSize="26dp"
-                tools:srcCompat="@tools:sample/backgrounds/scenic[11]" />
-
             <code.name.monkey.retromusic.views.BaselineGridTextView
                 android:id="@+id/albumTitle"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
-                android:layout_marginStart="16dp"
-                android:layout_marginEnd="16dp"
+                android:layout_marginStart="24dp"
+                android:layout_marginTop="20dp"
+                android:layout_marginEnd="24dp"
+                android:gravity="center"
                 android:maxLines="3"
+                android:textAlignment="center"
                 android:textAppearance="@style/TextViewHeadline6"
                 android:textColor="?android:attr/textColorPrimary"
                 android:textStyle="bold"
-                app:layout_constrainedWidth="true"
                 app:layout_constraintEnd_toEndOf="parent"
-                app:layout_constraintStart_toEndOf="@id/artistImage"
-                app:layout_constraintTop_toTopOf="@id/artistImage"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintTop_toBottomOf="@id/albumCoverContainer"
                 tools:ignore="MissingPrefix"
                 tools:text="@tools:sample/full_names" />
 
-            <code.name.monkey.retromusic.views.BaselineGridTextView
+            <!--
+                اسم الفنان: بلون التمييز (بيتظبط بالكود على accentColor)، وقابل
+                للدوس عليه زي ما كان زرار/صورة الفنان بيعمل قبل كده. مفيش
+                Shared Element Transition لصفحة الفنان دلوقتي لأن مفيش صورة
+                نقلها منها - لو عايزها ترجع تفتح صفحة الفنان بأنيميشن transform
+                من صورة، سيبلي.
+            -->
+            <com.google.android.material.textview.MaterialTextView
                 android:id="@+id/albumText"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
-                android:layout_marginStart="16dp"
-                android:layout_marginEnd="16dp"
-                android:singleLine="true"
-                android:textAppearance="@style/TextViewCaption"
-                android:textColor="?android:attr/textColorSecondary"
-                app:layout_constrainedWidth="true"
+                android:layout_marginStart="24dp"
+                android:layout_marginTop="4dp"
+                android:layout_marginEnd="24dp"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:clickable="true"
+                android:focusable="true"
+                android:gravity="center"
+                android:maxLines="1"
+                android:padding="4dp"
+                android:textAlignment="center"
+                android:textAppearance="@style/TextViewSubtitle1"
+                android:textStyle="bold"
                 app:layout_constraintEnd_toEndOf="parent"
-                app:layout_constraintStart_toEndOf="@id/artistImage"
+                app:layout_constraintStart_toStartOf="parent"
                 app:layout_constraintTop_toBottomOf="@id/albumTitle"
-                app:lineHeightHint="24sp"
                 tools:ignore="MissingPrefix"
                 tools:text="@tools:sample/full_names" />
 
@@ -110,7 +138,7 @@
                 layout="@layout/fragment_album_content"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="12dp"
+                android:layout_marginTop="20dp"
                 app:layout_constraintEnd_toEndOf="parent"
                 app:layout_constraintStart_toStartOf="parent"
                 app:layout_constraintTop_toBottomOf="@+id/albumText" />
