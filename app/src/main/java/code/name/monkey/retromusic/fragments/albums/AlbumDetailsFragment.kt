@@ -119,6 +119,7 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
     private var albumTitleBottomInScrollContent: Int = -1
     private var foregroundColor: Int = Color.WHITE
     private var secondaryForegroundColor: Int = Color.WHITE
+    private var originalStatusBarLight: Boolean? = null
 
     private val savedSortOrder: String
         get() = PreferenceUtil.albumDetailSongSortOrder
@@ -139,12 +140,12 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
         postponeEnterTransition()
 
         _binding = FragmentAlbumDetailsBinding.bind(view)
-        // بننده عليها فورًا هنا (مش تحت) عشان simpleSongAdapter تتظبط قبل أي
-        // حاجة تانية ممكن تستخدمها - الـ LiveData ممكن يكون عندها قيمة
-        // مخزنة من زيارة سابقة وتنده على showAlbum() فورًا لحظة ما نعمل
-        // .observe() تحت، فمينفعش نأجل الدالة دي أي خطوة كمان.
-        setupRecyclerView()
         mainActivity.addMusicServiceEventListener(detailsViewModel)
+
+        if (originalStatusBarLight == null) {
+            originalStatusBarLight = (requireActivity().window.decorView.systemUiVisibility and
+                android.view.View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR) != 0
+        }
 
         // لو الألبوم ده في الكاش، لونه جاهز - بنطبقه فورًا قبل ما الصورة نفسها
         // تتحمل، عشان الخلفية والأزرار ما تبانش بلون محايد لحظة وبعدين تتغير.
@@ -230,6 +231,7 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
             }
         })
 
+        setupRecyclerView()
         detailsViewModel.getAlbum().observe(viewLifecycleOwner) { album ->
             albumArtistExists = !album.albumArtist.isNullOrEmpty()
             showAlbum(album)
@@ -376,14 +378,26 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
         )
         binding.fragmentAlbumContent.songTitle.text = songText
 
-        // سطر الميتاداتا تحت اسم الفنان في الهيدر، بنفس نمط Apple Music:
-        // عدد الأغاني • السنة (لو موجودة) • إجمالي المدة. (النوع/Genre هتتضاف
-        // تاني لما تقولي اسم الـ property الصح بتاعه في Song model عندك)
+        // سطر الميتاداتا تحت اسم الفنان في الهيدر، بنفس نمط Apple Music
+        // بالظبط: عدد الأغاني • إجمالي المدة. (النوع/Genre هتتضاف تاني لما
+        // تقولي اسم الـ property الصح بتاعه في Song model عندك)
         val durationText = MusicUtil.getReadableDurationString(MusicUtil.getTotalDuration(album.songs))
-        val yearText = MusicUtil.getYearString(album.year).takeIf { it != "-" }
-        binding.albumMetaText.text = listOfNotNull(songText, yearText, durationText)
-            .joinToString(" • ")
+        binding.albumMetaText.text = listOf(songText, durationText).joinToString(" • ")
 
+        if (MusicUtil.getYearString(album.year) == "-") {
+            binding.fragmentAlbumContent.albumFooterText.text = String.format(
+                "%s • %s",
+                if (albumArtistExists) album.albumArtist else album.artistName,
+                durationText
+            )
+        } else {
+            binding.fragmentAlbumContent.albumFooterText.text = String.format(
+                "%s • %s • %s",
+                if (albumArtistExists) album.albumArtist else album.artistName,
+                MusicUtil.getYearString(album.year),
+                durationText
+            )
+        }
         loadAlbumCover(album)
         simpleSongAdapter.swapDataSet(album.songs)
         if (albumArtistExists) {
@@ -539,6 +553,7 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
         }
 
         binding.fragmentAlbumContent.songTitle.setTextColor(fgColor)
+        binding.fragmentAlbumContent.albumFooterText.setTextColor(secondaryFgColor)
         binding.fragmentAlbumContent.moreTitle.setTextColor(fgColor)
 
         applyStatusBarAppearance(isLightBackground)
@@ -548,8 +563,16 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
 
         binding.fragmentAlbumContent.shuffleAction.iconTint = ColorStateList.valueOf(fgColor)
         binding.fragmentAlbumContent.addAction.iconTint = ColorStateList.valueOf(fgColor)
-        // playAction بقى زرار أبيض ثابت زي Apple Music بالظبط، مبيتلونش
-        // بلون الغلاف زي الدايرتين التانيين.
+
+        // زرار الـ Play: بيتقلب أسود بنص/أيقونة بيضا على الخلفيات الفاتحة
+        // عشان يفضل واضح، وبيرجع أبيض بنص/أيقونة سودا على الغامقة زي الأصل.
+        val playButtonBackground = if (isLightBackground) Color.BLACK else Color.WHITE
+        val playButtonForeground = if (isLightBackground) Color.WHITE else Color.BLACK
+        binding.fragmentAlbumContent.playAction.apply {
+            backgroundTintList = ColorStateList.valueOf(playButtonBackground)
+            setTextColor(playButtonForeground)
+            iconTint = ColorStateList.valueOf(playButtonForeground)
+        }
 
         simpleSongAdapter.setDynamicTextColors(fgColor, secondaryFgColor)
         moreAlbumAdapter?.setDynamicTextColors(fgColor, secondaryFgColor)
@@ -739,6 +762,13 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
     override fun onDestroyView() {
         super.onDestroyView()
         customOverflowIcon = null
+        transitionStarted = false
+        originalStatusBarLight?.let { wasLight ->
+            activity?.window?.let { window ->
+                androidx.core.view.WindowInsetsControllerCompat(window, window.decorView)
+                    .isAppearanceLightStatusBars = wasLight
+            }
+        }
         _binding = null
     }
 }
