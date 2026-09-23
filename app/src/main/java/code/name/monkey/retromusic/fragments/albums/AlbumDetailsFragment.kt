@@ -780,4 +780,4 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
         }
         _binding = null
     }
-}7
+}
