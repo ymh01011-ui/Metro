@@ -125,6 +125,17 @@
         tools:listitem="@layout/item_song_album_details" />
 
     <com.google.android.material.textview.MaterialTextView
+        android:id="@+id/albumFooterText"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="16dp"
+        android:gravity="center"
+        android:paddingStart="16dp"
+        android:paddingEnd="16dp"
+        android:textSize="13sp"
+        tools:text="Ava Max • 2023 • 42 min" />
+
+    <com.google.android.material.textview.MaterialTextView
         android:id="@+id/moreTitle"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
