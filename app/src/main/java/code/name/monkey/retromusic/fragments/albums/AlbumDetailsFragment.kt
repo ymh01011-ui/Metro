@@ -577,7 +577,9 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
             iconTint = ColorStateList.valueOf(playButtonForeground)
         }
 
-        simpleSongAdapter.setDynamicTextColors(fgColor, secondaryFgColor)
+        if (::simpleSongAdapter.isInitialized) {
+            simpleSongAdapter.setDynamicTextColors(fgColor, secondaryFgColor)
+        }
         moreAlbumAdapter?.setDynamicTextColors(fgColor, secondaryFgColor)
     }
 
