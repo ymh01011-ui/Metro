@@ -501,7 +501,7 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
     // بقت مربعة في النص وخلفية الصفحة مصمتة بنفس اللون من الأول للآخر.
     private fun extractColorAndApplyBackground(albumId: Long, bitmap: Bitmap) {
         lifecycleScope.launch(Dispatchers.Default) {
-            val mostFrequentColor = AlbumPaletteEngine.findMostFrequentColor(bitmap)
+            val mostFrequentColor = AlbumPaletteEngine.findBackgroundColor(bitmap)
 
             withContext(Dispatchers.Main) {
                 hasExtractedColors = true
