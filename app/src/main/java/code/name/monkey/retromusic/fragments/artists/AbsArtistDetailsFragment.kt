@@ -616,6 +616,7 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
         if (cachedBitmap != null && hasExtractedColors && cachedGradientStops != null) {
             binding.image.setImageBitmap(cachedBitmap)
             setColors(dominantBackgroundColor, cachedGradientStops!!)
+            view?.post { releaseEnterTransition() }
             return
         }
 
