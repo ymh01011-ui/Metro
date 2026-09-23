@@ -23,7 +23,8 @@
                  صورة الألبوم مربعة في النص بهامش على الجنبين، وتحتها العنوان/
                  الفنان/الميتاداتا زي تصميم Apple Music - مش overlay فوق الصورة
                  زي الأول. المسافة الفعلية فوق (paddingTop) بتتظبط من الكود
-                 حسب ارتفاع التولبار + الـ status bar. -->
+                 حسب ارتفاع التولبار + الـ status bar. مفيش ظل حوالين الصورة -
+                 هي واحدة مع باقي الشاشة. -->
             <androidx.constraintlayout.widget.ConstraintLayout
                 android:id="@+id/headerContainer"
                 android:layout_width="match_parent"
@@ -38,7 +39,7 @@
                     android:layout_marginEnd="56dp"
                     app:cardBackgroundColor="@android:color/transparent"
                     app:cardCornerRadius="6dp"
-                    app:cardElevation="14dp"
+                    app:cardElevation="0dp"
                     app:cardUseCompatPadding="false"
                     app:layout_constraintDimensionRatio="1:1"
                     app:layout_constraintEnd_toEndOf="parent"
