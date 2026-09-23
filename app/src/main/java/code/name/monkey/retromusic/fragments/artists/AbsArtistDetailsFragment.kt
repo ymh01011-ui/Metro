@@ -107,6 +107,12 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
     private var cachedBitmap: Bitmap? = null
     private var cachedGradientStops: IntArray? = null
     private var hasExtractedColors: Boolean = false
+    // بنفصّل بداية الأنيميشن عن الـ layout pass الكامل بتاع الصفحة، عشان
+    // قايمة الأغاني (RecyclerView جوه NestedScrollView بارتفاع wrap_content)
+    // بتاخد وقت measure أطول كل ما الأغاني زادت، وكانت هي اللي فعليًا بتأخر
+    // startPostponedEnterTransition() مش استخراج اللون. بنبدأ الأنيميشن أول
+    // ما الهيدر (الصورة واللون) يبقوا جاهزين بس.
+    private var transitionStarted: Boolean = false
     // موضع أسفل اسم الفنان بالنسبة لأعلى الـ NestedScrollView كله (مش بالنسبة
     // لأبوه المباشر بس)، محسوب مرة واحدة ومتخزن هنا. ده اللي كان ناقص: كنا
     // بنستخدم artistTitle.bottom اللي بيرجع قيمة بالنسبة لأبوه المباشر (اللي هو
@@ -378,12 +384,19 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
         binding.appBarLayout?.statusBarForeground =
             MaterialShapeDrawable.createWithElevationOverlay(requireContext())
 
-        // بنستنى الفريم اللي هيترسم فيه كل حاجة (الصورة، القوائم الأربعة،
-        // الألوان) قبل ما نسيب الأنيميشن يبدأ - ده اللي ArtistAllSongsFragment
-        // بيعمله بالظبط.
-        view.doOnPreDraw {
-            startPostponedEnterTransition()
-        }
+        // مش بننتظر الـ layout pass الكامل بتاع الصفحة (اللي بتكلفه قايمة
+        // الأغاني الطويلة تقيلة) - releaseEnterTransition() بتترنّده فعليًا
+        // أول ما الهيدر (الصورة + اللون) يبقوا جاهزين (شوف extractColorsAndApplyGradient
+        // والمسار المخزن في الكاش تحت). السطر ده مجرد شبكة أمان لو لأي سبب
+        // الصورة معملتش load خالص.
+        view.postDelayed({ releaseEnterTransition() }, 400L)
+    }
+
+    // بتترنّد مرة واحدة بس (أول ما تتنادي بتسجل نفسها وتمنع أي نداء تاني).
+    private fun releaseEnterTransition() {
+        if (transitionStarted) return
+        transitionStarted = true
+        startPostponedEnterTransition()
     }
 
     private fun addArtistSongsToPlaylist() {
@@ -618,6 +631,7 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
             hasExtractedColors = true
             binding.image.setImageBitmap(cachedBitmap)
             setColors(dominantBackgroundColor, cachedGradientStops!!)
+            view?.post { releaseEnterTransition() }
             return
         }
 
@@ -642,6 +656,15 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
                 ) {
                     cachedBitmap = resource
                     extractColorsAndApplyGradient(cacheKey, resource)
+                }
+
+                override fun onLoadFailed(errorDrawable: Drawable?) {
+                    // لو الصورة فشلت تتحمل خالص، منسيبش الأنيميشن معلقة لحد
+                    // الأبد - نسيبها تبدأ باللون الافتراضي اللي اتحط بالفعل.
+                    if (_binding != null && errorDrawable != null) {
+                        binding.image.setImageDrawable(errorDrawable)
+                    }
+                    releaseEnterTransition()
                 }
 
                 override fun onLoadCleared(placeholder: Drawable?) {
@@ -681,6 +704,7 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
                     binding.image.setImageBitmap(bitmap)
                     setColors(dominantColor, gradientStops)
                 }
+                releaseEnterTransition()
             }
         }
     }
