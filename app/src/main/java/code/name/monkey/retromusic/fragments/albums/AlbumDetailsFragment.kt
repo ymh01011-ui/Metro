@@ -359,6 +359,9 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
             findNavController().navigateUp()
             return
         }
+        if (!::simpleSongAdapter.isInitialized) {
+            setupRecyclerView()
+        }
         this.album = album
 
         binding.albumTitle.text = album.title
