@@ -52,27 +52,41 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:gravity="center"
-                        android:maxLines="3"
+                        android:maxLines="2"
                         android:textAlignment="center"
-                        android:textAppearance="@style/TextViewHeadline4"
+                        android:textAppearance="@style/TextViewHeadline5"
                         android:textColor="@android:color/white"
                         android:textStyle="bold"
-                        tools:text="Heaven &amp; Hell" />
+                        tools:text="Man's Best Friend" />
 
                     <com.google.android.material.textview.MaterialTextView
                         android:id="@+id/albumText"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
+                        android:layout_marginTop="2dp"
                         android:background="?attr/selectableItemBackgroundBorderless"
                         android:clickable="true"
                         android:focusable="true"
                         android:gravity="center"
                         android:maxLines="1"
-                        android:padding="4dp"
-                        android:paddingTop="2dp"
+                        android:paddingStart="4dp"
+                        android:paddingEnd="4dp"
+                        android:textAppearance="@style/TextViewSubtitle1"
+                        android:textColor="#E6FFFFFF"
+                        tools:text="Sabrina Carpenter" />
+
+                    <!-- سطر الميتاداتا زي Apple Music بالظبط: النوع • عدد
+                         الأغاني • إجمالي المدة. -->
+                    <com.google.android.material.textview.MaterialTextView
+                        android:id="@+id/albumMetaText"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="2dp"
+                        android:gravity="center"
+                        android:maxLines="1"
                         android:textAppearance="@style/TextViewCaption"
                         android:textColor="#B3FFFFFF"
-                        tools:text="Ava Max" />
+                        tools:text="Pop • 12 Songs • 43 min" />
                 </LinearLayout>
             </FrameLayout>
 
