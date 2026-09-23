@@ -303,6 +303,8 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
         })
 
 
+        setupRecyclerView()
+
         detailsViewModel.getArtist().observe(viewLifecycleOwner) {
             showArtist(it)
         }
@@ -332,8 +334,6 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
                 binding.fragmentArtistContent.biographyMore.text = "Less"
             }
         }
-
-        setupRecyclerView()
 
         binding.fragmentArtistContent.playAction.setOnClickListener {
             if (::artist.isInitialized) {
@@ -1029,6 +1029,7 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
         // + طلب سيرة ذاتية مع كل تغيير في المكتبة (وبيزيد مع كل صفحة تفتحها).
         mainActivity.removeMusicServiceEventListener(detailsViewModel)
         customOverflowIcon = null
+        transitionStarted = false
         _binding = null
     }
 }
