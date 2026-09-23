@@ -139,6 +139,11 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
         postponeEnterTransition()
 
         _binding = FragmentAlbumDetailsBinding.bind(view)
+        // بننده عليها فورًا هنا (مش تحت) عشان simpleSongAdapter تتظبط قبل أي
+        // حاجة تانية ممكن تستخدمها - الـ LiveData ممكن يكون عندها قيمة
+        // مخزنة من زيارة سابقة وتنده على showAlbum() فورًا لحظة ما نعمل
+        // .observe() تحت، فمينفعش نأجل الدالة دي أي خطوة كمان.
+        setupRecyclerView()
         mainActivity.addMusicServiceEventListener(detailsViewModel)
 
         // لو الألبوم ده في الكاش، لونه جاهز - بنطبقه فورًا قبل ما الصورة نفسها
@@ -225,7 +230,6 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
             }
         })
 
-        setupRecyclerView()
         detailsViewModel.getAlbum().observe(viewLifecycleOwner) { album ->
             albumArtistExists = !album.albumArtist.isNullOrEmpty()
             showAlbum(album)
@@ -372,26 +376,14 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
         )
         binding.fragmentAlbumContent.songTitle.text = songText
 
-        // سطر الميتاداتا تحت اسم الفنان في الهيدر، بنفس نمط Apple Music
-        // بالظبط: عدد الأغاني • إجمالي المدة. (النوع/Genre هتتضاف تاني لما
-        // تقولي اسم الـ property الصح بتاعه في Song model عندك)
+        // سطر الميتاداتا تحت اسم الفنان في الهيدر، بنفس نمط Apple Music:
+        // عدد الأغاني • السنة (لو موجودة) • إجمالي المدة. (النوع/Genre هتتضاف
+        // تاني لما تقولي اسم الـ property الصح بتاعه في Song model عندك)
         val durationText = MusicUtil.getReadableDurationString(MusicUtil.getTotalDuration(album.songs))
-        binding.albumMetaText.text = listOf(songText, durationText).joinToString(" • ")
+        val yearText = MusicUtil.getYearString(album.year).takeIf { it != "-" }
+        binding.albumMetaText.text = listOfNotNull(songText, yearText, durationText)
+            .joinToString(" • ")
 
-        if (MusicUtil.getYearString(album.year) == "-") {
-            binding.fragmentAlbumContent.albumFooterText.text = String.format(
-                "%s • %s",
-                if (albumArtistExists) album.albumArtist else album.artistName,
-                durationText
-            )
-        } else {
-            binding.fragmentAlbumContent.albumFooterText.text = String.format(
-                "%s • %s • %s",
-                if (albumArtistExists) album.albumArtist else album.artistName,
-                MusicUtil.getYearString(album.year),
-                durationText
-            )
-        }
         loadAlbumCover(album)
         simpleSongAdapter.swapDataSet(album.songs)
         if (albumArtistExists) {
@@ -547,7 +539,6 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
         }
 
         binding.fragmentAlbumContent.songTitle.setTextColor(fgColor)
-        binding.fragmentAlbumContent.albumFooterText.setTextColor(secondaryFgColor)
         binding.fragmentAlbumContent.moreTitle.setTextColor(fgColor)
 
         applyStatusBarAppearance(isLightBackground)
