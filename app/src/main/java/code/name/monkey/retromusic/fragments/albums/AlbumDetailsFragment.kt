@@ -220,12 +220,11 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
             }
         })
 
+        setupRecyclerView()
         detailsViewModel.getAlbum().observe(viewLifecycleOwner) { album ->
             albumArtistExists = !album.albumArtist.isNullOrEmpty()
             showAlbum(album)
         }
-
-        setupRecyclerView()
         binding.albumText.setOnClickListener {
             // If this album's artist tag is actually a combined tag (e.g.
             // "Alan Walker, Au/Ra, Tomine Harket") and multi-artist mode is
@@ -360,18 +359,26 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
             album.songCount
         )
         binding.fragmentAlbumContent.songTitle.text = songText
+
+        // سطر الميتاداتا تحت اسم الفنان في الهيدر، بنفس نمط Apple Music
+        // بالظبط: النوع (لو موجود) • عدد الأغاني • إجمالي المدة.
+        val genre = album.safeGetFirstSong().genre?.takeIf { it.isNotBlank() }
+        val durationText = MusicUtil.getReadableDurationString(MusicUtil.getTotalDuration(album.songs))
+        binding.albumMetaText.text = listOfNotNull(genre, songText, durationText)
+            .joinToString(" • ")
+
         if (MusicUtil.getYearString(album.year) == "-") {
             binding.fragmentAlbumContent.albumFooterText.text = String.format(
                 "%s • %s",
                 if (albumArtistExists) album.albumArtist else album.artistName,
-                MusicUtil.getReadableDurationString(MusicUtil.getTotalDuration(album.songs))
+                durationText
             )
         } else {
             binding.fragmentAlbumContent.albumFooterText.text = String.format(
                 "%s • %s • %s",
                 if (albumArtistExists) album.albumArtist else album.artistName,
                 MusicUtil.getYearString(album.year),
-                MusicUtil.getReadableDurationString(MusicUtil.getTotalDuration(album.songs))
+                durationText
             )
         }
         loadAlbumCover(album)
@@ -507,6 +514,7 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
 
         binding.albumTitle.setTextColor(fgColor)
         binding.albumText.setTextColor(secondaryFgColor)
+        binding.albumMetaText.setTextColor(secondaryFgColor)
 
         val toolbar = binding.toolbar
         val iconColor = ColorUtils.setAlphaComponent(fgColor, TOOLBAR_ICON_ALPHA)
@@ -528,7 +536,8 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
 
         binding.fragmentAlbumContent.shuffleAction.iconTint = ColorStateList.valueOf(fgColor)
         binding.fragmentAlbumContent.addAction.iconTint = ColorStateList.valueOf(fgColor)
-        binding.fragmentAlbumContent.playAction.imageTintList = ColorStateList.valueOf(fgColor)
+        // playAction بقى زرار أبيض ثابت زي Apple Music بالظبط، مبيتلونش
+        // بلون الغلاف زي الدايرتين التانيين.
 
         simpleSongAdapter.setDynamicTextColors(fgColor, secondaryFgColor)
         moreAlbumAdapter?.setDynamicTextColors(fgColor, secondaryFgColor)
