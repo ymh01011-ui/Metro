@@ -19,76 +19,97 @@
             android:layout_height="wrap_content"
             android:orientation="vertical">
 
-            <FrameLayout
+            <!-- الهيدر بقى ConstraintLayout على خلفية مصمتة (لون الصفحة نفسه):
+                 صورة الألبوم مربعة في النص بهامش على الجنبين، وتحتها العنوان/
+                 الفنان/الميتاداتا زي تصميم Apple Music - مش overlay فوق الصورة
+                 زي الأول. المسافة الفعلية فوق (paddingTop) بتتظبط من الكود
+                 حسب ارتفاع التولبار + الـ status bar. -->
+            <androidx.constraintlayout.widget.ConstraintLayout
                 android:id="@+id/headerContainer"
                 android:layout_width="match_parent"
-                android:layout_height="380dp">
+                android:layout_height="wrap_content"
+                android:paddingBottom="24dp">
 
-                <androidx.appcompat.widget.AppCompatImageView
-                    android:id="@+id/image"
-                    android:layout_width="match_parent"
-                    android:layout_height="match_parent"
-                    android:scaleType="centerCrop"
-                    tools:srcCompat="@tools:sample/backgrounds/scenic" />
+                <com.google.android.material.card.MaterialCardView
+                    android:id="@+id/imageCard"
+                    android:layout_width="0dp"
+                    android:layout_height="0dp"
+                    android:layout_marginStart="56dp"
+                    android:layout_marginEnd="56dp"
+                    app:cardBackgroundColor="@android:color/transparent"
+                    app:cardCornerRadius="6dp"
+                    app:cardElevation="14dp"
+                    app:cardUseCompatPadding="false"
+                    app:layout_constraintDimensionRatio="1:1"
+                    app:layout_constraintEnd_toEndOf="parent"
+                    app:layout_constraintStart_toStartOf="parent"
+                    app:layout_constraintTop_toTopOf="parent"
+                    app:strokeWidth="0dp">
 
-                <View
-                    android:id="@+id/headerGradient"
-                    android:layout_width="match_parent"
-                    android:layout_height="match_parent"
-                    android:background="@drawable/header_gradient_bg" />
+                    <androidx.appcompat.widget.AppCompatImageView
+                        android:id="@+id/image"
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:scaleType="centerCrop"
+                        tools:srcCompat="@tools:sample/backgrounds/scenic" />
 
-                <LinearLayout
-                    android:layout_width="match_parent"
+                </com.google.android.material.card.MaterialCardView>
+
+                <code.name.monkey.retromusic.views.BaselineGridTextView
+                    android:id="@+id/albumTitle"
+                    android:layout_width="0dp"
                     android:layout_height="wrap_content"
-                    android:layout_gravity="bottom"
+                    android:layout_marginTop="20dp"
                     android:gravity="center"
-                    android:orientation="vertical"
+                    android:maxLines="2"
                     android:paddingStart="24dp"
                     android:paddingEnd="24dp"
-                    android:paddingBottom="12dp">
+                    android:textAlignment="center"
+                    android:textAppearance="@style/TextViewHeadline5"
+                    android:textColor="@android:color/white"
+                    android:textStyle="bold"
+                    app:layout_constraintEnd_toEndOf="parent"
+                    app:layout_constraintStart_toStartOf="parent"
+                    app:layout_constraintTop_toBottomOf="@id/imageCard"
+                    tools:text="Man's Best Friend" />
 
-                    <code.name.monkey.retromusic.views.BaselineGridTextView
-                        android:id="@+id/albumTitle"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:gravity="center"
-                        android:maxLines="2"
-                        android:textAlignment="center"
-                        android:textAppearance="@style/TextViewHeadline5"
-                        android:textColor="@android:color/white"
-                        android:textStyle="bold"
-                        tools:text="Man's Best Friend" />
+                <com.google.android.material.textview.MaterialTextView
+                    android:id="@+id/albumText"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:background="?attr/selectableItemBackgroundBorderless"
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:gravity="center"
+                    android:maxLines="1"
+                    android:paddingStart="4dp"
+                    android:paddingEnd="4dp"
+                    android:textAppearance="@style/TextViewSubtitle1"
+                    android:textColor="#E6FFFFFF"
+                    app:layout_constraintEnd_toEndOf="parent"
+                    app:layout_constraintStart_toStartOf="parent"
+                    app:layout_constraintTop_toBottomOf="@id/albumTitle"
+                    tools:text="Sabrina Carpenter" />
 
-                    <com.google.android.material.textview.MaterialTextView
-                        android:id="@+id/albumText"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="2dp"
-                        android:background="?attr/selectableItemBackgroundBorderless"
-                        android:clickable="true"
-                        android:focusable="true"
-                        android:gravity="center"
-                        android:maxLines="1"
-                        android:paddingStart="4dp"
-                        android:paddingEnd="4dp"
-                        android:textAppearance="@style/TextViewSubtitle1"
-                        android:textColor="#E6FFFFFF"
-                        tools:text="Sabrina Carpenter" />
+                <!-- سطر الميتاداتا زي Apple Music بالظبط: عدد الأغاني •
+                     إجمالي المدة. -->
+                <com.google.android.material.textview.MaterialTextView
+                    android:id="@+id/albumMetaText"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:gravity="center"
+                    android:maxLines="1"
+                    android:textAppearance="@style/TextViewCaption"
+                    android:textColor="#B3FFFFFF"
+                    app:layout_constraintBottom_toBottomOf="parent"
+                    app:layout_constraintEnd_toEndOf="parent"
+                    app:layout_constraintStart_toStartOf="parent"
+                    app:layout_constraintTop_toBottomOf="@id/albumText"
+                    tools:text="Pop • 12 Songs • 43 min" />
 
-                    <!-- سطر الميتاداتا زي Apple Music بالظبط: النوع • عدد
-                         الأغاني • إجمالي المدة. -->
-                    <com.google.android.material.textview.MaterialTextView
-                        android:id="@+id/albumMetaText"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="2dp"
-                        android:gravity="center"
-                        android:maxLines="1"
-                        android:textAppearance="@style/TextViewCaption"
-                        android:textColor="#B3FFFFFF"
-                        tools:text="Pop • 12 Songs • 43 min" />
-                </LinearLayout>
-            </FrameLayout>
+            </androidx.constraintlayout.widget.ConstraintLayout>
 
             <include
                 android:id="@+id/fragment_album_content"
@@ -97,9 +118,8 @@
         </LinearLayout>
     </androidx.core.widget.NestedScrollView>
 
-    <!-- الـ toolbar جوه rootLayout مباشرة، مش جوه الصورة/الهيدر، بنفس فلسفة
-         صفحة الفنان بالظبط: عايم edge-to-edge فوق الشاشة كلها طول الوقت،
-         شفاف في الأول وبيتلون تدريجيًا وأنت بتسحب لتحت. -->
+    <!-- الـ toolbar جوه rootLayout مباشرة، عايم edge-to-edge فوق الشاشة
+         كلها طول الوقت، بنفس الفلسفة القديمة. -->
     <com.google.android.material.appbar.AppBarLayout
         android:id="@+id/appBarLayout"
         android:layout_width="match_parent"
