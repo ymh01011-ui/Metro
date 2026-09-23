@@ -111,6 +111,11 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
     private var cachedBitmap: Bitmap? = null
     private var cachedGradientStops: IntArray? = null
     private var hasExtractedColors: Boolean = false
+    // نفس فكرة صفحة الفنان بالظبط: بنبدأ الأنيميشن أول ما الهيدر (الصورة
+    // واللون) يبقوا جاهزين، من غير ما نستنى الـ layout pass الكامل بتاع
+    // الصفحة اللي بتتأخر بسبب قايمة الأغاني (RecyclerView جوه NestedScrollView
+    // بارتفاع wrap_content بياخد وقت measure أطول كل ما الأغاني زادت).
+    private var transitionStarted: Boolean = false
     private var albumTitleBottomInScrollContent: Int = -1
     private var foregroundColor: Int = Color.WHITE
     private var secondaryForegroundColor: Int = Color.WHITE
@@ -278,9 +283,16 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
         binding.appBarLayout?.statusBarForeground =
             MaterialShapeDrawable.createWithElevationOverlay(requireContext())
 
-        view.doOnPreDraw {
-            startPostponedEnterTransition()
-        }
+        // شبكة أمان بس - المفروض releaseEnterTransition() تترنّد قبل كده من
+        // المسار المخزن في الكاش تحت أو من extractColorsAndApplyGradient/
+        // onLoadFailed.
+        view.postDelayed({ releaseEnterTransition() }, 400L)
+    }
+
+    private fun releaseEnterTransition() {
+        if (transitionStarted) return
+        transitionStarted = true
+        startPostponedEnterTransition()
     }
 
     private fun showArtistPickerDialog(artists: List<Artist>) {
@@ -361,11 +373,10 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
         binding.fragmentAlbumContent.songTitle.text = songText
 
         // سطر الميتاداتا تحت اسم الفنان في الهيدر، بنفس نمط Apple Music
-        // بالظبط: النوع (لو موجود) • عدد الأغاني • إجمالي المدة.
-        val genre = album.safeGetFirstSong().genre?.takeIf { it.isNotBlank() }
+        // بالظبط: عدد الأغاني • إجمالي المدة. (النوع/Genre هتتضاف تاني لما
+        // تقولي اسم الـ property الصح بتاعه في Song model عندك)
         val durationText = MusicUtil.getReadableDurationString(MusicUtil.getTotalDuration(album.songs))
-        binding.albumMetaText.text = listOfNotNull(genre, songText, durationText)
-            .joinToString(" • ")
+        binding.albumMetaText.text = listOf(songText, durationText).joinToString(" • ")
 
         if (MusicUtil.getYearString(album.year) == "-") {
             binding.fragmentAlbumContent.albumFooterText.text = String.format(
@@ -431,6 +442,7 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
         if (cachedBitmap != null && hasExtractedColors && cachedGradientStops != null) {
             binding.image.setImageBitmap(cachedBitmap)
             setColors(dominantBackgroundColor, cachedGradientStops!!)
+            view?.post { releaseEnterTransition() }
             return
         }
 
@@ -453,6 +465,15 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
                 ) {
                     cachedBitmap = resource
                     extractColorsAndApplyGradient(albumId, resource)
+                }
+
+                override fun onLoadFailed(errorDrawable: Drawable?) {
+                    // لو الصورة فشلت تتحمل خالص، منسيبش الأنيميشن معلقة لحد
+                    // الأبد.
+                    if (_binding != null && errorDrawable != null) {
+                        binding.image.setImageDrawable(errorDrawable)
+                    }
+                    releaseEnterTransition()
                 }
 
                 override fun onLoadCleared(placeholder: Drawable?) {
@@ -486,6 +507,7 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
                     binding.image.setImageBitmap(bitmap)
                     setColors(dominantColor, gradientStops)
                 }
+                releaseEnterTransition()
             }
         }
     }
@@ -531,7 +553,6 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
         applyStatusBarAppearance(isLightBackground)
 
         binding.fragmentAlbumContent.shuffleActionGlass.setBackdropColor(backgroundColor)
-        binding.fragmentAlbumContent.playActionGlass.setBackdropColor(backgroundColor)
         binding.fragmentAlbumContent.addActionGlass.setBackdropColor(backgroundColor)
 
         binding.fragmentAlbumContent.shuffleAction.iconTint = ColorStateList.valueOf(fgColor)
