@@ -21,7 +21,6 @@ import android.graphics.Bitmap
 import android.graphics.Color
 import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.Drawable
-import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
 import android.util.TypedValue
 import android.view.*
@@ -83,7 +82,6 @@ import org.koin.androidx.viewmodel.ext.android.viewModel
 import org.koin.core.parameter.parametersOf
 import java.text.Collator
 
-private const val FADE_START_FRACTION = 0.42f
 private const val TOOLBAR_ICON_ALPHA = 0xCC // ~80%، بنفس فلسفة صفحة الفنان بالظبط
 
 class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_details),
@@ -109,7 +107,6 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
     private var customOverflowIcon: ImageView? = null
     private var dominantBackgroundColor: Int = Color.BLACK
     private var cachedBitmap: Bitmap? = null
-    private var cachedGradientStops: IntArray? = null
     private var hasExtractedColors: Boolean = false
     // نفس فكرة صفحة الفنان بالظبط: بنبدأ الأنيميشن أول ما الهيدر (الصورة
     // واللون) يبقوا جاهزين، من غير ما نستنى الـ layout pass الكامل بتاع
@@ -152,7 +149,7 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
         AlbumDetailsCache.getColor(arguments.extraAlbumId)?.let { cachedColor ->
             dominantBackgroundColor = cachedColor
             hasExtractedColors = true
-            setColors(cachedColor, ArtistPaletteEngine.buildSeamlessGradient(cachedColor, FADE_START_FRACTION))
+            setColors(cachedColor)
         }
         val initialColor = if (hasExtractedColors) dominantBackgroundColor else neutralFallbackColor()
         binding.rootLayout.setBackgroundColor(initialColor)
@@ -183,6 +180,11 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
             ViewCompat.setOnApplyWindowInsetsListener(appBar) { v, insets ->
                 val statusBarInsets = insets.getInsets(WindowInsetsCompat.Type.statusBars())
                 v.updatePadding(top = statusBarInsets.top)
+                // الهيدر (صورة الألبوم المربعة) لازم يبدأ تحت التولبار مش
+                // وراه، بما إنه بقى مربع في النص مش صورة full-bleed زي الأول.
+                binding.headerContainer.updatePadding(
+                    top = statusBarInsets.top + actionBarSizePx() + (16 * resources.displayMetrics.density).toInt()
+                )
                 insets
             }
         }
@@ -290,7 +292,7 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
             MaterialShapeDrawable.createWithElevationOverlay(requireContext())
 
         // شبكة أمان بس - المفروض releaseEnterTransition() تترنّد قبل كده من
-        // المسار المخزن في الكاش تحت أو من extractColorsAndApplyGradient/
+        // المسار المخزن في الكاش تحت أو من extractColorAndApplyBackground/
         // onLoadFailed.
         view.postDelayed({ releaseEnterTransition() }, 400L)
     }
@@ -432,7 +434,7 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
         )
         binding.fragmentAlbumContent.moreRecyclerView.adapter = albumAdapter
         // لو الألوان اتحسبت خلاص قبل ما القائمة دي توصل، نطبقها فورًا -
-        // وإلا هتتطبق مع أول extractColorsAndApplyGradient لما الصورة توصل.
+        // وإلا هتتطبق مع أول extractColorAndApplyBackground لما الصورة توصل.
         if (hasExtractedColors) {
             albumAdapter.setDynamicTextColors(foregroundColor, secondaryForegroundColor)
         }
@@ -448,9 +450,9 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
     }
 
     private fun loadAlbumCover(album: Album) {
-        if (cachedBitmap != null && hasExtractedColors && cachedGradientStops != null) {
+        if (cachedBitmap != null && hasExtractedColors) {
             binding.image.setImageBitmap(cachedBitmap)
-            setColors(dominantBackgroundColor, cachedGradientStops!!)
+            setColors(dominantBackgroundColor)
             view?.post { releaseEnterTransition() }
             return
         }
@@ -473,7 +475,7 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
                     transition: Transition<in Bitmap>?
                 ) {
                     cachedBitmap = resource
-                    extractColorsAndApplyGradient(albumId, resource)
+                    extractColorAndApplyBackground(albumId, resource)
                 }
 
                 override fun onLoadFailed(errorDrawable: Drawable?) {
@@ -493,45 +495,33 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
             })
     }
 
-    private fun extractColorsAndApplyGradient(albumId: Long, bitmap: Bitmap) {
+    // بيستخدم AlbumPaletteEngine (ملف مستقل عن ArtistPaletteEngine بتاع
+    // صفحة الفنان) - بيمسح الصورة كلها ويلاقي أكتر لون متكرر فعليًا، مع
+    // استثناء الأسود لو نسبته أقل من 35%. مفيش gradient هنا أصلاً: الصورة
+    // بقت مربعة في النص وخلفية الصفحة مصمتة بنفس اللون من الأول للآخر.
+    private fun extractColorAndApplyBackground(albumId: Long, bitmap: Bitmap) {
         lifecycleScope.launch(Dispatchers.Default) {
-            val dominantColor = ArtistPaletteEngine.findDominantColorAtSubtitleRegion(
-                bitmap = bitmap,
-                startRatio = 0.68f,
-                endRatio = 0.78f
-            )
-
-            val gradientStops = ArtistPaletteEngine.buildSeamlessGradient(
-                blendColor = dominantColor,
-                fadeStart = FADE_START_FRACTION
-            )
+            val mostFrequentColor = AlbumPaletteEngine.findMostFrequentColor(bitmap)
 
             withContext(Dispatchers.Main) {
                 hasExtractedColors = true
-                cachedGradientStops = gradientStops
-                dominantBackgroundColor = dominantColor
-                AlbumDetailsCache.putColor(albumId, dominantColor)
+                dominantBackgroundColor = mostFrequentColor
+                AlbumDetailsCache.putColor(albumId, mostFrequentColor)
 
                 if (_binding != null) {
                     binding.image.setImageBitmap(bitmap)
-                    setColors(dominantColor, gradientStops)
+                    setColors(mostFrequentColor)
                 }
                 releaseEnterTransition()
             }
         }
     }
 
-    private fun setColors(backgroundColor: Int, gradientStops: IntArray) {
+    private fun setColors(backgroundColor: Int) {
         if (_binding == null) return
 
         binding.rootLayout.setBackgroundColor(backgroundColor)
         binding.appBarLayout?.setBackgroundColor(ColorUtils.setAlphaComponent(backgroundColor, 0))
-
-        val gradientDrawable = GradientDrawable(
-            GradientDrawable.Orientation.TOP_BOTTOM,
-            gradientStops
-        )
-        binding.headerGradient?.let { it.background = gradientDrawable }
 
         applyContrastingForegroundColor(backgroundColor)
     }
@@ -596,6 +586,20 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
             com.google.android.material.R.attr.colorSurface, typedValue, true
         )
         return if (resolved) typedValue.data else Color.BLACK
+    }
+
+    // ارتفاع التولبار الفعلي (?attr/actionBarSize) - بنستخدمه عشان نحسب
+    // مسافة padding-top الصح لهيدر صورة الألبوم، عشان ميختفيش تحت التولبار.
+    private fun actionBarSizePx(): Int {
+        val typedValue = TypedValue()
+        val resolved = requireContext().theme.resolveAttribute(
+            androidx.appcompat.R.attr.actionBarSize, typedValue, true
+        )
+        return if (resolved) {
+            TypedValue.complexToDimensionPixelSize(typedValue.data, resources.displayMetrics)
+        } else {
+            (56 * resources.displayMetrics.density).toInt()
+        }
     }
 
     // نفس الحيلة بالظبط اللي في صفحة الفنان: أيقونة النقط الحقيقية بتاعة
@@ -776,4 +780,4 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
         }
         _binding = null
     }
-}
+}7
