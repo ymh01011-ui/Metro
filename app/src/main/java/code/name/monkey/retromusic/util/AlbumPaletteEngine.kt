@@ -17,6 +17,10 @@ object AlbumPaletteEngine {
 
     private const val BLACK_MIN_SHARE = 0.35f
     private const val BLACK_LUMINANCE_THRESHOLD = 0.05
+    // لو حواف الصورة (فوق/تحت/يمين/شمال) لونها متكرر بنسبة أعلى من كده،
+    // بنستخدم لون الحواف ده كخلفية للصفحة بدل أكتر لون متكرر في الصورة
+    // كلها - غالبًا معناها إن الصورة أصلاً عليها خلفية مصمتة واحدة.
+    private const val EDGE_DOMINANT_MIN_SHARE = 0.55f
     // بنجمع البكسلات المتقاربة في نفس "الحتة اللونية" بدل ما نقارن كل بكسل
     // بقيمته بالظبط - غير كده أي ضغط/تدرج بسيط هيخلي كل بكسل تقريبًا قيمة
     // مختلفة شعرة عن التاني وميبقاش في حاجة "متكررة" أصلاً.
@@ -24,6 +28,17 @@ object AlbumPaletteEngine {
     // حد أقصى لعدد النقط اللي بنعدّها - أسرع بكتير من مسح كل بكسل في صورة
     // كبيرة من غير ما يأثر على النتيجة عمليًا.
     private const val TARGET_SAMPLES = 150_000
+
+    /**
+     * أول حاجة بيشوفها: لو حواف الصورة الأربعة (فوق/تحت/يمين/شمال) كلها
+     * أو أغلبها (55%+) نفس اللون، بيرجع لون الحواف ده على طول. لو لأ،
+     * بيرجع أكتر لون متكرر في الصورة كلها (findMostFrequentColor).
+     *
+     * لازم تتنادى من غير الـ Main thread (بتمسح بكسلات الـ Bitmap).
+     */
+    fun findBackgroundColor(bitmap: Bitmap): Int {
+        return findDominantEdgeColor(bitmap) ?: findMostFrequentColor(bitmap)
+    }
 
     /**
      * لازم تتنادى من غير الـ Main thread (بتمسح بكسلات الـ Bitmap).
@@ -68,6 +83,47 @@ object AlbumPaletteEngine {
             sortedByFrequency.size > 1
 
         return if (shouldSkipBlack) dequantize(sortedByFrequency[1].key) else topColor
+    }
+
+    private fun findDominantEdgeColor(bitmap: Bitmap): Int? {
+        val width = bitmap.width
+        val height = bitmap.height
+        if (width < 2 || height < 2) return null
+
+        val counts = HashMap<Int, Int>()
+        var edgeSamples = 0
+
+        fun sample(x: Int, y: Int) {
+            val pixel = bitmap.getPixel(x, y)
+            if (Color.alpha(pixel) >= 200) {
+                val bucket = quantize(pixel)
+                counts[bucket] = (counts[bucket] ?: 0) + 1
+                edgeSamples++
+            }
+        }
+
+        val strideX = maxOf(1, width / 100)
+        val strideY = maxOf(1, height / 100)
+
+        var x = 0
+        while (x < width) {
+            sample(x, 0)
+            sample(x, height - 1)
+            x += strideX
+        }
+        var y = 0
+        while (y < height) {
+            sample(0, y)
+            sample(width - 1, y)
+            y += strideY
+        }
+
+        if (edgeSamples == 0 || counts.isEmpty()) return null
+
+        val top = counts.entries.maxByOrNull { it.value } ?: return null
+        val topShare = top.value.toFloat() / edgeSamples
+
+        return if (topShare >= EDGE_DOMINANT_MIN_SHARE) dequantize(top.key) else null
     }
 
     private fun isBlackish(color: Int): Boolean =
