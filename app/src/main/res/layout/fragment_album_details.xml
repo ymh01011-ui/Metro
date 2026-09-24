@@ -23,13 +23,30 @@
                  صورة الألبوم مربعة في النص بهامش على الجنبين، وتحتها العنوان/
                  الفنان/الميتاداتا زي تصميم Apple Music - مش overlay فوق الصورة
                  زي الأول. المسافة الفعلية فوق (paddingTop) بتتظبط من الكود
-                 حسب ارتفاع التولبار + الـ status bar. مفيش ظل حوالين الصورة -
-                 هي واحدة مع باقي الشاشة. -->
+                 حسب ارتفاع التولبار + الـ status bar. الظل حوالين الصورة
+                 مرسوم يدوي (bg_album_art_shadow) مش cardElevation، عشان
+                 يطلع ناعم ومتناسق في كل الاتجاهات. -->
             <androidx.constraintlayout.widget.ConstraintLayout
                 android:id="@+id/headerContainer"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:paddingBottom="24dp">
+
+                <!-- ظل ناعم مرسوم يدوي (bg_album_art_shadow) بدل الـ elevation
+                     الأصلية - بيبان زيادة 8dp حوالين الكارت من كل الاتجاهات
+                     وبيتخبى معظمه تحت الكارت نفسه. -->
+                <View
+                    android:id="@+id/imageShadow"
+                    android:layout_width="0dp"
+                    android:layout_height="0dp"
+                    android:layout_marginStart="48dp"
+                    android:layout_marginEnd="48dp"
+                    android:layout_marginTop="-8dp"
+                    android:background="@drawable/bg_album_art_shadow"
+                    app:layout_constraintDimensionRatio="1:1"
+                    app:layout_constraintEnd_toEndOf="parent"
+                    app:layout_constraintStart_toStartOf="parent"
+                    app:layout_constraintTop_toTopOf="parent" />
 
                 <com.google.android.material.card.MaterialCardView
                     android:id="@+id/imageCard"
