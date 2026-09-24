@@ -139,6 +139,18 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
         _binding = FragmentAlbumDetailsBinding.bind(view)
         mainActivity.addMusicServiceEventListener(detailsViewModel)
 
+        // إعدادات الظل الناعم حوالين صورة الألبوم - الـ View نفسها أكبر من
+        // الكارت بـ 16dp على كل جانب (شوف الهوامش في XML)، والـ inset هنا
+        // لازم يساوي نفس الـ 16dp دي عشان المستطيل المرسوم يتراصف بالظبط
+        // على حواف الكارت.
+        binding.imageShadow.apply {
+            val density = resources.displayMetrics.density
+            cornerRadiusPx = 6f * density
+            blurRadiusPx = 18f * density
+            shadowInsetPx = 16f * density
+            shadowColor = 0x3D000000
+        }
+
         if (originalStatusBarLight == null) {
             originalStatusBarLight = (requireActivity().window.decorView.systemUiVisibility and
                 android.view.View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR) != 0
