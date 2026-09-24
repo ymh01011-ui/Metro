@@ -1,10 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-     ظل ناعم متدرّج لصورة الألبوم، مرسوم يدوي (طبقات مربعات دوائرية
-     الحواف بشفافية متزايدة) بدل ما نعتمد على cardElevation الأصلية بتاع
-     Android. الفايدة: بيطلع متناسق وناعم في كل الاتجاهات على كل
-     الأجهزة/الإصدارات، من غير ما "يتقطع" في حتة معينة زي ما كان بيحصل
-     مع الـ elevation الأصلية.
+     ظل ناعم متدرّج لصورة الألبوم، مرسوم يدوي (طبقات مربعات دوائرية الحواف
+     بشفافية متزايدة تدريجيًا على مساحة أكبر) بدل ما نعتمد على cardElevation
+     الأصلية بتاع Android - عشان يطلع ناعم ومتصل زي ظل حقيقي (soft blur)
+     مش حلقات متقطعة، وبيبان بنفس القوة في الاتجاهات الأربعة كلها.
 -->
 <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
 
@@ -14,63 +13,85 @@
         android:right="0dp"
         android:bottom="0dp">
         <shape android:shape="rectangle">
-            <corners android:radius="14dp" />
+            <corners android:radius="26dp" />
+            <solid android:color="#04000000" />
+        </shape>
+    </item>
+
+    <item
+        android:left="3dp"
+        android:top="3dp"
+        android:right="3dp"
+        android:bottom="3dp">
+        <shape android:shape="rectangle">
+            <corners android:radius="23dp" />
             <solid android:color="#08000000" />
         </shape>
     </item>
 
     <item
-        android:left="1dp"
-        android:top="1dp"
-        android:right="1dp"
-        android:bottom="1dp">
+        android:left="6dp"
+        android:top="6dp"
+        android:right="6dp"
+        android:bottom="6dp">
         <shape android:shape="rectangle">
-            <corners android:radius="13dp" />
-            <solid android:color="#0F000000" />
+            <corners android:radius="20dp" />
+            <solid android:color="#0C000000" />
         </shape>
     </item>
 
     <item
-        android:left="2.5dp"
-        android:top="2.5dp"
-        android:right="2.5dp"
-        android:bottom="2.5dp">
+        android:left="9dp"
+        android:top="9dp"
+        android:right="9dp"
+        android:bottom="9dp">
         <shape android:shape="rectangle">
-            <corners android:radius="12dp" />
-            <solid android:color="#17000000" />
+            <corners android:radius="17dp" />
+            <solid android:color="#10000000" />
         </shape>
     </item>
 
     <item
-        android:left="4dp"
-        android:top="4dp"
-        android:right="4dp"
-        android:bottom="4dp">
+        android:left="12dp"
+        android:top="12dp"
+        android:right="12dp"
+        android:bottom="12dp">
         <shape android:shape="rectangle">
-            <corners android:radius="10dp" />
-            <solid android:color="#1F000000" />
+            <corners android:radius="14dp" />
+            <solid android:color="#16000000" />
         </shape>
     </item>
 
     <item
-        android:left="5.5dp"
-        android:top="5.5dp"
-        android:right="5.5dp"
-        android:bottom="5.5dp">
+        android:left="15dp"
+        android:top="15dp"
+        android:right="15dp"
+        android:bottom="15dp">
         <shape android:shape="rectangle">
-            <corners android:radius="9dp" />
-            <solid android:color="#28000000" />
+            <corners android:radius="11dp" />
+            <solid android:color="#1D000000" />
         </shape>
     </item>
 
     <item
-        android:left="7dp"
-        android:top="7dp"
-        android:right="7dp"
-        android:bottom="7dp">
+        android:left="17.5dp"
+        android:top="17.5dp"
+        android:right="17.5dp"
+        android:bottom="17.5dp">
         <shape android:shape="rectangle">
             <corners android:radius="8dp" />
-            <solid android:color="#33000000" />
+            <solid android:color="#25000000" />
+        </shape>
+    </item>
+
+    <item
+        android:left="20dp"
+        android:top="20dp"
+        android:right="20dp"
+        android:bottom="20dp">
+        <shape android:shape="rectangle">
+            <corners android:radius="6dp" />
+            <solid android:color="#30000000" />
         </shape>
     </item>
 
