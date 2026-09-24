@@ -33,6 +33,14 @@ object AlbumPaletteEngine {
         val height = bitmap.height
         if (width == 0 || height == 0) return Color.BLACK
 
+        // قراءة كل بكسلات الصورة دفعة واحدة (نسخة native واحدة) بدل ما ننده
+        // getPixel() لكل بكسل لوحده - ده كان سبب البطء الحقيقي اللي زوّد وقت
+        // فتح الصفحة: كل نداية getPixel() بتعدي حدود الـ JNI بمفردها، فـ 150
+        // ألف نداية منفصلة كانت أبطأ بمراحل من نسخة واحدة للصورة كلها زي
+        // اللي بتستخدمها صفحة الفنان (بتاخد عينة من منطقة صغيرة بس أصلاً).
+        val pixels = IntArray(width * height)
+        bitmap.getPixels(pixels, 0, width, 0, 0, width, height)
+
         val totalPixels = width.toLong() * height.toLong()
         val stride = maxOf(1, Math.sqrt(totalPixels.toDouble() / TARGET_SAMPLES).toInt())
 
@@ -41,9 +49,10 @@ object AlbumPaletteEngine {
 
         var y = 0
         while (y < height) {
+            val rowOffset = y * width
             var x = 0
             while (x < width) {
-                val pixel = bitmap.getPixel(x, y)
+                val pixel = pixels[rowOffset + x]
                 // بنتجاهل البكسلات الشفافة اللي ممكن تكون على حواف صورة PNG
                 // عشان ما تلخبطش الإحصاء بلون "فاضي".
                 if (Color.alpha(pixel) >= 200) {
