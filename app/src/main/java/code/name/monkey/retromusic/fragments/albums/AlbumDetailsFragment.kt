@@ -376,32 +376,19 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
         // اتشال.
         binding.image.transitionName = "${getString(R.string.transition_album_art)}_${album.id}"
 
-        val songText = resources.getQuantityString(
-            R.plurals.albumSongs,
-            album.songCount,
-            album.songCount
-        )
-        binding.fragmentAlbumContent.songTitle.text = songText
+        // بنبني نص العدد يدوي بدل الاعتماد على R.plurals.albumSongs، اللي
+        // شكله ناقصه %d في تعريفه (كان بيطبع "Songs" من غير رقم).
+        val songCountText = if (album.songCount == 1) "1 song" else "${album.songCount} songs"
+        binding.fragmentAlbumContent.songTitle.text = songCountText
 
-        // سطر الميتاداتا تحت اسم الفنان في الهيدر، بنفس نمط Apple Music
-        // بالظبط: عدد الأغاني • إجمالي المدة. (النوع/Genre هتتضاف تاني لما
-        // تقولي اسم الـ property الصح بتاعه في Song model عندك)
-        val durationText = MusicUtil.getReadableDurationString(MusicUtil.getTotalDuration(album.songs))
-        binding.albumMetaText.text = listOf(songText, durationText).joinToString(" • ")
-
-        if (MusicUtil.getYearString(album.year) == "-") {
-            binding.fragmentAlbumContent.albumFooterText.text = String.format(
-                "%s • %s",
-                if (albumArtistExists) album.albumArtist else album.artistName,
-                durationText
-            )
+        // سطر الميتاداتا تحت اسم الألبوم/الفنان في الهيدر، بالشكل المطلوب:
+        // السنة • عدد الأغاني. (الجانر هينضاف قبل السنة أول ما تقولي اسم
+        // الـ property بتاعه في Album/Song model عندك)
+        val albumYear = MusicUtil.getYearString(album.year)
+        binding.albumMetaText.text = if (albumYear == "-") {
+            songCountText
         } else {
-            binding.fragmentAlbumContent.albumFooterText.text = String.format(
-                "%s • %s • %s",
-                if (albumArtistExists) album.albumArtist else album.artistName,
-                MusicUtil.getYearString(album.year),
-                durationText
-            )
+            "$albumYear • $songCountText"
         }
         loadAlbumCover(album)
         simpleSongAdapter.swapDataSet(album.songs)
@@ -501,7 +488,7 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
     // بقت مربعة في النص وخلفية الصفحة مصمتة بنفس اللون من الأول للآخر.
     private fun extractColorAndApplyBackground(albumId: Long, bitmap: Bitmap) {
         lifecycleScope.launch(Dispatchers.Default) {
-            val mostFrequentColor = AlbumPaletteEngine.findBackgroundColor(bitmap)
+            val mostFrequentColor = AlbumPaletteEngine.findMostFrequentColor(bitmap)
 
             withContext(Dispatchers.Main) {
                 hasExtractedColors = true
@@ -546,7 +533,6 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
         }
 
         binding.fragmentAlbumContent.songTitle.setTextColor(fgColor)
-        binding.fragmentAlbumContent.albumFooterText.setTextColor(secondaryFgColor)
         binding.fragmentAlbumContent.moreTitle.setTextColor(fgColor)
 
         applyStatusBarAppearance(isLightBackground)
