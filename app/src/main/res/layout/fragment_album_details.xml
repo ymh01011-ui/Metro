@@ -24,25 +24,24 @@
                  الفنان/الميتاداتا زي تصميم Apple Music - مش overlay فوق الصورة
                  زي الأول. المسافة الفعلية فوق (paddingTop) بتتظبط من الكود
                  حسب ارتفاع التولبار + الـ status bar. الظل حوالين الصورة
-                 مرسوم يدوي (bg_album_art_shadow) مش cardElevation، عشان
-                 يطلع ناعم ومتناسق في كل الاتجاهات. -->
+                 عبارة عن SoftShadowView (blur حقيقي) مش cardElevation ولا
+                 layer-list، عشان يطلع ناعم بدون أي حلقات أو تقطيع. -->
             <androidx.constraintlayout.widget.ConstraintLayout
                 android:id="@+id/headerContainer"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:paddingBottom="24dp">
 
-                <!-- ظل ناعم مرسوم يدوي (bg_album_art_shadow) بدل الـ elevation
-                     الأصلية - بيبان زيادة 20dp حوالين الكارت من كل الاتجاهات
-                     وبيتخبى الجزء الداخلي منه تحت الكارت نفسه. -->
-                <View
+                <!-- ظل ناعم حقيقي (SoftShadowView) بدل الـ elevation الأصلية
+                     وبدل طبقات layer-list اللي كانت بتبان كحلقات (banding).
+                     الأبعاد والـ corner radius والـ blur بتتظبط من الكود. -->
+                <code.name.monkey.retromusic.views.SoftShadowView
                     android:id="@+id/imageShadow"
                     android:layout_width="0dp"
                     android:layout_height="0dp"
-                    android:layout_marginStart="36dp"
-                    android:layout_marginEnd="36dp"
-                    android:layout_marginTop="-20dp"
-                    android:background="@drawable/bg_album_art_shadow"
+                    android:layout_marginStart="40dp"
+                    android:layout_marginEnd="40dp"
+                    android:layout_marginTop="-16dp"
                     app:layout_constraintDimensionRatio="1:1"
                     app:layout_constraintEnd_toEndOf="parent"
                     app:layout_constraintStart_toStartOf="parent"
