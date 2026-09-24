@@ -21,48 +21,48 @@ object AlbumPaletteEngine {
     // بقيمته بالظبط - غير كده أي ضغط/تدرج بسيط هيخلي كل بكسل تقريبًا قيمة
     // مختلفة شعرة عن التاني وميبقاش في حاجة "متكررة" أصلاً.
     private const val QUANTIZE_STEP = 16
-    // حد أقصى لعدد النقط اللي بنعدّها - أسرع بكتير من مسح كل بكسل في صورة
-    // كبيرة من غير ما يأثر على النتيجة عمليًا.
-    private const val TARGET_SAMPLES = 150_000
+    // بنصغّر الصورة لمربع بالحجم ده قبل ما نحسب الألوان، بدل ما نتعامل مع
+    // حجمها الأصلي (ممكن يوصل 2048×2048). ده هو السبب الحقيقي اللي كان
+    // لسه بيبوّظ سرعة الفتح حتى بعد استخدام getPixels() دفعة واحدة: كنا
+    // بنعمل allocate لـ array بـ4 مليون خانة (16 ميجا) وننسخها كل مرة
+    // بيتفتح فيها ألبوم جديد - أتقل بكتير من العينة الصغيرة اللي بتاخدها
+    // صفحة الفنان من جزء من الصورة بس. التصغير نفسه عملية رسم واحدة سريعة
+    // ومحسّنة من النظام (مش loop بتاعنا)، وبعده بنمسح الصورة المصغّرة كلها.
+    private const val THUMBNAIL_SIZE = 120
 
     /**
-     * لازم تتنادى من غير الـ Main thread (بتمسح بكسلات الـ Bitmap).
+     * لازم تتنادى من غير الـ Main thread (بتعمل تصغير ومسح بكسلات).
      */
     fun findMostFrequentColor(bitmap: Bitmap): Int {
         val width = bitmap.width
         val height = bitmap.height
         if (width == 0 || height == 0) return Color.BLACK
 
-        // قراءة كل بكسلات الصورة دفعة واحدة (نسخة native واحدة) بدل ما ننده
-        // getPixel() لكل بكسل لوحده - ده كان سبب البطء الحقيقي اللي زوّد وقت
-        // فتح الصفحة: كل نداية getPixel() بتعدي حدود الـ JNI بمفردها، فـ 150
-        // ألف نداية منفصلة كانت أبطأ بمراحل من نسخة واحدة للصورة كلها زي
-        // اللي بتستخدمها صفحة الفنان (بتاخد عينة من منطقة صغيرة بس أصلاً).
-        val pixels = IntArray(width * height)
-        bitmap.getPixels(pixels, 0, width, 0, 0, width, height)
+        val thumbnail = try {
+            Bitmap.createScaledBitmap(bitmap, THUMBNAIL_SIZE, THUMBNAIL_SIZE, true)
+        } catch (e: Exception) {
+            return Color.BLACK
+        }
 
-        val totalPixels = width.toLong() * height.toLong()
-        val stride = maxOf(1, Math.sqrt(totalPixels.toDouble() / TARGET_SAMPLES).toInt())
+        val thumbWidth = thumbnail.width
+        val thumbHeight = thumbnail.height
+        val pixels = IntArray(thumbWidth * thumbHeight)
+        thumbnail.getPixels(pixels, 0, thumbWidth, 0, 0, thumbWidth, thumbHeight)
+        if (thumbnail !== bitmap) {
+            thumbnail.recycle()
+        }
 
         val counts = HashMap<Int, Int>()
         var sampledPixels = 0
 
-        var y = 0
-        while (y < height) {
-            val rowOffset = y * width
-            var x = 0
-            while (x < width) {
-                val pixel = pixels[rowOffset + x]
-                // بنتجاهل البكسلات الشفافة اللي ممكن تكون على حواف صورة PNG
-                // عشان ما تلخبطش الإحصاء بلون "فاضي".
-                if (Color.alpha(pixel) >= 200) {
-                    val bucket = quantize(pixel)
-                    counts[bucket] = (counts[bucket] ?: 0) + 1
-                    sampledPixels++
-                }
-                x += stride
+        for (pixel in pixels) {
+            // بنتجاهل البكسلات الشفافة اللي ممكن تكون على حواف صورة PNG
+            // عشان ما تلخبطش الإحصاء بلون "فاضي".
+            if (Color.alpha(pixel) >= 200) {
+                val bucket = quantize(pixel)
+                counts[bucket] = (counts[bucket] ?: 0) + 1
+                sampledPixels++
             }
-            y += stride
         }
 
         if (sampledPixels == 0 || counts.isEmpty()) return Color.BLACK
