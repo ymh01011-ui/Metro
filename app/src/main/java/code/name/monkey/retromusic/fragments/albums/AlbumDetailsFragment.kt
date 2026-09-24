@@ -143,7 +143,7 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
         // الكارت بـ 16dp على كل جانب (شوف الهوامش في XML)، والـ inset هنا
         // لازم يساوي نفس الـ 16dp دي عشان المستطيل المرسوم يتراصف بالظبط
         // على حواف الكارت.
-        binding.imageShadow.apply {
+        binding.imageShadow?.apply {
             val density = resources.displayMetrics.density
             cornerRadiusPx = 6f * density
             blurRadiusPx = 18f * density
