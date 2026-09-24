@@ -183,7 +183,7 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
                 // الهيدر (صورة الألبوم المربعة) لازم يبدأ تحت التولبار مش
                 // وراه، بما إنه بقى مربع في النص مش صورة full-bleed زي الأول.
                 binding.headerContainer.updatePadding(
-                    top = statusBarInsets.top + actionBarSizePx() + (16 * resources.displayMetrics.density).toInt()
+                    top = statusBarInsets.top + actionBarSizePx() + (24 * resources.displayMetrics.density).toInt()
                 )
                 insets
             }
