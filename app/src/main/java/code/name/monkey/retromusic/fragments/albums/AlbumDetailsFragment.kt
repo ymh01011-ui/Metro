@@ -417,68 +417,51 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
         }
     }
 
-    // توكن مجهول الهوية، نفس اللي بيستخدمه أي زائر عادي لموقع music.apple.com من غير حساب أو اشتراك.
-    // مش بندور عليه في ملفات JS عشوائية، لأن الصفحة بتحمل أكتر من JWT (Adobe Analytics وغيره)
-    // والـ regex القديم كان بيمسك أول واحد يلاقيه بغض النظر عن مصدره. Apple بتحط التوكن الصح
-    // في مكان ثابت: meta tag اسمه desktop-music-app/config/environment، قيمته JSON مُرمّز
-    // (URL-encoded) فيه المفتاح MEDIA_API.token - ده موجود في أي صفحة music.apple.com عادية.
+    // توكن مجهول الهوية، نفس اللي بيستخدمه أي زائر عادي لموقع Apple Music من غير حساب أو اشتراك.
+    // الطريقة القديمة (meta tag اسمه desktop-music-app/config/environment في music.apple.com)
+    // بقت باطلة - Apple نقلت الواجهة لدومين beta.music.apple.com كـ SPA بالكامل، والتوكن بقى
+    // مدفون جوه ملف JS معين مش في الـ HTML خالص. الملف ده اسمه له نمط ثابت ومميز:
+    // /assets/index-legacy-<hash>.js - ده اللي بيفرقه عن أي ملف JS تاني في الصفحة (زي أدوبي
+    // أناليتكس وغيره) اللي ممكن يحمل JWT تاني مالوش علاقة بالموضوع.
     private fun getAnonymousAppleMusicToken(): String? {
         cachedAnonymousToken?.let { token ->
             if (System.currentTimeMillis() < cachedTokenExpiry) return token
         }
 
-        val browseHtml = httpGetText("https://music.apple.com/us/browse")
-        if (browseHtml == null) {
-            debugToast("فشل تحميل صفحة browse")
+        val mainHtml = httpGetText("https://beta.music.apple.com")
+        if (mainHtml == null) {
+            debugToast("فشل تحميل beta.music.apple.com")
             return null
         }
 
-        val token = extractToken(browseHtml)
-        if (token == null) return null
+        val jsPath = Regex("""/assets/index-legacy-[^"'\s]+\.js""").find(mainHtml)?.value
+        if (jsPath == null) {
+            debugToast("منقدرش نلاقي ملف index-legacy JS في الصفحة")
+            return null
+        }
+
+        val jsUrl = "https://beta.music.apple.com$jsPath"
+        val jsContent = httpGetText(jsUrl)
+        if (jsContent == null) {
+            debugToast("فشل تحميل ملف الـ JS: $jsPath")
+            return null
+        }
+
+        val token = extractToken(jsContent)
+        if (token == null) {
+            debugToast("لقينا ملف index-legacy بس مفيهوش توكن جواه")
+            return null
+        }
 
         cachedAnonymousToken = token
         cachedTokenExpiry = decodeJwtExpiry(token) ?: (System.currentTimeMillis() + 15 * 60 * 1000)
         return token
     }
 
-    // بيقرا الـ meta tag اللي Apple بتحط جواه بيانات الصفحة (MEDIA_API.token من ضمنها).
-    // بندور على النص "desktop-music-app/config/environment" الأول (بغض النظر عن ترتيب
-    // الـ attributes جوه التاج)، وبعدين نحدد حدود التاج نفسه (من آخر "<meta" قبله لحد أول ">"
-    // بعده)، وبعدين نستخرج content من جوه حدود التاج ده بس - مش من الصفحة كلها.
-    private fun extractToken(html: String): String? {
-        val markerIndex = html.indexOf("desktop-music-app/config/environment")
-        if (markerIndex == -1) {
-            debugToast("مفيش نص desktop-music-app/config/environment في الصفحة خالص")
-            return null
-        }
-
-        val tagStart = html.lastIndexOf("<meta", markerIndex)
-        val tagEnd = html.indexOf(">", markerIndex)
-        if (tagStart == -1 || tagEnd == -1) {
-            debugToast("لقينا الاسم بس منقدرناش نحدد حدود الـ meta tag")
-            return null
-        }
-        val tag = html.substring(tagStart, tagEnd + 1)
-
-        val encodedJson = Regex("""content="([^"]+)"""").find(tag)?.groupValues?.get(1)
-        if (encodedJson == null) {
-            debugToast("meta tag موجود بس مفيهوش content attribute")
-            return null
-        }
-
-        return try {
-            val decodedJson = URLDecoder.decode(encodedJson, "UTF-8")
-            val token =
-                JSONObject(decodedJson)
-                    .optJSONObject("MEDIA_API")
-                    ?.optString("token")
-                    ?.takeIf { it.length > 40 }
-            if (token == null) debugToast("الـ JSON اتقرا بس مفيهوش MEDIA_API.token")
-            token
-        } catch (e: Exception) {
-            debugToast("فشل تحليل الـ JSON: ${e.message}")
-            null
-        }
+    // بيدور على شكل توكن JWT (بيبدأ بـ eyJh) - جوه ملف index-legacy تحديدًا، مش في الصفحة
+    // كلها، عشان نتجنب أي JWT تاني اتحط جوه ملفات JS التتبع/الأناليتكس.
+    private fun extractToken(text: String): String? {
+        return Regex("""eyJh[A-Za-z0-9_\-.]+""").find(text)?.value?.takeIf { it.length > 40 }
     }
 
     private fun httpGetText(urlStr: String): String? {
