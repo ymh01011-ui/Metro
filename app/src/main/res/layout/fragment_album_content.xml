@@ -8,7 +8,7 @@
     android:orientation="vertical"
     android:paddingBottom="32dp">
 
-    <!-- تم إضافة ID هنا للتحكم في إخفائه لو كان الألبوم يحتوي على فيديو -->
+    <!-- الحاوية الأساسية للأزرار (يتم إخفاؤها في حالة الألبوم المتحرك) -->
     <LinearLayout
         android:id="@+id/originalButtonsContainer"
         android:layout_width="match_parent"
@@ -94,7 +94,6 @@
                 app:strokeWidth="0dp" />
         </FrameLayout>
     </LinearLayout>
-
 
     <com.google.android.material.textview.MaterialTextView
         android:id="@+id/songTitle"
