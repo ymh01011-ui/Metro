@@ -8,10 +8,9 @@
     android:orientation="vertical"
     android:paddingBottom="32dp">
 
-    <!-- نفس شكل Apple Music بالظبط: دايرتين زجاجيتين صغيرين (Shuffle
-         و Add) وفي النص زرار Play أبيض عريض بنفس الحجم دايمًا (مش بيتلون
-         بلون الغلاف زي الدواير - أبيض ثابت زي التصميم الأصلي). -->
+    <!-- تم إضافة ID هنا للتحكم في إخفائه لو كان الألبوم يحتوي على فيديو -->
     <LinearLayout
+        android:id="@+id/originalButtonsContainer"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:gravity="center"
@@ -45,11 +44,6 @@
                 app:strokeWidth="0dp" />
         </FrameLayout>
 
-        <!-- عرضه wrap_content زي Apple Music بالظبط (مش بيمط لآخر المسافة)،
-             وارتفاعه 44dp زي الدايرتين تمامًا - وبنشيل الـ inset الداخلي
-             الافتراضي بتاع MaterialButton (insetTop/insetBottom) لأنه كان
-             بيخلي الزرار شكله أقصر من الـ 44dp فعليًا حتى لو الـ layout_height
-             متظبطة صح. -->
         <com.google.android.material.button.MaterialButton
             android:id="@+id/playAction"
             style="@style/Widget.Material3.Button"
@@ -102,8 +96,6 @@
     </LinearLayout>
 
 
-    <!-- عنوان "Songs" - مخفي زي ما كان في التصميم القديم، الكود ممكن يظهره
-         لو حبيت. -->
     <com.google.android.material.textview.MaterialTextView
         android:id="@+id/songTitle"
         android:layout_width="match_parent"
@@ -152,8 +144,6 @@
         tools:listitem="@layout/item_album_card"
         tools:visibility="visible" />
 
-    <!-- مساحة فاضية تحت المحتوى كله - الارتفاع بيتحدد من الكود (ربع ارتفاع
-         الشاشة تقريبًا)، بنفس الطريقة بالظبط اللي في صفحة الفنان. -->
     <View
         android:id="@+id/bottomSpacer"
         android:layout_width="match_parent"
