@@ -418,8 +418,10 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
     }
 
     // توكن مجهول الهوية، نفس اللي بيستخدمه أي زائر عادي لموقع music.apple.com من غير حساب أو اشتراك.
-    // بندور عليه في مكانين: 1) جوه صفحة browse نفسها لو موجود مباشرة، 2) لو مش موجود، جوه أي
-    // ملف JS الصفحة بتحمّله (لأن اسم الملف اللي فيه التوكن بيتغيّر ومش ثابت).
+    // مش بندور عليه في ملفات JS عشوائية، لأن الصفحة بتحمل أكتر من JWT (Adobe Analytics وغيره)
+    // والـ regex القديم كان بيمسك أول واحد يلاقيه بغض النظر عن مصدره. Apple بتحط التوكن الصح
+    // في مكان ثابت: meta tag اسمه desktop-music-app/config/environment، قيمته JSON مُرمّز
+    // (URL-encoded) فيه المفتاح MEDIA_API.token - ده موجود في أي صفحة music.apple.com عادية.
     private fun getAnonymousAppleMusicToken(): String? {
         cachedAnonymousToken?.let { token ->
             if (System.currentTimeMillis() < cachedTokenExpiry) return token
@@ -431,40 +433,34 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
             return null
         }
 
-        extractToken(browseHtml)?.let { token ->
-            cachedAnonymousToken = token
-            cachedTokenExpiry = decodeJwtExpiry(token) ?: (System.currentTimeMillis() + 15 * 60 * 1000)
-            return token
-        }
-
-        val scriptSrcs = Regex("""src="(/assets/[^"]+\.js)"""").findAll(browseHtml)
-            .map { it.groupValues[1] }
-            .distinct()
-            .toList()
-
-        if (scriptSrcs.isEmpty()) {
-            debugToast("منقدرش نلاقي أي ملف JS في صفحة browse")
+        val token = extractToken(browseHtml)
+        if (token == null) {
+            debugToast("مفيش meta tag اسمه desktop-music-app/config/environment في الصفحة")
             return null
         }
 
-        for (src in scriptSrcs.take(6)) {
-            val jsUrl = if (src.startsWith("http")) src else "https://music.apple.com$src"
-            val jsContent = httpGetText(jsUrl) ?: continue
-            val token = extractToken(jsContent)
-            if (token != null) {
-                cachedAnonymousToken = token
-                cachedTokenExpiry = decodeJwtExpiry(token) ?: (System.currentTimeMillis() + 15 * 60 * 1000)
-                return token
-            }
-        }
-
-        debugToast("دورنا في ${scriptSrcs.size} ملف JS ومنلقيناش التوكن")
-        return null
+        cachedAnonymousToken = token
+        cachedTokenExpiry = decodeJwtExpiry(token) ?: (System.currentTimeMillis() + 15 * 60 * 1000)
+        return token
     }
 
-    // بيدور على شكل توكن JWT (بيبدأ بـ eyJh ومكون من ٣ أجزاء متفصلة بنقطة)
-    private fun extractToken(text: String): String? {
-        return Regex("""eyJh[A-Za-z0-9_\-.]+""").find(text)?.value?.takeIf { it.length > 40 }
+    // بيقرا الـ meta tag اللي Apple بتحط جواه بيانات الصفحة (MEDIA_API.token من ضمنها)
+    // بدل ما يدور على أي نص شكله JWT في الصفحة كلها.
+    private fun extractToken(html: String): String? {
+        val metaRegex = Regex(
+            """<meta\s+name="desktop-music-app/config/environment"\s+content="([^"]+)""""
+        )
+        val encodedJson = metaRegex.find(html)?.groupValues?.get(1) ?: return null
+        return try {
+            val decodedJson = URLDecoder.decode(encodedJson, "UTF-8")
+            JSONObject(decodedJson)
+                .optJSONObject("MEDIA_API")
+                ?.optString("token")
+                ?.takeIf { it.length > 40 }
+        } catch (e: Exception) {
+            debugToast("فشل تحليل meta tag: ${e.message}")
+            null
+        }
     }
 
     private fun httpGetText(urlStr: String): String? {
