@@ -19,22 +19,158 @@
             android:layout_height="wrap_content"
             android:orientation="vertical">
 
-            <!-- الهيدر بقى ConstraintLayout على خلفية مصمتة (لون الصفحة نفسه):
-                 صورة الألبوم مربعة في النص بهامش على الجنبين، وتحتها العنوان/
-                 الفنان/الميتاداتا زي تصميم Apple Music - مش overlay فوق الصورة
-                 زي الأول. المسافة الفعلية فوق (paddingTop) بتتظبط من الكود
-                 حسب ارتفاع التولبار + الـ status bar. الظل حوالين الصورة
-                 عبارة عن SoftShadowView (blur حقيقي) مش cardElevation ولا
-                 layer-list، عشان يطلع ناعم بدون أي حلقات أو تقطيع. -->
+            <!-- ============================================== -->
+            <!-- حاوية الفيديو الجدية (تأخذ شكل صورة Apple Music) -->
+            <!-- ============================================== -->
+            <androidx.constraintlayout.widget.ConstraintLayout
+                android:id="@+id/videoHeaderContainer"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:visibility="gone"
+                tools:visibility="visible">
+
+                <!-- إطار الفيديو / الصورة يمتد بعرض الشاشة مع نسبة 1:1.1 ليأخذ مساحة عمودية محترمة -->
+                <FrameLayout
+                    android:id="@+id/videoFrame"
+                    android:layout_width="match_parent"
+                    android:layout_height="0dp"
+                    app:layout_constraintDimensionRatio="1:1.15"
+                    app:layout_constraintTop_toTopOf="parent"
+                    app:layout_constraintStart_toStartOf="parent"
+                    app:layout_constraintEnd_toEndOf="parent">
+
+                    <!-- مكان عرض الفيديو (يمكنك استبداله بـ PlayerView) أو صورة الغلاف الممتدة كبديل -->
+                    <androidx.appcompat.widget.AppCompatImageView
+                        android:id="@+id/videoImage"
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:scaleType="centerCrop"
+                        tools:srcCompat="@tools:sample/backgrounds/scenic" />
+
+                    <!-- تدرج لوني مبرمج يدمج الصورة مع خلفية الأغاني (سيتم تلوينه من الكود) -->
+                    <View
+                        android:id="@+id/videoGradient"
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent" />
+                </FrameLayout>
+
+                <!-- أزرار التشغيل الخاصة بالفيديو (مدمجة فوق الصورة السفلية) -->
+                <LinearLayout
+                    android:id="@+id/videoButtonsContainer"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:gravity="center"
+                    android:paddingBottom="24dp"
+                    android:paddingTop="16dp"
+                    app:layout_constraintBottom_toBottomOf="@id/videoFrame">
+
+                    <FrameLayout android:layout_width="44dp" android:layout_height="44dp">
+                        <code.name.monkey.retromusic.views.LiquidGlassView
+                            android:id="@+id/videoShuffleActionGlass"
+                            android:layout_width="match_parent" android:layout_height="match_parent" />
+                        <com.google.android.material.button.MaterialButton
+                            android:id="@+id/videoShuffleAction"
+                            style="@style/Widget.Material3.Button.IconButton"
+                            android:layout_width="match_parent" android:layout_height="match_parent"
+                            android:backgroundTint="@android:color/transparent"
+                            app:cornerRadius="22dp" app:icon="@drawable/ic_shuffle"
+                            app:iconGravity="textStart" app:iconPadding="0dp"
+                            app:iconSize="18dp" app:iconTint="@android:color/white" app:strokeWidth="0dp" />
+                    </FrameLayout>
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/videoPlayAction"
+                        style="@style/Widget.Material3.Button"
+                        android:layout_width="wrap_content" android:layout_height="44dp"
+                        android:layout_marginStart="14dp" android:layout_marginEnd="14dp"
+                        android:minWidth="120dp" android:minHeight="0dp"
+                        android:paddingStart="24dp" android:paddingEnd="26dp"
+                        android:backgroundTint="@android:color/white"
+                        android:insetTop="0dp" android:insetBottom="0dp"
+                        android:text="@string/action_play" android:textColor="@android:color/black"
+                        android:textStyle="bold" app:cornerRadius="22dp"
+                        app:icon="@drawable/ic_play_arrow" app:iconGravity="textStart"
+                        app:iconPadding="6dp" app:iconSize="18dp" app:iconTint="@android:color/black"
+                        app:rippleColor="#33000000" app:strokeWidth="0dp" />
+
+                    <FrameLayout android:layout_width="44dp" android:layout_height="44dp">
+                        <code.name.monkey.retromusic.views.LiquidGlassView
+                            android:id="@+id/videoAddActionGlass"
+                            android:layout_width="match_parent" android:layout_height="match_parent" />
+                        <com.google.android.material.button.MaterialButton
+                            android:id="@+id/videoAddAction"
+                            style="@style/Widget.Material3.Button.IconButton"
+                            android:layout_width="match_parent" android:layout_height="match_parent"
+                            android:backgroundTint="@android:color/transparent"
+                            app:cornerRadius="22dp" app:icon="@drawable/ic_album_add"
+                            app:iconGravity="textStart" app:iconPadding="0dp"
+                            app:iconSize="18dp" app:iconTint="@android:color/white" app:strokeWidth="0dp" />
+                    </FrameLayout>
+                </LinearLayout>
+
+                <com.google.android.material.textview.MaterialTextView
+                    android:id="@+id/videoAlbumMetaText"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="8dp"
+                    android:gravity="center"
+                    android:maxLines="1"
+                    android:textAppearance="@style/TextViewCaption"
+                    android:textColor="#B3FFFFFF"
+                    app:layout_constraintBottom_toTopOf="@id/videoButtonsContainer"
+                    app:layout_constraintEnd_toEndOf="parent"
+                    app:layout_constraintStart_toStartOf="parent"
+                    tools:text="Pop • 12 Songs • 43 min" />
+
+                <com.google.android.material.textview.MaterialTextView
+                    android:id="@+id/videoAlbumText"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="4dp"
+                    android:background="?attr/selectableItemBackgroundBorderless"
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:gravity="center"
+                    android:maxLines="1"
+                    android:paddingStart="4dp"
+                    android:paddingEnd="4dp"
+                    android:textAppearance="@style/TextViewSubtitle1"
+                    android:textColor="#E6FFFFFF"
+                    app:layout_constraintBottom_toTopOf="@id/videoAlbumMetaText"
+                    app:layout_constraintEnd_toEndOf="parent"
+                    app:layout_constraintStart_toStartOf="parent"
+                    tools:text="Sabrina Carpenter" />
+
+                <code.name.monkey.retromusic.views.BaselineGridTextView
+                    android:id="@+id/videoAlbumTitle"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="4dp"
+                    android:gravity="center"
+                    android:maxLines="2"
+                    android:paddingStart="24dp"
+                    android:paddingEnd="24dp"
+                    android:textAlignment="center"
+                    android:textAppearance="@style/TextViewHeadline5"
+                    android:textColor="@android:color/white"
+                    android:textStyle="bold"
+                    app:layout_constraintBottom_toTopOf="@id/videoAlbumText"
+                    app:layout_constraintEnd_toEndOf="parent"
+                    app:layout_constraintStart_toStartOf="parent"
+                    tools:text="Man's Best Friend" />
+
+            </androidx.constraintlayout.widget.ConstraintLayout>
+
+            <!-- ============================================== -->
+            <!-- الحاوية الأصلية القديمة (للكروت المربعة) -->
+            <!-- ============================================== -->
             <androidx.constraintlayout.widget.ConstraintLayout
                 android:id="@+id/headerContainer"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:paddingBottom="24dp">
 
-                <!-- ظل ناعم حقيقي (SoftShadowView) بدل الـ elevation الأصلية
-                     وبدل طبقات layer-list اللي كانت بتبان كحلقات (banding).
-                     الأبعاد والـ corner radius والـ blur بتتظبط من الكود. -->
                 <code.name.monkey.retromusic.views.SoftShadowView
                     android:id="@+id/imageShadow"
                     android:layout_width="0dp"
@@ -109,8 +245,6 @@
                     app:layout_constraintTop_toBottomOf="@id/albumTitle"
                     tools:text="Sabrina Carpenter" />
 
-                <!-- سطر الميتاداتا زي Apple Music بالظبط: عدد الأغاني •
-                     إجمالي المدة. -->
                 <com.google.android.material.textview.MaterialTextView
                     android:id="@+id/albumMetaText"
                     android:layout_width="wrap_content"
@@ -135,8 +269,6 @@
         </LinearLayout>
     </androidx.core.widget.NestedScrollView>
 
-    <!-- الـ toolbar جوه rootLayout مباشرة، عايم edge-to-edge فوق الشاشة
-         كلها طول الوقت، بنفس الفلسفة القديمة. -->
     <com.google.android.material.appbar.AppBarLayout
         android:id="@+id/appBarLayout"
         android:layout_width="match_parent"
