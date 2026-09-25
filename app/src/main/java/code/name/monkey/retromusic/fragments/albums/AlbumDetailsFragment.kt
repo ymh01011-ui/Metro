@@ -419,10 +419,10 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
 
     // توكن مجهول الهوية، نفس اللي بيستخدمه أي زائر عادي لموقع Apple Music من غير حساب أو اشتراك.
     // الطريقة القديمة (meta tag اسمه desktop-music-app/config/environment في music.apple.com)
-    // بقت باطلة - Apple نقلت الواجهة لدومين beta.music.apple.com كـ SPA بالكامل، والتوكن بقى
-    // مدفون جوه ملف JS معين مش في الـ HTML خالص. الملف ده اسمه له نمط ثابت ومميز:
-    // /assets/index-legacy-<hash>.js - ده اللي بيفرقه عن أي ملف JS تاني في الصفحة (زي أدوبي
-    // أناليتكس وغيره) اللي ممكن يحمل JWT تاني مالوش علاقة بالموضوع.
+    // بقت باطلة - Apple نقلت الواجهة لدومين beta.music.apple.com كـ SPA بالكامل. الصفحة دي
+    // بتحمّل عادةً أكتر من ملف JS بنمط /assets/index...js (نسخة ES module حديثة + نسخة
+    // "legacy" للمتصفحات القديمة)، والتوكن ممكن يكون في أي واحد فيهم - مش بالضرورة الـ legacy
+    // بس زي ما كان مفترض قبل كده. فبندور في كل ملف منهم لحد ما نلاقي JWT حقيقي.
     private fun getAnonymousAppleMusicToken(): String? {
         cachedAnonymousToken?.let { token ->
             if (System.currentTimeMillis() < cachedTokenExpiry) return token
@@ -434,35 +434,57 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
             return null
         }
 
-        val jsPath = Regex("""/assets/index-legacy-[^"'\s]+\.js""").find(mainHtml)?.value
-        if (jsPath == null) {
-            debugToast("منقدرش نلاقي ملف index-legacy JS في الصفحة")
+        val jsPaths =
+            Regex("""/assets/index[^"'\s]*\.js""")
+                .findAll(mainHtml)
+                .map { it.value }
+                .distinct()
+                .toList()
+
+        if (jsPaths.isEmpty()) {
+            debugToast("مفيش ولا ملف /assets/index*.js في الصفحة (طولها ${mainHtml.length} حرف)")
             return null
         }
 
-        val jsUrl = "https://beta.music.apple.com$jsPath"
-        val jsContent = httpGetText(jsUrl)
-        if (jsContent == null) {
-            debugToast("فشل تحميل ملف الـ JS: $jsPath")
-            return null
+        for (path in jsPaths) {
+            val jsContent = httpGetText("https://beta.music.apple.com$path") ?: continue
+            val token = extractToken(jsContent)
+            if (token != null) {
+                cachedAnonymousToken = token
+                cachedTokenExpiry = decodeJwtExpiry(token) ?: (System.currentTimeMillis() + 15 * 60 * 1000)
+                return token
+            }
         }
 
-        val token = extractToken(jsContent)
-        if (token == null) {
-            debugToast("لقينا ملف index-legacy بس مفيهوش توكن جواه")
-            return null
-        }
-
-        cachedAnonymousToken = token
-        cachedTokenExpiry = decodeJwtExpiry(token) ?: (System.currentTimeMillis() + 15 * 60 * 1000)
-        return token
+        debugToast("دورنا في ${jsPaths.size} ملف (${jsPaths.joinToString()}) ومنلقيناش توكن صحيح")
+        return null
     }
 
-    // بيدور على شكل توكن JWT (بيبدأ بـ eyJh) - جوه ملف index-legacy تحديدًا، مش في الصفحة
-    // كلها، عشان نتجنب أي JWT تاني اتحط جوه ملفات JS التتبع/الأناليتكس.
-    private fun extractToken(text: String): String? {
-        return Regex("""eyJh[A-Za-z0-9_\-.]+""").find(text)?.value?.takeIf { it.length > 40 }
-    }
+    // بيدور على كل الأنماط اللي شكلها JWT (بتبدأ بـ eyJh) في النص، وبيتأكد إن كل واحد فيهم
+    // فعلاً JWT حقيقي (مش أي base64 string اتفق إنه يبدأ بنفس الحروف زي توكنات التتبع/الأناليتكس)
+    // عن طريق فك أول جزء (header) بتاعه والتأكد إنه JSON فيه مفتاح "alg" - ده بالظبط اللي بيميز
+    // JWT عن أي base64 عادي.
+    private fun extractToken(text: String): String? =
+        Regex("""eyJh[A-Za-z0-9_\-.]{40,}""")
+            .findAll(text)
+            .map { it.value }
+            .firstOrNull { isLikelyJwt(it) }
+
+    private fun isLikelyJwt(token: String): Boolean =
+        try {
+            val header = token.substringBefore(".")
+            val decoded =
+                String(
+                    android.util.Base64.decode(
+                        header,
+                        android.util.Base64.URL_SAFE or android.util.Base64.NO_WRAP or android.util.Base64.NO_PADDING,
+                    ),
+                )
+            JSONObject(decoded).has("alg")
+        } catch (e: Exception) {
+            false
+        }
+
 
     private fun httpGetText(urlStr: String): String? {
         val connection = (URL(urlStr).openConnection() as HttpURLConnection).apply {
