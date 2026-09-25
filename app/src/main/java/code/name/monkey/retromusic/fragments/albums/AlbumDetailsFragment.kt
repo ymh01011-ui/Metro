@@ -418,8 +418,8 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
     }
 
     // توكن مجهول الهوية، نفس اللي بيستخدمه أي زائر عادي لموقع music.apple.com من غير حساب أو اشتراك.
-    // ملحوظة: الطريقة القديمة (meta tag "desktop-music-app/config/environment") اتوقفت من أبل.
-    // الطريقة الحالية: نجيب صفحة browse، نلاقي اسم ملف الـ JS الرئيسي، ونستخرج التوكن منه (بيبدأ دايمًا بـ eyJh).
+    // بندور عليه في مكانين: 1) جوه صفحة browse نفسها لو موجود مباشرة، 2) لو مش موجود، جوه أي
+    // ملف JS الصفحة بتحمّله (لأن اسم الملف اللي فيه التوكن بيتغيّر ومش ثابت).
     private fun getAnonymousAppleMusicToken(): String? {
         cachedAnonymousToken?.let { token ->
             if (System.currentTimeMillis() < cachedTokenExpiry) return token
@@ -431,27 +431,40 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
             return null
         }
 
-        val jsSuffix = Regex("""index(.*?)\.js""").find(browseHtml)?.groupValues?.get(1)
-        if (jsSuffix == null) {
-            debugToast("منقدرش نلاقي اسم ملف الـ JS")
+        extractToken(browseHtml)?.let { token ->
+            cachedAnonymousToken = token
+            cachedTokenExpiry = decodeJwtExpiry(token) ?: (System.currentTimeMillis() + 15 * 60 * 1000)
+            return token
+        }
+
+        val scriptSrcs = Regex("""src="(/assets/[^"]+\.js)"""").findAll(browseHtml)
+            .map { it.groupValues[1] }
+            .distinct()
+            .toList()
+
+        if (scriptSrcs.isEmpty()) {
+            debugToast("منقدرش نلاقي أي ملف JS في صفحة browse")
             return null
         }
 
-        val jsContent = httpGetText("https://music.apple.com/assets/index$jsSuffix.js")
-        if (jsContent == null) {
-            debugToast("فشل تحميل ملف الـ JS")
-            return null
+        for (src in scriptSrcs.take(6)) {
+            val jsUrl = if (src.startsWith("http")) src else "https://music.apple.com$src"
+            val jsContent = httpGetText(jsUrl) ?: continue
+            val token = extractToken(jsContent)
+            if (token != null) {
+                cachedAnonymousToken = token
+                cachedTokenExpiry = decodeJwtExpiry(token) ?: (System.currentTimeMillis() + 15 * 60 * 1000)
+                return token
+            }
         }
 
-        val token = Regex("""eyJh[^"'\\]+""").find(jsContent)?.value
-        if (token.isNullOrBlank()) {
-            debugToast("منقدرش نلاقي التوكن جوه ملف الـ JS")
-            return null
-        }
+        debugToast("دورنا في ${scriptSrcs.size} ملف JS ومنلقيناش التوكن")
+        return null
+    }
 
-        cachedAnonymousToken = token
-        cachedTokenExpiry = decodeJwtExpiry(token) ?: (System.currentTimeMillis() + 15 * 60 * 1000)
-        return token
+    // بيدور على شكل توكن JWT (بيبدأ بـ eyJh ومكون من ٣ أجزاء متفصلة بنقطة)
+    private fun extractToken(text: String): String? {
+        return Regex("""eyJh[A-Za-z0-9_\-.]+""").find(text)?.value?.takeIf { it.length > 40 }
     }
 
     private fun httpGetText(urlStr: String): String? {
