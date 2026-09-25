@@ -121,6 +121,9 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
     private var isVideoAlbum = false
 
     companion object {
+        // اعرضها toast لحد ما تتأكد إن الميزة شغالة، بعدين خليها false
+        private const val DEBUG_ANIMATED_ARTWORK = true
+
         // Shared cache instance for ExoPlayer to avoid locking issues
         private var simpleCache: SimpleCache? = null
 
@@ -340,8 +343,16 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
 
     private fun fetchAnimatedArtworkUrl(albumData: Album): String? {
         val country = "us"
-        val appleMusicId = findAppleMusicAlbumId(albumData, country) ?: return null
-        val token = getAnonymousAppleMusicToken() ?: return null
+        val appleMusicId = findAppleMusicAlbumId(albumData, country)
+        if (appleMusicId == null) {
+            debugToast("منلقيتش الألبوم على Apple Music (iTunes search)")
+            return null
+        }
+        val token = getAnonymousAppleMusicToken()
+        if (token == null) {
+            debugToast("منلقيتش توكن مجهول الهوية")
+            return null
+        }
 
         val url = URL("https://amp-api.music.apple.com/v1/catalog/$country/albums/$appleMusicId?extend=editorialVideo")
         val connection = (url.openConnection() as HttpURLConnection).apply {
@@ -352,12 +363,22 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
             readTimeout = 8000
         }
         try {
-            if (connection.responseCode != 200) return null
+            if (connection.responseCode != 200) {
+                debugToast("amp-api رجع ${connection.responseCode}")
+                return null
+            }
             val response = connection.inputStream.bufferedReader().use { it.readText() }
-            val data = JSONObject(response).optJSONArray("data") ?: return null
-            if (data.length() == 0) return null
+            val data = JSONObject(response).optJSONArray("data")
+            if (data == null || data.length() == 0) {
+                debugToast("amp-api رجع من غير بيانات للألبوم")
+                return null
+            }
             val attributes = data.getJSONObject(0).optJSONObject("attributes") ?: return null
-            val editorialVideo = attributes.optJSONObject("editorialVideo") ?: return null
+            val editorialVideo = attributes.optJSONObject("editorialVideo")
+            if (editorialVideo == null) {
+                debugToast("الألبوم دا معندوش Motion Artwork على Apple Music")
+                return null
+            }
             val motion = editorialVideo.optJSONObject("motionDetailTall")
                 ?: editorialVideo.optJSONObject("motionSquareVideo1x1")
                 ?: return null
@@ -379,10 +400,16 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
             readTimeout = 8000
         }
         try {
-            if (connection.responseCode != 200) return null
+            if (connection.responseCode != 200) {
+                debugToast("iTunes search رجع ${connection.responseCode}")
+                return null
+            }
             val response = connection.inputStream.bufferedReader().use { it.readText() }
-            val results = JSONObject(response).optJSONArray("results") ?: return null
-            if (results.length() == 0) return null
+            val results = JSONObject(response).optJSONArray("results")
+            if (results == null || results.length() == 0) {
+                debugToast("iTunes search مفيهوش نتايج لـ ${albumData.title}")
+                return null
+            }
             val collectionId = results.getJSONObject(0).optLong("collectionId", -1)
             return if (collectionId > 0) collectionId.toString() else null
         } finally {
@@ -391,32 +418,75 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
     }
 
     // توكن مجهول الهوية، نفس اللي بيستخدمه أي زائر عادي لموقع music.apple.com من غير حساب أو اشتراك.
-    // بنجيبه من صفحة الموقع نفسها ونكاشه لحد ما يقرب ينتهي.
+    // ملحوظة: الطريقة القديمة (meta tag "desktop-music-app/config/environment") اتوقفت من أبل.
+    // الطريقة الحالية: نجيب صفحة browse، نلاقي اسم ملف الـ JS الرئيسي، ونستخرج التوكن منه (بيبدأ دايمًا بـ eyJh).
     private fun getAnonymousAppleMusicToken(): String? {
         cachedAnonymousToken?.let { token ->
             if (System.currentTimeMillis() < cachedTokenExpiry) return token
         }
 
-        val url = URL("https://music.apple.com/us/browse")
-        val connection = (url.openConnection() as HttpURLConnection).apply {
+        val browseHtml = httpGetText("https://music.apple.com/us/browse")
+        if (browseHtml == null) {
+            debugToast("فشل تحميل صفحة browse")
+            return null
+        }
+
+        val jsSuffix = Regex("""index(.*?)\.js""").find(browseHtml)?.groupValues?.get(1)
+        if (jsSuffix == null) {
+            debugToast("منقدرش نلاقي اسم ملف الـ JS")
+            return null
+        }
+
+        val jsContent = httpGetText("https://music.apple.com/assets/index$jsSuffix.js")
+        if (jsContent == null) {
+            debugToast("فشل تحميل ملف الـ JS")
+            return null
+        }
+
+        val token = Regex("""eyJh[^"'\\]+""").find(jsContent)?.value
+        if (token.isNullOrBlank()) {
+            debugToast("منقدرش نلاقي التوكن جوه ملف الـ JS")
+            return null
+        }
+
+        cachedAnonymousToken = token
+        cachedTokenExpiry = decodeJwtExpiry(token) ?: (System.currentTimeMillis() + 15 * 60 * 1000)
+        return token
+    }
+
+    private fun httpGetText(urlStr: String): String? {
+        val connection = (URL(urlStr).openConnection() as HttpURLConnection).apply {
             requestMethod = "GET"
+            setRequestProperty(
+                "User-Agent",
+                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15"
+            )
             connectTimeout = 8000
             readTimeout = 8000
         }
-        try {
-            if (connection.responseCode != 200) return null
-            val html = connection.inputStream.bufferedReader().use { it.readText() }
-            val match = Regex("""name="desktop-music-app/config/environment"\s+content="([^"]+)"""").find(html)
-                ?: return null
-            val decoded = URLDecoder.decode(match.groupValues[1], "UTF-8")
-            val token = JSONObject(decoded).optJSONObject("MEDIA_API")?.optString("token")
-            if (token.isNullOrBlank()) return null
-
-            cachedAnonymousToken = token
-            cachedTokenExpiry = decodeJwtExpiry(token) ?: (System.currentTimeMillis() + 15 * 60 * 1000)
-            return token
+        return try {
+            if (connection.responseCode != 200) {
+                debugToast("HTTP ${connection.responseCode} من $urlStr")
+                null
+            } else {
+                connection.inputStream.bufferedReader().use { it.readText() }
+            }
+        } catch (e: Exception) {
+            debugToast("إكسبشن: ${e.message}")
+            null
         } finally {
             connection.disconnect()
+        }
+    }
+
+    // Toast بسيط بيوضح بالظبط فين بقى الفشل، عشان تقدر تشخّص المشكلة من غير كمبيوتر أو logcat.
+    // خليها DEBUG_ANIMATED_ARTWORK = false لما تتأكد إن كل حاجة شغالة تمام.
+    private fun debugToast(message: String) {
+        if (!DEBUG_ANIMATED_ARTWORK) return
+        activity?.runOnUiThread {
+            if (isAdded && _binding != null) {
+                android.widget.Toast.makeText(requireContext(), "🎬 $message", android.widget.Toast.LENGTH_LONG).show()
+            }
         }
     }
 
