@@ -20,7 +20,7 @@
             android:orientation="vertical">
 
             <!-- ============================================== -->
-            <!-- حاوية الفيديو الجدية (تأخذ شكل صورة Apple Music) -->
+            <!-- حاوية الفيديو الجديدة (تأخذ شكل صورة Apple Music) -->
             <!-- ============================================== -->
             <androidx.constraintlayout.widget.ConstraintLayout
                 android:id="@+id/videoHeaderContainer"
@@ -29,7 +29,7 @@
                 android:visibility="gone"
                 tools:visibility="visible">
 
-                <!-- إطار الفيديو / الصورة يمتد بعرض الشاشة مع نسبة 1:1.1 ليأخذ مساحة عمودية محترمة -->
+                <!-- إطار الفيديو / الصورة -->
                 <FrameLayout
                     android:id="@+id/videoFrame"
                     android:layout_width="match_parent"
@@ -39,7 +39,7 @@
                     app:layout_constraintStart_toStartOf="parent"
                     app:layout_constraintEnd_toEndOf="parent">
 
-                    <!-- مكان عرض الفيديو (يمكنك استبداله بـ PlayerView) أو صورة الغلاف الممتدة كبديل -->
+                    <!-- الصورة الثابتة التي تظهر كفريم أول لسرعة التحميل -->
                     <androidx.appcompat.widget.AppCompatImageView
                         android:id="@+id/videoImage"
                         android:layout_width="match_parent"
@@ -47,14 +47,25 @@
                         android:scaleType="centerCrop"
                         tools:srcCompat="@tools:sample/backgrounds/scenic" />
 
-                    <!-- تدرج لوني مبرمج يدمج الصورة مع خلفية الأغاني (سيتم تلوينه من الكود) -->
+                    <!-- مشغل الفيديو (سيتم إظهاره بسلاسة عندما يكون جاهزاً) -->
+                    <!-- يرجى التأكد من تحديث الحزمة حسب استخدامك (androidx.media3.ui.PlayerView أو com.google.android.exoplayer2.ui.PlayerView) -->
+                    <androidx.media3.ui.PlayerView
+                        android:id="@+id/videoPlayerView"
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:alpha="0" 
+                        app:use_controller="false"
+                        app:surface_type="texture_view"
+                        app:resize_mode="zoom" />
+
+                    <!-- تدرج لوني مبرمج يدمج الصورة/الفيديو مع الخلفية -->
                     <View
                         android:id="@+id/videoGradient"
                         android:layout_width="match_parent"
                         android:layout_height="match_parent" />
                 </FrameLayout>
 
-                <!-- أزرار التشغيل الخاصة بالفيديو (مدمجة فوق الصورة السفلية) -->
+                <!-- أزرار التشغيل الخاصة بالفيديو -->
                 <LinearLayout
                     android:id="@+id/videoButtonsContainer"
                     android:layout_width="match_parent"
