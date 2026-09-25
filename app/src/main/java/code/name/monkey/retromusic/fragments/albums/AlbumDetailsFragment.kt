@@ -21,6 +21,7 @@ import android.graphics.Bitmap
 import android.graphics.Color
 import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.Drawable
+import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
 import android.util.TypedValue
 import android.view.*
@@ -82,7 +83,7 @@ import org.koin.androidx.viewmodel.ext.android.viewModel
 import org.koin.core.parameter.parametersOf
 import java.text.Collator
 
-private const val TOOLBAR_ICON_ALPHA = 0xCC // ~80%، بنفس فلسفة صفحة الفنان بالظبط
+private const val TOOLBAR_ICON_ALPHA = 0xCC
 
 class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_details),
     IAlbumClickListener {
@@ -100,18 +101,11 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
     private lateinit var album: Album
     private var albumArtistExists = false
 
-    // نفس فلسفة صفحة الفنان بالظبط: بندير التولبار والمنيو بتاعتنا بنفسنا،
-    // مش عن طريق الـ MenuHost المشترك بتاع الـ Activity - لازمة عشان نقدر
-    // نتحكم في لون أيقونة السهم/النقط بنفسنا حسب لون الغلاف المستخرج.
     override val registersMenuProvider: Boolean = false
     private var customOverflowIcon: ImageView? = null
     private var dominantBackgroundColor: Int = Color.BLACK
     private var cachedBitmap: Bitmap? = null
     private var hasExtractedColors: Boolean = false
-    // نفس فكرة صفحة الفنان بالظبط: بنبدأ الأنيميشن أول ما الهيدر (الصورة
-    // واللون) يبقوا جاهزين، من غير ما نستنى الـ layout pass الكامل بتاع
-    // الصفحة اللي بتتأخر بسبب قايمة الأغاني (RecyclerView جوه NestedScrollView
-    // بارتفاع wrap_content بياخد وقت measure أطول كل ما الأغاني زادت).
     private var transitionStarted: Boolean = false
     private var albumTitleBottomInScrollContent: Int = -1
     private var foregroundColor: Int = Color.WHITE
@@ -121,14 +115,11 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
     private val savedSortOrder: String
         get() = PreferenceUtil.albumDetailSongSortOrder
 
+    // TODO: قم بتعديل هذا الشرط البرمجي ليعكس حالة الألبوم الفعلي (مثلاً album.hasVideo)
+    private val isVideoAlbum: Boolean get() = false 
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-
-        // الأنيميشن بقى متحكم فيه من الـ NavOptions بتاعة الـ navigate() اللي
-        // بيفتح الصفحة دي (نفس anim resources بتاعة صفحة الفنان: nav_slide_in_right/
-        // out_left/in_left/out_right) - مش من Fragment Transition framework. فمفيش
-        // داعي لـ MaterialContainerTransform هنا، خصوصًا إن الهيدر بقى edge-to-edge
-        // مش كارت تربيعي زي الأول (فمفيش حاجة تتعمل عليها Container Transform أصلاً).
     }
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
@@ -139,10 +130,6 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
         _binding = FragmentAlbumDetailsBinding.bind(view)
         mainActivity.addMusicServiceEventListener(detailsViewModel)
 
-        // إعدادات الظل الناعم حوالين صورة الألبوم - الـ View نفسها أكبر من
-        // الكارت بـ 16dp على كل جانب (شوف الهوامش في XML)، والـ inset هنا
-        // لازم يساوي نفس الـ 16dp دي عشان المستطيل المرسوم يتراصف بالظبط
-        // على حواف الكارت.
         binding.imageShadow?.apply {
             val density = resources.displayMetrics.density
             cornerRadiusPx = 6f * density
@@ -156,8 +143,6 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
                 android.view.View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR) != 0
         }
 
-        // لو الألبوم ده في الكاش، لونه جاهز - بنطبقه فورًا قبل ما الصورة نفسها
-        // تتحمل، عشان الخلفية والأزرار ما تبانش بلون محايد لحظة وبعدين تتغير.
         AlbumDetailsCache.getColor(arguments.extraAlbumId)?.let { cachedColor ->
             dominantBackgroundColor = cachedColor
             hasExtractedColors = true
@@ -192,8 +177,8 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
             ViewCompat.setOnApplyWindowInsetsListener(appBar) { v, insets ->
                 val statusBarInsets = insets.getInsets(WindowInsetsCompat.Type.statusBars())
                 v.updatePadding(top = statusBarInsets.top)
-                // الهيدر (صورة الألبوم المربعة) لازم يبدأ تحت التولبار مش
-                // وراه، بما إنه بقى مربع في النص مش صورة full-bleed زي الأول.
+                
+                // إضافة مسافة للحاوية القديمة فقط، أما واجهة الفيديو فلا تحتاج padding لتمتد للآخر
                 binding.headerContainer.updatePadding(
                     top = statusBarInsets.top + actionBarSizePx() + (24 * resources.displayMetrics.density).toInt()
                 )
@@ -210,12 +195,20 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
         binding.content.isVerticalScrollBarEnabled = false
 
         binding.content.setOnScrollChangeListener(androidx.core.widget.NestedScrollView.OnScrollChangeListener { _, _, scrollY, _, _ ->
+            
+            // اختيار العنوان النشط للحساب عليه (إما العنوان في الغلاف القديم أو عنوان الفيديو)
+            val activeTitleView: View = if (isVideoAlbum && binding.videoHeaderContainer?.visibility == View.VISIBLE && binding.videoAlbumTitle != null) {
+                binding.videoAlbumTitle!!
+            } else {
+                binding.albumTitle
+            }
+
             if (albumTitleBottomInScrollContent <= 0) {
                 val titleLocation = IntArray(2)
-                binding.albumTitle.getLocationOnScreen(titleLocation)
+                activeTitleView.getLocationOnScreen(titleLocation)
                 val contentLocation = IntArray(2)
                 binding.content.getLocationOnScreen(contentLocation)
-                val titleBottomOnScreen = titleLocation[1] + binding.albumTitle.height
+                val titleBottomOnScreen = titleLocation[1] + activeTitleView.height
                 albumTitleBottomInScrollContent = (titleBottomOnScreen - contentLocation[1]) + scrollY
             }
 
@@ -237,7 +230,7 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
 
                 if (alphaProgress >= 0.9f) {
                     if (toolbar.title.isNullOrEmpty()) {
-                        toolbar.title = binding.albumTitle.text
+                        toolbar.title = if (activeTitleView == binding.videoAlbumTitle) binding.videoAlbumTitle?.text else binding.albumTitle.text
                     }
                 } else {
                     toolbar.title = null
@@ -250,12 +243,8 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
             albumArtistExists = !album.albumArtist.isNullOrEmpty()
             showAlbum(album)
         }
-        binding.albumText.setOnClickListener {
-            // If this album's artist tag is actually a combined tag (e.g.
-            // "Alan Walker, Au/Ra, Tomine Harket") and multi-artist mode is
-            // on, let the user pick which one to open - same behavior as the
-            // Now Playing screen - instead of always opening the raw combined
-            // entry or guessing a single one.
+
+        val artistClickListener = View.OnClickListener {
             if (PreferenceUtil.multiArtistsEnabled) {
                 val nameToSplit = if (albumArtistExists) album.albumArtist!! else album.artistName
                 val splitNames = ArtistTagUtil.splitArtistNames(nameToSplit)
@@ -269,43 +258,54 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
                             }
                         }
                     }
-
                     splitNames.size == 1 -> goToMultiArtistFromAlbum(splitNames[0])
                     else -> goToMultiArtistFromAlbum(album.artistName)
                 }
-                return@setOnClickListener
-            }
-
-            if (albumArtistExists) {
-                findActivityNavController(R.id.fragment_container)
-                    .navigate(
-                        R.id.albumArtistDetailsFragment,
-                        bundleOf(EXTRA_ARTIST_NAME to album.albumArtist)
-                    )
             } else {
-                findActivityNavController(R.id.fragment_container)
-                    .navigate(
-                        R.id.artistDetailsFragment,
-                        bundleOf(EXTRA_ARTIST_ID to album.artistId)
-                    )
+                if (albumArtistExists) {
+                    findActivityNavController(R.id.fragment_container)
+                        .navigate(
+                            R.id.albumArtistDetailsFragment,
+                            bundleOf(EXTRA_ARTIST_NAME to album.albumArtist)
+                        )
+                } else {
+                    findActivityNavController(R.id.fragment_container)
+                        .navigate(
+                            R.id.artistDetailsFragment,
+                            bundleOf(EXTRA_ARTIST_ID to album.artistId)
+                        )
+                }
             }
         }
+        
+        binding.albumText.setOnClickListener(artistClickListener)
+        // ربط الإيفنت بنسخة النص الخاصة بالفيديو (باستخدام safe call للحماية في حالة landscape)
+        binding.videoAlbumText?.setOnClickListener(artistClickListener)
+
         binding.fragmentAlbumContent.playAction.setOnClickListener {
             if (::album.isInitialized) MusicPlayerRemote.openQueue(album.songs, 0, true)
         }
+        binding.videoPlayAction?.setOnClickListener {
+            if (::album.isInitialized) MusicPlayerRemote.openQueue(album.songs, 0, true)
+        }
+
         binding.fragmentAlbumContent.shuffleAction.setOnClickListener {
             if (::album.isInitialized) MusicPlayerRemote.openAndShuffleQueue(album.songs, true)
         }
+        binding.videoShuffleAction?.setOnClickListener {
+            if (::album.isInitialized) MusicPlayerRemote.openAndShuffleQueue(album.songs, true)
+        }
+
         binding.fragmentAlbumContent.addAction.setOnClickListener {
+            if (::album.isInitialized) addAlbumSongsToPlaylist()
+        }
+        binding.videoAddAction?.setOnClickListener {
             if (::album.isInitialized) addAlbumSongsToPlaylist()
         }
 
         binding.appBarLayout?.statusBarForeground =
             MaterialShapeDrawable.createWithElevationOverlay(requireContext())
 
-        // شبكة أمان بس - المفروض releaseEnterTransition() تترنّد قبل كده من
-        // المسار المخزن في الكاش تحت أو من extractColorAndApplyBackground/
-        // onLoadFailed.
         view.postDelayed({ releaseEnterTransition() }, 400L)
     }
 
@@ -356,8 +356,6 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
         simpleSongAdapter = SimpleSongAdapter(
             requireActivity() as AppCompatActivity,
             ArrayList(),
-            // ليها layout خاص بيها (item_song_album_details) بدل item_song
-            // العام: رقم المسار بدل صورة الأغنية زي Apple Music.
             R.layout.item_song_album_details
         )
         binding.fragmentAlbumContent.recyclerView.apply {
@@ -377,33 +375,39 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
             setupRecyclerView()
         }
         this.album = album
-
-        binding.albumTitle.text = album.title
-        binding.albumText.text =
-            if (albumArtistExists) album.albumArtist else album.artistName
-
-        // بيفضل نفس الـ transitionName القديم عشان أنيميشن الانتقال لـ
-        // AlbumTagEditorActivity (Activity منفصلة، مش جوه الـ Nav Graph)
-        // يفضل شغال زي الأول، بس دلوقتي من صورة الغلاف نفسها بما إن الكارت
-        // اتشال.
-        binding.image.transitionName = "${getString(R.string.transition_album_art)}_${album.id}"
-
-        // بنبني نص العدد يدوي بدل الاعتماد على R.plurals.albumSongs، اللي
-        // شكله ناقصه %d في تعريفه (كان بيطبع "Songs" من غير رقم).
+        
         val songCountText = if (album.songCount == 1) "1 song" else "${album.songCount} songs"
+        val albumYear = MusicUtil.getYearString(album.year)
+        val metaTextString = if (albumYear == "-") songCountText else "$albumYear • $songCountText"
+        val artistString = if (albumArtistExists) album.albumArtist else album.artistName
+
+        // تبديل واجهة العرض بناءً على حالة توفر الفيديو
+        if (isVideoAlbum && binding.videoHeaderContainer != null) {
+            binding.headerContainer.visibility = View.GONE
+            binding.fragmentAlbumContent.originalButtonsContainer?.visibility = View.GONE
+            binding.videoHeaderContainer?.visibility = View.VISIBLE
+
+            binding.videoAlbumTitle?.text = album.title
+            binding.videoAlbumText?.text = artistString
+            binding.videoAlbumMetaText?.text = metaTextString
+        } else {
+            binding.videoHeaderContainer?.visibility = View.GONE
+            binding.headerContainer.visibility = View.VISIBLE
+            binding.fragmentAlbumContent.originalButtonsContainer?.visibility = View.VISIBLE
+
+            binding.albumTitle.text = album.title
+            binding.albumText.text = artistString
+            binding.albumMetaText.text = metaTextString
+        }
+
         binding.fragmentAlbumContent.songTitle.text = songCountText
 
-        // سطر الميتاداتا تحت اسم الألبوم/الفنان في الهيدر، بالشكل المطلوب:
-        // السنة • عدد الأغاني. (الجانر هينضاف قبل السنة أول ما تقولي اسم
-        // الـ property بتاعه في Album/Song model عندك)
-        val albumYear = MusicUtil.getYearString(album.year)
-        binding.albumMetaText.text = if (albumYear == "-") {
-            songCountText
-        } else {
-            "$albumYear • $songCountText"
-        }
+        binding.image.transitionName = "${getString(R.string.transition_album_art)}_${album.id}"
+        binding.videoImage?.transitionName = "${getString(R.string.transition_album_art)}_${album.id}"
+
         loadAlbumCover(album)
         simpleSongAdapter.swapDataSet(album.songs)
+        
         if (albumArtistExists) {
             detailsViewModel.getAlbumArtist(album.albumArtist.toString())
                 .observe(viewLifecycleOwner) {
@@ -432,16 +436,11 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
             false
         )
         binding.fragmentAlbumContent.moreRecyclerView.adapter = albumAdapter
-        // لو الألوان اتحسبت خلاص قبل ما القائمة دي توصل، نطبقها فورًا -
-        // وإلا هتتطبق مع أول extractColorAndApplyBackground لما الصورة توصل.
         if (hasExtractedColors) {
             albumAdapter.setDynamicTextColors(foregroundColor, secondaryForegroundColor)
         }
     }
 
-    // كانت الدالة دي بتحمّل صورة الفنان الدائرية اللي كانت جنب العنوان، لكن
-    // التصميم الجديد (زي Apple Music) مفيهوش الصورة دي، فبقت مسؤوليتها
-    // الوحيدة إنها تجيب "More by Artist".
     private fun loadMoreAlbums(artist: Artist) {
         detailsViewModel.getMoreAlbums(artist).observe(viewLifecycleOwner) {
             moreAlbums(it)
@@ -451,14 +450,12 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
     private fun loadAlbumCover(album: Album) {
         if (cachedBitmap != null && hasExtractedColors) {
             binding.image.setImageBitmap(cachedBitmap)
+            binding.videoImage?.setImageBitmap(cachedBitmap)
             setColors(dominantBackgroundColor)
             view?.post { releaseEnterTransition() }
             return
         }
 
-        // نفس سقف الحجم بالظبط اللي في صفحة الفنان (1.5× عرض الشاشة، بحد أقصى
-        // 2048px) عشان الفك يبقى أسرع من غير ما شكل الغلاف ولا اللون المستخرج
-        // منه يتغيروا.
         val maxImageSide = minOf((resources.displayMetrics.widthPixels * 3) / 2, 2048)
         val albumId = album.id
         Glide.with(requireContext())
@@ -478,10 +475,9 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
                 }
 
                 override fun onLoadFailed(errorDrawable: Drawable?) {
-                    // لو الصورة فشلت تتحمل خالص، منسيبش الأنيميشن معلقة لحد
-                    // الأبد.
                     if (_binding != null && errorDrawable != null) {
                         binding.image.setImageDrawable(errorDrawable)
+                        binding.videoImage?.setImageDrawable(errorDrawable)
                     }
                     releaseEnterTransition()
                 }
@@ -489,15 +485,12 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
                 override fun onLoadCleared(placeholder: Drawable?) {
                     if (_binding != null) {
                         binding.image.setImageDrawable(placeholder)
+                        binding.videoImage?.setImageDrawable(placeholder)
                     }
                 }
             })
     }
 
-    // بيستخدم AlbumPaletteEngine (ملف مستقل عن ArtistPaletteEngine بتاع
-    // صفحة الفنان) - بيمسح الصورة كلها ويلاقي أكتر لون متكرر فعليًا، مع
-    // استثناء الأسود لو نسبته أقل من 35%. مفيش gradient هنا أصلاً: الصورة
-    // بقت مربعة في النص وخلفية الصفحة مصمتة بنفس اللون من الأول للآخر.
     private fun extractColorAndApplyBackground(albumId: Long, bitmap: Bitmap) {
         lifecycleScope.launch(Dispatchers.Default) {
             val mostFrequentColor = AlbumPaletteEngine.findMostFrequentColor(bitmap)
@@ -509,6 +502,7 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
 
                 if (_binding != null) {
                     binding.image.setImageBitmap(bitmap)
+                    binding.videoImage?.setImageBitmap(bitmap)
                     setColors(mostFrequentColor)
                 }
                 releaseEnterTransition()
@@ -536,6 +530,20 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
         binding.albumText.setTextColor(secondaryFgColor)
         binding.albumMetaText.setTextColor(secondaryFgColor)
 
+        // الألوان الخاصة بنصوص واجهة الفيديو
+        binding.videoAlbumTitle?.setTextColor(fgColor)
+        binding.videoAlbumText?.setTextColor(secondaryFgColor)
+        binding.videoAlbumMetaText?.setTextColor(secondaryFgColor)
+
+        // إنشاء التدرج اللوني الذي يدمج الصورة بسلاسة مع خلفية الشاشة
+        if (isVideoAlbum && binding.videoHeaderContainer?.visibility == View.VISIBLE) {
+            val gradient = GradientDrawable(
+                GradientDrawable.Orientation.TOP_BOTTOM,
+                intArrayOf(Color.TRANSPARENT, ColorUtils.setAlphaComponent(backgroundColor, 150), backgroundColor)
+            )
+            binding.videoGradient?.background = gradient
+        }
+
         val toolbar = binding.toolbar
         val iconColor = ColorUtils.setAlphaComponent(fgColor, TOOLBAR_ICON_ALPHA)
         if (toolbar is TintableToolbar) {
@@ -551,15 +559,25 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
 
         binding.fragmentAlbumContent.shuffleActionGlass.setBackdropColor(backgroundColor)
         binding.fragmentAlbumContent.addActionGlass.setBackdropColor(backgroundColor)
-
         binding.fragmentAlbumContent.shuffleAction.iconTint = ColorStateList.valueOf(fgColor)
         binding.fragmentAlbumContent.addAction.iconTint = ColorStateList.valueOf(fgColor)
+        
+        // الأزرار الخاصة بالفيديو
+        binding.videoShuffleActionGlass?.setBackdropColor(backgroundColor)
+        binding.videoAddActionGlass?.setBackdropColor(backgroundColor)
+        binding.videoShuffleAction?.iconTint = ColorStateList.valueOf(fgColor)
+        binding.videoAddAction?.iconTint = ColorStateList.valueOf(fgColor)
 
-        // زرار الـ Play: بيتقلب أسود بنص/أيقونة بيضا على الخلفيات الفاتحة
-        // عشان يفضل واضح، وبيرجع أبيض بنص/أيقونة سودا على الغامقة زي الأصل.
         val playButtonBackground = if (isLightBackground) Color.BLACK else Color.WHITE
         val playButtonForeground = if (isLightBackground) Color.WHITE else Color.BLACK
+        
         binding.fragmentAlbumContent.playAction.apply {
+            backgroundTintList = ColorStateList.valueOf(playButtonBackground)
+            setTextColor(playButtonForeground)
+            iconTint = ColorStateList.valueOf(playButtonForeground)
+        }
+        
+        binding.videoPlayAction?.apply {
             backgroundTintList = ColorStateList.valueOf(playButtonBackground)
             setTextColor(playButtonForeground)
             iconTint = ColorStateList.valueOf(playButtonForeground)
@@ -586,8 +604,6 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
         return if (resolved) typedValue.data else Color.BLACK
     }
 
-    // ارتفاع التولبار الفعلي (?attr/actionBarSize) - بنستخدمه عشان نحسب
-    // مسافة padding-top الصح لهيدر صورة الألبوم، عشان ميختفيش تحت التولبار.
     private fun actionBarSizePx(): Int {
         val typedValue = TypedValue()
         val resolved = requireContext().theme.resolveAttribute(
@@ -600,10 +616,6 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
         }
     }
 
-    // نفس الحيلة بالظبط اللي في صفحة الفنان: أيقونة النقط الحقيقية بتاعة
-    // الـ Toolbar بنخفيها ونحط ImageView إحنا عليها بدالها كـ sibling
-    // للـ appBarLayout جوه rootLayout، عشان نقدر نتحكم في لونها بنفس طريقة
-    // سهم الرجوع بالظبط.
     private fun setUpCustomOverflowIcon(toolbar: TintableToolbar) {
         val icon = toolbar.overflowIcon?.mutate() ?: return
         toolbar.overflowIcon = ColorDrawable(Color.TRANSPARENT)
@@ -645,9 +657,6 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
         toolbar.post { repositionOverImageView() }
     }
 
-    // نفس أنيميشن الدخول/الخروج بتاع صفحة الفنان بالظبط (nav_slide_*)، بدل
-    // الـ Hold()/Shared Element القديمة اللي مبقتش منطقية أصلاً بعد ما بقى
-    // الهيدر edge-to-edge (مفيش كارت تربيعي نقل منه/له).
     override fun onAlbumClick(albumId: Long, view: View) {
         val navOptions = NavOptions.Builder()
             .setEnterAnim(R.anim.nav_slide_in_right)
@@ -663,11 +672,7 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
         )
     }
 
-    override fun onCreateMenu(menu: Menu, inflater: MenuInflater) {
-        // مش محتاجين حاجة هنا: الصفحة بتدير المنيو بتاعتها بنفسها بالكامل
-        // (شوف setUpCustomOverflowIcon و onViewCreated) - registersMenuProvider
-        // متظبطة false فوق عشان الـ MenuHost المشترك أصلاً ميندهش على الدالة دي.
-    }
+    override fun onCreateMenu(menu: Menu, inflater: MenuInflater) {}
 
     override fun onMenuItemSelected(item: MenuItem): Boolean {
         return handleSortOrderMenuItem(item)
@@ -681,22 +686,18 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
                 MusicPlayerRemote.playNext(songs)
                 return true
             }
-
             R.id.action_add_to_current_playing -> {
                 MusicPlayerRemote.enqueue(songs)
                 return true
             }
-
             R.id.action_add_to_playlist -> {
                 addAlbumSongsToPlaylist()
                 return true
             }
-
             R.id.action_delete_from_device -> {
                 DeleteSongsDialog.create(songs).show(childFragmentManager, "DELETE_SONGS")
                 return true
             }
-
             R.id.action_tag_editor -> {
                 val intent = Intent(requireContext(), AlbumTagEditorActivity::class.java)
                 intent.putExtra(AbsTagEditorActivity.EXTRA_ID, album.id)
@@ -710,7 +711,6 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
                 )
                 return true
             }
-
             R.id.action_sort_order_title -> sortOrder = SONG_A_Z
             R.id.action_sort_order_title_desc -> sortOrder = SONG_Z_A
             R.id.action_sort_order_track_list -> sortOrder = SONG_TRACK_LIST
@@ -729,7 +729,6 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
             SONG_Z_A -> sortOrder.findItem(R.id.action_sort_order_title_desc).isChecked = true
             SONG_TRACK_LIST ->
                 sortOrder.findItem(R.id.action_sort_order_track_list).isChecked = true
-
             SONG_DURATION ->
                 sortOrder.findItem(R.id.action_sort_order_artist_song_duration).isChecked = true
         }
@@ -743,23 +742,19 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
                     o2.trackNumber
                 )
             }
-
             SONG_A_Z -> {
                 val collator = Collator.getInstance()
                 album.songs.sortedWith { o1, o2 -> collator.compare(o1.title, o2.title) }
             }
-
             SONG_Z_A -> {
                 val collator = Collator.getInstance()
                 album.songs.sortedWith { o1, o2 -> collator.compare(o2.title, o1.title) }
             }
-
             SONG_DURATION -> album.songs.sortedWith { o1, o2 ->
                 o1.duration.compareTo(
                     o2.duration
                 )
             }
-
             else -> throw IllegalArgumentException("invalid $sortOrder")
         }
         album = album.copy(songs = songs)
