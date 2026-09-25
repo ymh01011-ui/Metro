@@ -434,31 +434,49 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
         }
 
         val token = extractToken(browseHtml)
-        if (token == null) {
-            debugToast("مفيش meta tag اسمه desktop-music-app/config/environment في الصفحة")
-            return null
-        }
+        if (token == null) return null
 
         cachedAnonymousToken = token
         cachedTokenExpiry = decodeJwtExpiry(token) ?: (System.currentTimeMillis() + 15 * 60 * 1000)
         return token
     }
 
-    // بيقرا الـ meta tag اللي Apple بتحط جواه بيانات الصفحة (MEDIA_API.token من ضمنها)
-    // بدل ما يدور على أي نص شكله JWT في الصفحة كلها.
+    // بيقرا الـ meta tag اللي Apple بتحط جواه بيانات الصفحة (MEDIA_API.token من ضمنها).
+    // بندور على النص "desktop-music-app/config/environment" الأول (بغض النظر عن ترتيب
+    // الـ attributes جوه التاج)، وبعدين نحدد حدود التاج نفسه (من آخر "<meta" قبله لحد أول ">"
+    // بعده)، وبعدين نستخرج content من جوه حدود التاج ده بس - مش من الصفحة كلها.
     private fun extractToken(html: String): String? {
-        val metaRegex = Regex(
-            """<meta\s+name="desktop-music-app/config/environment"\s+content="([^"]+)""""
-        )
-        val encodedJson = metaRegex.find(html)?.groupValues?.get(1) ?: return null
+        val markerIndex = html.indexOf("desktop-music-app/config/environment")
+        if (markerIndex == -1) {
+            debugToast("مفيش نص desktop-music-app/config/environment في الصفحة خالص")
+            return null
+        }
+
+        val tagStart = html.lastIndexOf("<meta", markerIndex)
+        val tagEnd = html.indexOf(">", markerIndex)
+        if (tagStart == -1 || tagEnd == -1) {
+            debugToast("لقينا الاسم بس منقدرناش نحدد حدود الـ meta tag")
+            return null
+        }
+        val tag = html.substring(tagStart, tagEnd + 1)
+
+        val encodedJson = Regex("""content="([^"]+)"""").find(tag)?.groupValues?.get(1)
+        if (encodedJson == null) {
+            debugToast("meta tag موجود بس مفيهوش content attribute")
+            return null
+        }
+
         return try {
             val decodedJson = URLDecoder.decode(encodedJson, "UTF-8")
-            JSONObject(decodedJson)
-                .optJSONObject("MEDIA_API")
-                ?.optString("token")
-                ?.takeIf { it.length > 40 }
+            val token =
+                JSONObject(decodedJson)
+                    .optJSONObject("MEDIA_API")
+                    ?.optString("token")
+                    ?.takeIf { it.length > 40 }
+            if (token == null) debugToast("الـ JSON اتقرا بس مفيهوش MEDIA_API.token")
+            token
         } catch (e: Exception) {
-            debugToast("فشل تحليل meta tag: ${e.message}")
+            debugToast("فشل تحليل الـ JSON: ${e.message}")
             null
         }
     }
