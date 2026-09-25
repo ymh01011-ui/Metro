@@ -2,15 +2,6 @@
  * Copyright (c) 2020 Hemanth Savarla.
  *
  * Licensed under the GNU General Public License v3
- *
- * This is free software: you can redistribute it and/or modify it
- * under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
- *
- * This software is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
- * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
- * See the GNU General Public License for more details.
- *
  */
 package code.name.monkey.retromusic.fragments.albums
 
@@ -33,7 +24,6 @@ import androidx.core.graphics.drawable.DrawableCompat
 import androidx.core.os.bundleOf
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
-import androidx.core.view.doOnPreDraw
 import androidx.core.view.updatePadding
 import androidx.lifecycle.lifecycleScope
 import androidx.navigation.NavOptions
@@ -42,6 +32,14 @@ import androidx.navigation.fragment.navArgs
 import androidx.recyclerview.widget.DefaultItemAnimator
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.media3.common.MediaItem
+import androidx.media3.common.Player
+import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.datasource.DefaultHttpDataSource
+import androidx.media3.datasource.cache.CacheDataSource
+import androidx.media3.datasource.cache.SimpleCache
+import androidx.media3.datasource.cache.NoOpCacheEvictor
+import androidx.media3.database.StandaloneDatabaseProvider
 import code.name.monkey.retromusic.EXTRA_ALBUM_ID
 import code.name.monkey.retromusic.EXTRA_ARTIST_ID
 import code.name.monkey.retromusic.EXTRA_ARTIST_NAME
@@ -78,9 +76,13 @@ import com.google.android.material.shape.MaterialShapeDrawable
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import org.json.JSONObject
 import org.koin.android.ext.android.get
 import org.koin.androidx.viewmodel.ext.android.viewModel
 import org.koin.core.parameter.parametersOf
+import java.io.File
+import java.net.HttpURLConnection
+import java.net.URL
 import java.text.Collator
 
 private const val TOOLBAR_ICON_ALPHA = 0xCC
@@ -112,21 +114,22 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
     private var secondaryForegroundColor: Int = Color.WHITE
     private var originalStatusBarLight: Boolean? = null
 
+    // Video Player Properties
+    private var exoPlayer: ExoPlayer? = null
+    private var isVideoAlbum = false
+
+    companion object {
+        // Shared cache instance for ExoPlayer to avoid locking issues
+        private var simpleCache: SimpleCache? = null
+    }
+
     private val savedSortOrder: String
         get() = PreferenceUtil.albumDetailSongSortOrder
-
-    // TODO: قم بتعديل هذا الشرط البرمجي ليعكس حالة الألبوم الفعلي (مثلاً album.hasVideo)
-    private val isVideoAlbum: Boolean get() = false 
-
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-    }
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
 
         postponeEnterTransition()
-
         _binding = FragmentAlbumDetailsBinding.bind(view)
         mainActivity.addMusicServiceEventListener(detailsViewModel)
 
@@ -157,17 +160,13 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
         toolbar.setTitleMarginStart(0)
         toolbar.contentInsetEndWithActions = 0
         toolbar.setPadding(toolbar.paddingLeft, toolbar.paddingTop, 0, toolbar.paddingBottom)
-        toolbar.setNavigationOnClickListener {
-            findNavController().navigateUp()
-        }
+        toolbar.setNavigationOnClickListener { findNavController().navigateUp() }
 
         view.post {
             if (_binding == null) return@post
             toolbar.inflateMenu(R.menu.menu_album_detail)
             setUpSortOrderMenu(toolbar.menu.findItem(R.id.action_sort_order).subMenu!!)
-            toolbar.setOnMenuItemClickListener { item ->
-                handleSortOrderMenuItem(item)
-            }
+            toolbar.setOnMenuItemClickListener { item -> handleSortOrderMenuItem(item) }
             setUpCustomOverflowIcon(toolbar)
         }
 
@@ -178,7 +177,6 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
                 val statusBarInsets = insets.getInsets(WindowInsetsCompat.Type.statusBars())
                 v.updatePadding(top = statusBarInsets.top)
                 
-                // إضافة مسافة للحاوية القديمة فقط، أما واجهة الفيديو فلا تحتاج padding لتمتد للآخر
                 binding.headerContainer.updatePadding(
                     top = statusBarInsets.top + actionBarSizePx() + (24 * resources.displayMetrics.density).toInt()
                 )
@@ -186,8 +184,7 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
             }
         }
 
-        binding.fragmentAlbumContent.bottomSpacer.layoutParams.height =
-            resources.displayMetrics.heightPixels / 4
+        binding.fragmentAlbumContent.bottomSpacer.layoutParams.height = resources.displayMetrics.heightPixels / 4
         binding.fragmentAlbumContent.bottomSpacer.requestLayout()
 
         binding.appBarLayout?.alpha = 1f
@@ -195,8 +192,6 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
         binding.content.isVerticalScrollBarEnabled = false
 
         binding.content.setOnScrollChangeListener(androidx.core.widget.NestedScrollView.OnScrollChangeListener { _, _, scrollY, _, _ ->
-            
-            // اختيار العنوان النشط للحساب عليه (إما العنوان في الغلاف القديم أو عنوان الفيديو)
             val activeTitleView: View = if (isVideoAlbum && binding.videoHeaderContainer?.visibility == View.VISIBLE && binding.videoAlbumTitle != null) {
                 binding.videoAlbumTitle!!
             } else {
@@ -241,7 +236,7 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
         setupRecyclerView()
         detailsViewModel.getAlbum().observe(viewLifecycleOwner) { album ->
             albumArtistExists = !album.albumArtist.isNullOrEmpty()
-            showAlbum(album)
+            checkAndFetchAnimatedArtwork(album)
         }
 
         val artistClickListener = View.OnClickListener {
@@ -253,9 +248,7 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
                         lifecycleScope.launch(Dispatchers.IO) {
                             val repository = get<RealRepository>()
                             val artists = splitNames.map { repository.multiArtistByName(it) }
-                            withContext(Dispatchers.Main) {
-                                showArtistPickerDialog(artists)
-                            }
+                            withContext(Dispatchers.Main) { showArtistPickerDialog(artists) }
                         }
                     }
                     splitNames.size == 1 -> goToMultiArtistFromAlbum(splitNames[0])
@@ -263,23 +256,18 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
                 }
             } else {
                 if (albumArtistExists) {
-                    findActivityNavController(R.id.fragment_container)
-                        .navigate(
-                            R.id.albumArtistDetailsFragment,
-                            bundleOf(EXTRA_ARTIST_NAME to album.albumArtist)
-                        )
+                    findActivityNavController(R.id.fragment_container).navigate(
+                        R.id.albumArtistDetailsFragment, bundleOf(EXTRA_ARTIST_NAME to album.albumArtist)
+                    )
                 } else {
-                    findActivityNavController(R.id.fragment_container)
-                        .navigate(
-                            R.id.artistDetailsFragment,
-                            bundleOf(EXTRA_ARTIST_ID to album.artistId)
-                        )
+                    findActivityNavController(R.id.fragment_container).navigate(
+                        R.id.artistDetailsFragment, bundleOf(EXTRA_ARTIST_ID to album.artistId)
+                    )
                 }
             }
         }
         
         binding.albumText.setOnClickListener(artistClickListener)
-        // ربط الإيفنت بنسخة النص الخاصة بالفيديو (باستخدام safe call للحماية في حالة landscape)
         binding.videoAlbumText?.setOnClickListener(artistClickListener)
 
         binding.fragmentAlbumContent.playAction.setOnClickListener {
@@ -303,10 +291,105 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
             if (::album.isInitialized) addAlbumSongsToPlaylist()
         }
 
-        binding.appBarLayout?.statusBarForeground =
-            MaterialShapeDrawable.createWithElevationOverlay(requireContext())
+        binding.appBarLayout?.statusBarForeground = MaterialShapeDrawable.createWithElevationOverlay(requireContext())
 
         view.postDelayed({ releaseEnterTransition() }, 400L)
+    }
+
+    // محاكاة لمنطق بايثون لجلب رابط الفيديو من API وتهيئته
+    private fun checkAndFetchAnimatedArtwork(albumData: Album) {
+        // يمكنك تغيير هذا المعرف ليكون معرف الألبوم الفعلي على Apple Music إن كان متوفراً في بياناتك
+        val appleMusicAlbumId = "1551901062" // كمثال
+        val country = "us" 
+        // استبدل هذا بالتوكن الحقيقي أو آلية جلبه
+        val token = "YOUR_APPLE_MUSIC_BEARER_TOKEN" 
+
+        lifecycleScope.launch(Dispatchers.IO) {
+            try {
+                val url = URL("https://amp-api.music.apple.com/v1/catalog/$country/albums/$appleMusicAlbumId?extend=editorialVideo")
+                val connection = url.openConnection() as HttpURLConnection
+                connection.requestMethod = "GET"
+                connection.setRequestProperty("Authorization", "Bearer $token")
+                connection.setRequestProperty("Origin", "https://music.apple.com")
+
+                if (connection.responseCode == 200) {
+                    val response = connection.inputStream.bufferedReader().use { it.readText() }
+                    val json = JSONObject(response)
+                    val attributes = json.getJSONArray("data").getJSONObject(0).getJSONObject("attributes")
+                    
+                    if (attributes.has("editorialVideo")) {
+                        val videoBase = attributes.getJSONObject("editorialVideo")
+                        // جلب مسار الفيديو الطولي (أو المربع حسب التصميم)
+                        val m3u8Url = videoBase.getJSONObject("motionDetailTall").getString("video")
+                        
+                        withContext(Dispatchers.Main) {
+                            isVideoAlbum = true
+                            showAlbum(albumData)
+                            setupVideoPlayer(m3u8Url)
+                        }
+                        return@launch
+                    }
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+            
+            // في حالة عدم وجود فيديو أو فشل الاتصال، نعرض الألبوم العادي
+            withContext(Dispatchers.Main) {
+                isVideoAlbum = false
+                showAlbum(albumData)
+            }
+        }
+    }
+
+    private fun getCacheDataSourceFactory(): CacheDataSource.Factory {
+        if (simpleCache == null) {
+            val cacheDir = File(requireContext().cacheDir, "animated_covers_cache")
+            val databaseProvider = StandaloneDatabaseProvider(requireContext())
+            simpleCache = SimpleCache(cacheDir, NoOpCacheEvictor(), databaseProvider)
+        }
+        return CacheDataSource.Factory()
+            .setCache(simpleCache!!)
+            .setUpstreamDataSourceFactory(DefaultHttpDataSource.Factory())
+            .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
+    }
+
+    private fun setupVideoPlayer(videoUrl: String) {
+        if (_binding == null || binding.videoPlayerView == null) return
+
+        exoPlayer = ExoPlayer.Builder(requireContext()).build().apply {
+            repeatMode = Player.REPEAT_MODE_ONE // تكرار لا نهائي
+            volume = 0f // كتم الصوت
+        }
+
+        binding.videoPlayerView?.player = exoPlayer
+
+        val mediaItem = MediaItem.fromUri(videoUrl)
+        val mediaSource = androidx.media3.exoplayer.hls.HlsMediaSource.Factory(getCacheDataSourceFactory())
+            .createMediaSource(mediaItem)
+
+        exoPlayer?.setMediaSource(mediaSource)
+        exoPlayer?.prepare()
+        exoPlayer?.playWhenReady = true
+
+        // انتقال سلس: عند جاهزية الفيديو، نقوم بإخفاء الصورة الأساسية تدريجياً
+        exoPlayer?.addListener(object : Player.Listener {
+            override fun onPlaybackStateChanged(playbackState: Int) {
+                if (playbackState == Player.STATE_READY) {
+                    binding.videoPlayerView?.animate()?.alpha(1f)?.setDuration(500)?.start()
+                }
+            }
+        })
+    }
+
+    override fun onResume() {
+        super.onResume()
+        exoPlayer?.playWhenReady = true
+    }
+
+    override fun onPause() {
+        super.onPause()
+        exoPlayer?.playWhenReady = false
     }
 
     private fun releaseEnterTransition() {
@@ -321,8 +404,7 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
             .setTitle(R.string.action_go_to_artist)
             .setAdapter(adapter) { _, which ->
                 findActivityNavController(R.id.fragment_container).navigate(
-                    R.id.multiArtistDetailsFragment,
-                    bundleOf(EXTRA_ARTIST_NAME to artists[which].name)
+                    R.id.multiArtistDetailsFragment, bundleOf(EXTRA_ARTIST_NAME to artists[which].name)
                 )
             }
             .show()
@@ -330,10 +412,7 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
 
     private fun goToMultiArtistFromAlbum(artistName: String) {
         findActivityNavController(R.id.fragment_container)
-            .navigate(
-                R.id.multiArtistDetailsFragment,
-                bundleOf(EXTRA_ARTIST_NAME to artistName)
-            )
+            .navigate(R.id.multiArtistDetailsFragment, bundleOf(EXTRA_ARTIST_NAME to artistName))
     }
 
     private fun addAlbumSongsToPlaylist() {
@@ -341,22 +420,14 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
             val playlists = get<RealRepository>().fetchPlaylists()
             withContext(Dispatchers.Main) {
                 if (_binding == null) return@withContext
-                AddToPlaylistDialog.create(playlists, album.songs)
-                    .show(childFragmentManager, "ADD_PLAYLIST")
+                AddToPlaylistDialog.create(playlists, album.songs).show(childFragmentManager, "ADD_PLAYLIST")
             }
         }
     }
 
-    override fun onDestroy() {
-        super.onDestroy()
-        serviceActivity?.removeMusicServiceEventListener(detailsViewModel)
-    }
-
     private fun setupRecyclerView() {
         simpleSongAdapter = SimpleSongAdapter(
-            requireActivity() as AppCompatActivity,
-            ArrayList(),
-            R.layout.item_song_album_details
+            requireActivity() as AppCompatActivity, ArrayList(), R.layout.item_song_album_details
         )
         binding.fragmentAlbumContent.recyclerView.apply {
             layoutManager = LinearLayoutManager(requireContext())
@@ -381,7 +452,7 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
         val metaTextString = if (albumYear == "-") songCountText else "$albumYear • $songCountText"
         val artistString = if (albumArtistExists) album.albumArtist else album.artistName
 
-        // تبديل واجهة العرض بناءً على حالة توفر الفيديو
+        // تبديل الواجهة حسب وجود الفيديو
         if (isVideoAlbum && binding.videoHeaderContainer != null) {
             binding.headerContainer.visibility = View.GONE
             binding.fragmentAlbumContent.originalButtonsContainer?.visibility = View.GONE
@@ -401,50 +472,34 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
         }
 
         binding.fragmentAlbumContent.songTitle.text = songCountText
-
         binding.image.transitionName = "${getString(R.string.transition_album_art)}_${album.id}"
         binding.videoImage?.transitionName = "${getString(R.string.transition_album_art)}_${album.id}"
 
+        // يتم تحميل الصورة في كلا الواجهتين (لتكون فريم مبدئي للفيديو)
         loadAlbumCover(album)
         simpleSongAdapter.swapDataSet(album.songs)
         
         if (albumArtistExists) {
-            detailsViewModel.getAlbumArtist(album.albumArtist.toString())
-                .observe(viewLifecycleOwner) {
-                    loadMoreAlbums(it)
-                }
+            detailsViewModel.getAlbumArtist(album.albumArtist.toString()).observe(viewLifecycleOwner) { loadMoreAlbums(it) }
         } else {
-            detailsViewModel.getArtist(album.artistId).observe(viewLifecycleOwner) {
-                loadMoreAlbums(it)
-            }
+            detailsViewModel.getArtist(album.artistId).observe(viewLifecycleOwner) { loadMoreAlbums(it) }
         }
     }
 
     private fun moreAlbums(albums: List<Album>) {
         binding.fragmentAlbumContent.moreTitle.show()
         binding.fragmentAlbumContent.moreRecyclerView.show()
-        binding.fragmentAlbumContent.moreTitle.text =
-            String.format(getString(R.string.label_more_from), album.artistName)
+        binding.fragmentAlbumContent.moreTitle.text = String.format(getString(R.string.label_more_from), album.artistName)
 
-        val albumAdapter =
-            HorizontalAlbumAdapter(requireActivity() as AppCompatActivity, albums, this)
+        val albumAdapter = HorizontalAlbumAdapter(requireActivity() as AppCompatActivity, albums, this)
         moreAlbumAdapter = albumAdapter
-        binding.fragmentAlbumContent.moreRecyclerView.layoutManager = GridLayoutManager(
-            requireContext(),
-            1,
-            GridLayoutManager.HORIZONTAL,
-            false
-        )
+        binding.fragmentAlbumContent.moreRecyclerView.layoutManager = GridLayoutManager(requireContext(), 1, GridLayoutManager.HORIZONTAL, false)
         binding.fragmentAlbumContent.moreRecyclerView.adapter = albumAdapter
-        if (hasExtractedColors) {
-            albumAdapter.setDynamicTextColors(foregroundColor, secondaryForegroundColor)
-        }
+        if (hasExtractedColors) albumAdapter.setDynamicTextColors(foregroundColor, secondaryForegroundColor)
     }
 
     private fun loadMoreAlbums(artist: Artist) {
-        detailsViewModel.getMoreAlbums(artist).observe(viewLifecycleOwner) {
-            moreAlbums(it)
-        }
+        detailsViewModel.getMoreAlbums(artist).observe(viewLifecycleOwner) { moreAlbums(it) }
     }
 
     private fun loadAlbumCover(album: Album) {
@@ -466,10 +521,7 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
             .downsample(DownsampleStrategy.CENTER_INSIDE)
             .dontAnimate()
             .into(object : CustomTarget<Bitmap>() {
-                override fun onResourceReady(
-                    resource: Bitmap,
-                    transition: Transition<in Bitmap>?
-                ) {
+                override fun onResourceReady(resource: Bitmap, transition: Transition<in Bitmap>?) {
                     cachedBitmap = resource
                     extractColorAndApplyBackground(albumId, resource)
                 }
@@ -494,7 +546,6 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
     private fun extractColorAndApplyBackground(albumId: Long, bitmap: Bitmap) {
         lifecycleScope.launch(Dispatchers.Default) {
             val mostFrequentColor = AlbumPaletteEngine.findMostFrequentColor(bitmap)
-
             withContext(Dispatchers.Main) {
                 hasExtractedColors = true
                 dominantBackgroundColor = mostFrequentColor
@@ -512,10 +563,8 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
 
     private fun setColors(backgroundColor: Int) {
         if (_binding == null) return
-
         binding.rootLayout.setBackgroundColor(backgroundColor)
         binding.appBarLayout?.setBackgroundColor(ColorUtils.setAlphaComponent(backgroundColor, 0))
-
         applyContrastingForegroundColor(backgroundColor)
     }
 
@@ -530,12 +579,10 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
         binding.albumText.setTextColor(secondaryFgColor)
         binding.albumMetaText.setTextColor(secondaryFgColor)
 
-        // الألوان الخاصة بنصوص واجهة الفيديو
         binding.videoAlbumTitle?.setTextColor(fgColor)
         binding.videoAlbumText?.setTextColor(secondaryFgColor)
         binding.videoAlbumMetaText?.setTextColor(secondaryFgColor)
 
-        // إنشاء التدرج اللوني الذي يدمج الصورة بسلاسة مع خلفية الشاشة
         if (isVideoAlbum && binding.videoHeaderContainer?.visibility == View.VISIBLE) {
             val gradient = GradientDrawable(
                 GradientDrawable.Orientation.TOP_BOTTOM,
@@ -554,7 +601,6 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
 
         binding.fragmentAlbumContent.songTitle.setTextColor(fgColor)
         binding.fragmentAlbumContent.moreTitle.setTextColor(fgColor)
-
         applyStatusBarAppearance(isLightBackground)
 
         binding.fragmentAlbumContent.shuffleActionGlass.setBackdropColor(backgroundColor)
@@ -562,7 +608,6 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
         binding.fragmentAlbumContent.shuffleAction.iconTint = ColorStateList.valueOf(fgColor)
         binding.fragmentAlbumContent.addAction.iconTint = ColorStateList.valueOf(fgColor)
         
-        // الأزرار الخاصة بالفيديو
         binding.videoShuffleActionGlass?.setBackdropColor(backgroundColor)
         binding.videoAddActionGlass?.setBackdropColor(backgroundColor)
         binding.videoShuffleAction?.iconTint = ColorStateList.valueOf(fgColor)
@@ -583,37 +628,26 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
             iconTint = ColorStateList.valueOf(playButtonForeground)
         }
 
-        if (::simpleSongAdapter.isInitialized) {
-            simpleSongAdapter.setDynamicTextColors(fgColor, secondaryFgColor)
-        }
+        if (::simpleSongAdapter.isInitialized) simpleSongAdapter.setDynamicTextColors(fgColor, secondaryFgColor)
         moreAlbumAdapter?.setDynamicTextColors(fgColor, secondaryFgColor)
     }
 
     private fun applyStatusBarAppearance(isLightBackground: Boolean) {
         activity?.window?.let { window ->
-            androidx.core.view.WindowInsetsControllerCompat(window, window.decorView)
-                .isAppearanceLightStatusBars = isLightBackground
+            androidx.core.view.WindowInsetsControllerCompat(window, window.decorView).isAppearanceLightStatusBars = isLightBackground
         }
     }
 
     private fun neutralFallbackColor(): Int {
         val typedValue = TypedValue()
-        val resolved = requireContext().theme.resolveAttribute(
-            com.google.android.material.R.attr.colorSurface, typedValue, true
-        )
+        val resolved = requireContext().theme.resolveAttribute(com.google.android.material.R.attr.colorSurface, typedValue, true)
         return if (resolved) typedValue.data else Color.BLACK
     }
 
     private fun actionBarSizePx(): Int {
         val typedValue = TypedValue()
-        val resolved = requireContext().theme.resolveAttribute(
-            androidx.appcompat.R.attr.actionBarSize, typedValue, true
-        )
-        return if (resolved) {
-            TypedValue.complexToDimensionPixelSize(typedValue.data, resources.displayMetrics)
-        } else {
-            (56 * resources.displayMetrics.density).toInt()
-        }
+        val resolved = requireContext().theme.resolveAttribute(androidx.appcompat.R.attr.actionBarSize, typedValue, true)
+        return if (resolved) TypedValue.complexToDimensionPixelSize(typedValue.data, resources.displayMetrics) else (56 * resources.displayMetrics.density).toInt()
     }
 
     private fun setUpCustomOverflowIcon(toolbar: TintableToolbar) {
@@ -623,18 +657,14 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
         val sizePx = (48 * resources.displayMetrics.density).toInt()
         val iconPaddingPx = (12 * resources.displayMetrics.density).toInt()
         val backgroundTypedValue = TypedValue()
-        requireContext().theme.resolveAttribute(
-            android.R.attr.selectableItemBackgroundBorderless, backgroundTypedValue, true
-        )
+        requireContext().theme.resolveAttribute(android.R.attr.selectableItemBackgroundBorderless, backgroundTypedValue, true)
 
         val imageView = ImageView(requireContext()).apply {
             setImageDrawable(icon)
             setPadding(iconPaddingPx, iconPaddingPx, iconPaddingPx, iconPaddingPx)
             isClickable = true
             isFocusable = true
-            if (backgroundTypedValue.resourceId != 0) {
-                background = ContextCompat.getDrawable(requireContext(), backgroundTypedValue.resourceId)
-            }
+            if (backgroundTypedValue.resourceId != 0) background = ContextCompat.getDrawable(requireContext(), backgroundTypedValue.resourceId)
             setOnClickListener { toolbar.showOverflowMenu() }
         }
 
@@ -648,10 +678,8 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
             toolbar.getLocationInWindow(toolbarLoc)
             val rootLoc = IntArray(2)
             rootLayout.getLocationInWindow(rootLoc)
-            imageView.translationX =
-                (toolbarLoc[0] - rootLoc[0] + toolbar.width - sizePx).toFloat()
-            imageView.translationY =
-                (toolbarLoc[1] - rootLoc[1] + (toolbar.height - sizePx) / 2).toFloat()
+            imageView.translationX = (toolbarLoc[0] - rootLoc[0] + toolbar.width - sizePx).toFloat()
+            imageView.translationY = (toolbarLoc[1] - rootLoc[1] + (toolbar.height - sizePx) / 2).toFloat()
         }
         toolbar.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> repositionOverImageView() }
         toolbar.post { repositionOverImageView() }
@@ -664,12 +692,7 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
             .setPopEnterAnim(R.anim.nav_slide_in_left)
             .setPopExitAnim(R.anim.nav_slide_out_right)
             .build()
-
-        findNavController().navigate(
-            R.id.albumDetailsFragment,
-            bundleOf(EXTRA_ALBUM_ID to albumId),
-            navOptions
-        )
+        findNavController().navigate(R.id.albumDetailsFragment, bundleOf(EXTRA_ALBUM_ID to albumId), navOptions)
     }
 
     override fun onCreateMenu(menu: Menu, inflater: MenuInflater) {}
@@ -682,33 +705,15 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
         var sortOrder: String? = null
         val songs = simpleSongAdapter.dataSet
         when (item.itemId) {
-            R.id.action_play_next -> {
-                MusicPlayerRemote.playNext(songs)
-                return true
-            }
-            R.id.action_add_to_current_playing -> {
-                MusicPlayerRemote.enqueue(songs)
-                return true
-            }
-            R.id.action_add_to_playlist -> {
-                addAlbumSongsToPlaylist()
-                return true
-            }
-            R.id.action_delete_from_device -> {
-                DeleteSongsDialog.create(songs).show(childFragmentManager, "DELETE_SONGS")
-                return true
-            }
+            R.id.action_play_next -> { MusicPlayerRemote.playNext(songs); return true }
+            R.id.action_add_to_current_playing -> { MusicPlayerRemote.enqueue(songs); return true }
+            R.id.action_add_to_playlist -> { addAlbumSongsToPlaylist(); return true }
+            R.id.action_delete_from_device -> { DeleteSongsDialog.create(songs).show(childFragmentManager, "DELETE_SONGS"); return true }
             R.id.action_tag_editor -> {
                 val intent = Intent(requireContext(), AlbumTagEditorActivity::class.java)
                 intent.putExtra(AbsTagEditorActivity.EXTRA_ID, album.id)
-                val options = ActivityOptions.makeSceneTransitionAnimation(
-                    requireActivity(),
-                    binding.image,
-                    "${getString(R.string.transition_album_art)}_${album.id}"
-                )
-                startActivity(
-                    intent, options.toBundle()
-                )
+                val options = ActivityOptions.makeSceneTransitionAnimation(requireActivity(), binding.image, "${getString(R.string.transition_album_art)}_${album.id}")
+                startActivity(intent, options.toBundle())
                 return true
             }
             R.id.action_sort_order_title -> sortOrder = SONG_A_Z
@@ -727,34 +732,18 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
         when (savedSortOrder) {
             SONG_A_Z -> sortOrder.findItem(R.id.action_sort_order_title).isChecked = true
             SONG_Z_A -> sortOrder.findItem(R.id.action_sort_order_title_desc).isChecked = true
-            SONG_TRACK_LIST ->
-                sortOrder.findItem(R.id.action_sort_order_track_list).isChecked = true
-            SONG_DURATION ->
-                sortOrder.findItem(R.id.action_sort_order_artist_song_duration).isChecked = true
+            SONG_TRACK_LIST -> sortOrder.findItem(R.id.action_sort_order_track_list).isChecked = true
+            SONG_DURATION -> sortOrder.findItem(R.id.action_sort_order_artist_song_duration).isChecked = true
         }
     }
 
     private fun setSaveSortOrder(sortOrder: String) {
         PreferenceUtil.albumDetailSongSortOrder = sortOrder
         val songs = when (sortOrder) {
-            SONG_TRACK_LIST -> album.songs.sortedWith { o1, o2 ->
-                o1.trackNumber.compareTo(
-                    o2.trackNumber
-                )
-            }
-            SONG_A_Z -> {
-                val collator = Collator.getInstance()
-                album.songs.sortedWith { o1, o2 -> collator.compare(o1.title, o2.title) }
-            }
-            SONG_Z_A -> {
-                val collator = Collator.getInstance()
-                album.songs.sortedWith { o1, o2 -> collator.compare(o2.title, o1.title) }
-            }
-            SONG_DURATION -> album.songs.sortedWith { o1, o2 ->
-                o1.duration.compareTo(
-                    o2.duration
-                )
-            }
+            SONG_TRACK_LIST -> album.songs.sortedWith { o1, o2 -> o1.trackNumber.compareTo(o2.trackNumber) }
+            SONG_A_Z -> { val collator = Collator.getInstance(); album.songs.sortedWith { o1, o2 -> collator.compare(o1.title, o2.title) } }
+            SONG_Z_A -> { val collator = Collator.getInstance(); album.songs.sortedWith { o1, o2 -> collator.compare(o2.title, o1.title) } }
+            SONG_DURATION -> album.songs.sortedWith { o1, o2 -> o1.duration.compareTo(o2.duration) }
             else -> throw IllegalArgumentException("invalid $sortOrder")
         }
         album = album.copy(songs = songs)
@@ -763,14 +752,20 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
 
     override fun onDestroyView() {
         super.onDestroyView()
+        exoPlayer?.release()
+        exoPlayer = null
         customOverflowIcon = null
         transitionStarted = false
         originalStatusBarLight?.let { wasLight ->
             activity?.window?.let { window ->
-                androidx.core.view.WindowInsetsControllerCompat(window, window.decorView)
-                    .isAppearanceLightStatusBars = wasLight
+                androidx.core.view.WindowInsetsControllerCompat(window, window.decorView).isAppearanceLightStatusBars = wasLight
             }
         }
         _binding = null
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        serviceActivity?.removeMusicServiceEventListener(detailsViewModel)
     }
 }
