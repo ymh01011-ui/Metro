@@ -60,7 +60,6 @@ android {
     }
 }
 
-
 dependencies {
     implementation project(':appthemehelper')
     implementation "androidx.gridlayout:gridlayout:1.0.0"
@@ -129,4 +128,14 @@ dependencies {
     implementation 'me.zhanghai.android.fastscroll:library:1.2.0'
     implementation 'cat.ereza:customactivityoncrash:2.4.0'
     implementation 'me.tankery.lib:circularSeekBar:1.4.2'
+
+    // =========================================================
+    // المكتبات المضافة لتشغيل فيديوهات الغلاف (Animated Artwork)
+    // =========================================================
+    def media3_version = "1.0.2"
+    implementation "androidx.media3:media3-exoplayer:$media3_version"
+    implementation "androidx.media3:media3-exoplayer-hls:$media3_version"
+    implementation "androidx.media3:media3-ui:$media3_version"
+
+    implementation "com.squareup.okhttp3:okhttp:4.10.0"
 }
