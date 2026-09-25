@@ -83,6 +83,8 @@ import org.koin.core.parameter.parametersOf
 import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
+import java.net.URLDecoder
+import java.net.URLEncoder
 import java.text.Collator
 
 private const val TOOLBAR_ICON_ALPHA = 0xCC
@@ -121,6 +123,13 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
     companion object {
         // Shared cache instance for ExoPlayer to avoid locking issues
         private var simpleCache: SimpleCache? = null
+
+        // Anonymous (no-login) Apple Music web token, shared across instances
+        private var cachedAnonymousToken: String? = null
+        private var cachedTokenExpiry: Long = 0L
+
+        // albumId -> motion artwork URL (null = checked, confirmed no video)
+        private val animatedArtworkCache = HashMap<Long, String?>()
     }
 
     private val savedSortOrder: String
@@ -296,49 +305,134 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
         view.postDelayed({ releaseEnterTransition() }, 400L)
     }
 
-    // محاكاة لمنطق بايثون لجلب رابط الفيديو من API وتهيئته
+    // يتأكد إذا كان الألبوم له صورة متحركة (Motion Artwork) على Apple Music
+    // ويجيبها من غير أي تسجيل دخول أو حساب مدفوع، عن طريق:
+    // 1) iTunes Search API العام لمعرفة الـ ID الصحيح لنفس الألبوم
+    // 2) توكن مجهول الهوية (anonymous) زي اللي بيستخدمه أي زائر عادي لموقع music.apple.com
     private fun checkAndFetchAnimatedArtwork(albumData: Album) {
-        // يمكنك تغيير هذا المعرف ليكون معرف الألبوم الفعلي على Apple Music إن كان متوفراً في بياناتك
-        val appleMusicAlbumId = "1551901062" // كمثال
-        val country = "us" 
-        // استبدل هذا بالتوكن الحقيقي أو آلية جلبه
-        val token = "YOUR_APPLE_MUSIC_BEARER_TOKEN" 
+        val albumId = albumData.id
+
+        if (animatedArtworkCache.containsKey(albumId)) {
+            val cachedUrl = animatedArtworkCache[albumId]
+            isVideoAlbum = cachedUrl != null
+            showAlbum(albumData)
+            if (cachedUrl != null) setupVideoPlayer(cachedUrl)
+            return
+        }
 
         lifecycleScope.launch(Dispatchers.IO) {
-            try {
-                val url = URL("https://amp-api.music.apple.com/v1/catalog/$country/albums/$appleMusicAlbumId?extend=editorialVideo")
-                val connection = url.openConnection() as HttpURLConnection
-                connection.requestMethod = "GET"
-                connection.setRequestProperty("Authorization", "Bearer $token")
-                connection.setRequestProperty("Origin", "https://music.apple.com")
-
-                if (connection.responseCode == 200) {
-                    val response = connection.inputStream.bufferedReader().use { it.readText() }
-                    val json = JSONObject(response)
-                    val attributes = json.getJSONArray("data").getJSONObject(0).getJSONObject("attributes")
-                    
-                    if (attributes.has("editorialVideo")) {
-                        val videoBase = attributes.getJSONObject("editorialVideo")
-                        // جلب مسار الفيديو الطولي (أو المربع حسب التصميم)
-                        val m3u8Url = videoBase.getJSONObject("motionDetailTall").getString("video")
-                        
-                        withContext(Dispatchers.Main) {
-                            isVideoAlbum = true
-                            showAlbum(albumData)
-                            setupVideoPlayer(m3u8Url)
-                        }
-                        return@launch
-                    }
-                }
+            val videoUrl = try {
+                fetchAnimatedArtworkUrl(albumData)
             } catch (e: Exception) {
                 e.printStackTrace()
+                null
             }
-            
-            // في حالة عدم وجود فيديو أو فشل الاتصال، نعرض الألبوم العادي
+            animatedArtworkCache[albumId] = videoUrl
+
             withContext(Dispatchers.Main) {
-                isVideoAlbum = false
+                if (_binding == null) return@withContext
+                isVideoAlbum = videoUrl != null
                 showAlbum(albumData)
+                if (videoUrl != null) setupVideoPlayer(videoUrl)
             }
+        }
+    }
+
+    private fun fetchAnimatedArtworkUrl(albumData: Album): String? {
+        val country = "us"
+        val appleMusicId = findAppleMusicAlbumId(albumData, country) ?: return null
+        val token = getAnonymousAppleMusicToken() ?: return null
+
+        val url = URL("https://amp-api.music.apple.com/v1/catalog/$country/albums/$appleMusicId?extend=editorialVideo")
+        val connection = (url.openConnection() as HttpURLConnection).apply {
+            requestMethod = "GET"
+            setRequestProperty("Authorization", "Bearer $token")
+            setRequestProperty("Origin", "https://music.apple.com")
+            connectTimeout = 8000
+            readTimeout = 8000
+        }
+        try {
+            if (connection.responseCode != 200) return null
+            val response = connection.inputStream.bufferedReader().use { it.readText() }
+            val data = JSONObject(response).optJSONArray("data") ?: return null
+            if (data.length() == 0) return null
+            val attributes = data.getJSONObject(0).optJSONObject("attributes") ?: return null
+            val editorialVideo = attributes.optJSONObject("editorialVideo") ?: return null
+            val motion = editorialVideo.optJSONObject("motionDetailTall")
+                ?: editorialVideo.optJSONObject("motionSquareVideo1x1")
+                ?: return null
+            return motion.optString("video").takeIf { it.isNotBlank() }
+        } finally {
+            connection.disconnect()
+        }
+    }
+
+    // بيدور على نفس الألبوم بالاسم + اسم الفنان عبر iTunes Search API (عام، من غير توكن ولا تسجيل دخول)
+    // عشان يجيب الـ ID الصحيح بتاعه على Apple Music بدل رقم ثابت
+    private fun findAppleMusicAlbumId(albumData: Album, country: String): String? {
+        val artist = if (albumArtistExists) albumData.albumArtist else albumData.artistName
+        val term = URLEncoder.encode("${artist ?: ""} ${albumData.title}".trim(), "UTF-8")
+        val url = URL("https://itunes.apple.com/search?term=$term&entity=album&limit=1&country=$country")
+        val connection = (url.openConnection() as HttpURLConnection).apply {
+            requestMethod = "GET"
+            connectTimeout = 8000
+            readTimeout = 8000
+        }
+        try {
+            if (connection.responseCode != 200) return null
+            val response = connection.inputStream.bufferedReader().use { it.readText() }
+            val results = JSONObject(response).optJSONArray("results") ?: return null
+            if (results.length() == 0) return null
+            val collectionId = results.getJSONObject(0).optLong("collectionId", -1)
+            return if (collectionId > 0) collectionId.toString() else null
+        } finally {
+            connection.disconnect()
+        }
+    }
+
+    // توكن مجهول الهوية، نفس اللي بيستخدمه أي زائر عادي لموقع music.apple.com من غير حساب أو اشتراك.
+    // بنجيبه من صفحة الموقع نفسها ونكاشه لحد ما يقرب ينتهي.
+    private fun getAnonymousAppleMusicToken(): String? {
+        cachedAnonymousToken?.let { token ->
+            if (System.currentTimeMillis() < cachedTokenExpiry) return token
+        }
+
+        val url = URL("https://music.apple.com/us/browse")
+        val connection = (url.openConnection() as HttpURLConnection).apply {
+            requestMethod = "GET"
+            connectTimeout = 8000
+            readTimeout = 8000
+        }
+        try {
+            if (connection.responseCode != 200) return null
+            val html = connection.inputStream.bufferedReader().use { it.readText() }
+            val match = Regex("""name="desktop-music-app/config/environment"\s+content="([^"]+)"""").find(html)
+                ?: return null
+            val decoded = URLDecoder.decode(match.groupValues[1], "UTF-8")
+            val token = JSONObject(decoded).optJSONObject("MEDIA_API")?.optString("token")
+            if (token.isNullOrBlank()) return null
+
+            cachedAnonymousToken = token
+            cachedTokenExpiry = decodeJwtExpiry(token) ?: (System.currentTimeMillis() + 15 * 60 * 1000)
+            return token
+        } finally {
+            connection.disconnect()
+        }
+    }
+
+    private fun decodeJwtExpiry(token: String): Long? {
+        return try {
+            val payload = token.split(".").getOrNull(1) ?: return null
+            val decoded = String(
+                android.util.Base64.decode(
+                    payload,
+                    android.util.Base64.URL_SAFE or android.util.Base64.NO_WRAP or android.util.Base64.NO_PADDING
+                )
+            )
+            val exp = JSONObject(decoded).optLong("exp", -1)
+            if (exp <= 0) null else exp * 1000L - 60_000L
+        } catch (e: Exception) {
+            null
         }
     }
 
