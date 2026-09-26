@@ -354,11 +354,26 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
             return null
         }
 
-        val url = URL("https://amp-api.music.apple.com/v1/catalog/$country/albums/$appleMusicId?extend=editorialVideo")
+        val extendParams = "editorialArtwork,editorialVideo,extendedAssetUrls,offers,seoDescription,seoTitle"
+        val url =
+            URL(
+                "https://amp-api.music.apple.com/v1/catalog/$country/albums/$appleMusicId" +
+                    "?extend=$extendParams&l=en-US&platform=web",
+            )
         val connection = (url.openConnection() as HttpURLConnection).apply {
             requestMethod = "GET"
             setRequestProperty("Authorization", "Bearer $token")
-            setRequestProperty("Origin", "https://music.apple.com")
+            // لازم يكون beta.music.apple.com بالظبط - ده الدومين الحقيقي اللي الموقع شغال
+            // عليه دلوقتي، مش music.apple.com القديم. لو مش مطابق، amp-api بترفض الطلب.
+            setRequestProperty("Origin", "https://beta.music.apple.com")
+            setRequestProperty("Accept", "*/*")
+            setRequestProperty("x-apple-client-version", "2638.7.0-external")
+            setRequestProperty(
+                "sec-ch-ua",
+                "\"Android WebView\";v=\"153\", \"Not_A Brand\";v=\"8\", \"Chromium\";v=\"153\"",
+            )
+            setRequestProperty("sec-ch-ua-mobile", "?1")
+            setRequestProperty("sec-ch-ua-platform", "\"Android\"")
             connectTimeout = 8000
             readTimeout = 8000
         }
