@@ -449,15 +449,18 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
             return null
         }
 
+        // اتضح إن التوكن مش موجود في ملفات index/index-legacy تحديدًا - غالبًا موجود في chunk
+        // مشترك تاني (vendor، runtime، إلخ) اسمه مش هاش ثابت. فبندور في كل ملفات JS
+        // المذكورة في الصفحة، مش بس اللي اسمها يبدأ بـ index.
         val jsPaths =
-            Regex("""/assets/index[^"'\s]*\.js""")
+            Regex("""/assets/[^"'\s]+\.js""")
                 .findAll(mainHtml)
                 .map { it.value }
                 .distinct()
                 .toList()
 
         if (jsPaths.isEmpty()) {
-            debugToast("مفيش ولا ملف /assets/index*.js في الصفحة (طولها ${mainHtml.length} حرف)")
+            debugToast("مفيش ولا ملف JS واحد في الصفحة (طولها ${mainHtml.length} حرف)")
             return null
         }
 
