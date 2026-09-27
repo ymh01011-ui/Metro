@@ -449,9 +449,11 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
             return null
         }
 
-        // اتضح إن التوكن مش موجود في ملفات index/index-legacy تحديدًا - غالبًا موجود في chunk
-        // مشترك تاني (vendor، runtime، إلخ) اسمه مش هاش ثابت. فبندور في كل ملفات JS
-        // المذكورة في الصفحة، مش بس اللي اسمها يبدأ بـ index.
+        debugToast("طول صفحة الـ HTML: ${mainHtml.length} حرف")
+
+        // بندور في كل ملفات JS المذكورة في الصفحة (src أو data-src)، بس بنفحص
+        // الملفات اللي في اسمها "legacy" الأول - دي غالبًا اللي فيها التوكن حسب
+        // نفس الطريقة المستخدمة في مشاريع reverse-engineering مشابهة لـ Apple Music.
         val jsPaths =
             Regex("""/assets/[^"'\s]+\.js""")
                 .findAll(mainHtml)
@@ -460,12 +462,19 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
                 .toList()
 
         if (jsPaths.isEmpty()) {
-            debugToast("مفيش ولا ملف JS واحد في الصفحة (طولها ${mainHtml.length} حرف)")
+            debugToast("مفيش ولا ملف JS واحد في الصفحة")
             return null
         }
 
-        for (path in jsPaths) {
-            val jsContent = httpGetText("https://beta.music.apple.com$path") ?: continue
+        val orderedPaths = jsPaths.sortedByDescending { it.contains("legacy", ignoreCase = true) }
+
+        for (path in orderedPaths) {
+            val jsContent = httpGetText("https://beta.music.apple.com$path")
+            if (jsContent == null) {
+                debugToast("فشل تحميل $path")
+                continue
+            }
+            debugToast("فحصت $path (${jsContent.length} حرف)، فيه eyJ: ${jsContent.contains("eyJ")}")
             val token = extractToken(jsContent)
             if (token != null) {
                 cachedAnonymousToken = token
@@ -474,16 +483,17 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
             }
         }
 
-        debugToast("دورنا في ${jsPaths.size} ملف (${jsPaths.joinToString()}) ومنلقيناش توكن صحيح")
+        debugToast("دورنا في ${orderedPaths.size} ملف (${orderedPaths.joinToString()}) ومنلقيناش توكن صحيح")
         return null
     }
 
-    // بيدور على كل الأنماط اللي شكلها JWT (بتبدأ بـ eyJh) في النص، وبيتأكد إن كل واحد فيهم
-    // فعلاً JWT حقيقي (مش أي base64 string اتفق إنه يبدأ بنفس الحروف زي توكنات التتبع/الأناليتكس)
-    // عن طريق فك أول جزء (header) بتاعه والتأكد إنه JSON فيه مفتاح "alg" - ده بالظبط اللي بيميز
-    // JWT عن أي base64 عادي.
+    // بيدور على كل الأنماط اللي شكلها JWT كامل (header.payload.signature) في النص، مش بس
+    // اللي بتبدأ بـ eyJh تحديدًا - لأن أول 4 حروف بتتغير حسب ترتيب مفاتيح الـ header
+    // (مثلاً "typ" قبل "alg" هتدي eyJ0 مش eyJh). وبيتأكد إن كل واحد فيهم فعلاً JWT حقيقي
+    // (مش أي base64 string اتفق إنه يبدأ بنفس الحروف زي توكنات التتبع/الأناليتكس) عن طريق
+    // فك أول جزء (header) بتاعه والتأكد إنه JSON فيه مفتاح "alg".
     private fun extractToken(text: String): String? =
-        Regex("""eyJh[A-Za-z0-9_\-.]{40,}""")
+        Regex("""eyJ[A-Za-z0-9_\-]{5,}\.[A-Za-z0-9_\-]{10,}\.[A-Za-z0-9_\-]{10,}""")
             .findAll(text)
             .map { it.value }
             .firstOrNull { isLikelyJwt(it) }
