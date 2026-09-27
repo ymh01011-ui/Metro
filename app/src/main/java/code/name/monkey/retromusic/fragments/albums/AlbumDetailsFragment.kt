@@ -416,11 +416,15 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
     }
 
     // بيدور على نفس الألبوم بالاسم + اسم الفنان عبر iTunes Search API (عام، من غير توكن ولا تسجيل دخول)
-    // عشان يجيب الـ ID الصحيح بتاعه على Apple Music بدل رقم ثابت
+    // عشان يجيب الـ ID الصحيح بتاعه على Apple Music بدل رقم ثابت.
+    // مهم: بنطلب explicit=Yes صراحة ونجيب أكتر من نتيجة، لأن من غيرها الـ API ممكن يرجع
+    // نسخة "clean" من الألبوم بـ ID مختلف عن النسخة الأصلية (Explicit) اللي فيها الـ Motion Artwork.
     private fun findAppleMusicAlbumId(albumData: Album, country: String): String? {
         val artist = if (albumArtistExists) albumData.albumArtist else albumData.artistName
         val term = URLEncoder.encode("${artist ?: ""} ${albumData.title}".trim(), "UTF-8")
-        val url = URL("https://itunes.apple.com/search?term=$term&entity=album&limit=1&country=$country")
+        val url = URL(
+            "https://itunes.apple.com/search?term=$term&entity=album&limit=5&country=$country&explicit=Yes"
+        )
         val connection = (url.openConnection() as HttpURLConnection).apply {
             requestMethod = "GET"
             connectTimeout = 8000
@@ -437,7 +441,24 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
                 debugToast("iTunes search مفيهوش نتايج لـ ${albumData.title}")
                 return null
             }
-            val collectionId = results.getJSONObject(0).optLong("collectionId", -1)
+
+            // فضّل النسخة الـ Explicit لو موجودة ضمن النتايج، وإلا ارجع لأول نتيجة
+            var chosen = results.getJSONObject(0)
+            for (i in 0 until results.length()) {
+                val candidate = results.getJSONObject(i)
+                if (candidate.optString("collectionExplicitness") == "explicit") {
+                    chosen = candidate
+                    break
+                }
+            }
+
+            debugToast(
+                "اخترنا: ${chosen.optString("collectionName")} " +
+                    "(explicitness: ${chosen.optString("collectionExplicitness")}, " +
+                    "ID: ${chosen.optLong("collectionId", -1)})"
+            )
+
+            val collectionId = chosen.optLong("collectionId", -1)
             return if (collectionId > 0) collectionId.toString() else null
         } finally {
             connection.disconnect()
