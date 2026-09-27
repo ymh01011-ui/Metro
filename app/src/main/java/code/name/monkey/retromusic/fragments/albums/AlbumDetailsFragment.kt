@@ -6,6 +6,7 @@
 package code.name.monkey.retromusic.fragments.albums
 
 import android.app.ActivityOptions
+import android.content.Context
 import android.content.Intent
 import android.content.res.ColorStateList
 import android.graphics.Bitmap
@@ -121,8 +122,8 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
     private var isVideoAlbum = false
 
     companion object {
-        // اعرضها toast لحد ما تتأكد إن الميزة شغالة، بعدين خليها false
-        private const val DEBUG_ANIMATED_ARTWORK = true
+        // خليها false في الإصدار النهائي؛ لو حبيت تشوف رسائل التشخيص وقت التطوير رجّعها true
+        private const val DEBUG_ANIMATED_ARTWORK = false
 
         // Shared cache instance for ExoPlayer to avoid locking issues
         private var simpleCache: SimpleCache? = null
@@ -131,8 +132,44 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
         private var cachedAnonymousToken: String? = null
         private var cachedTokenExpiry: Long = 0L
 
-        // albumId -> motion artwork URL (null = checked, confirmed no video)
-        private val animatedArtworkCache = HashMap<Long, String?>()
+        private const val ANIMATED_ARTWORK_PREFS = "animated_artwork_prefs"
+        private const val ANIMATED_ARTWORK_PREFS_KEY = "cache_json"
+
+        // نسخة في الذاكرة من الكاش المحفوظ على القرص، بتتحمل مرة واحدة بس لكل عملية تشغيل
+        // للتطبيق، وبعدين بتتحدث في الذاكرة والقرص مع كل تغيير. albumId -> رابط الفيديو
+        // (null = اتفحص قبل كده وتأكدنا إن معندوش Motion Artwork).
+        private var animatedArtworkCache: HashMap<Long, String?>? = null
+
+        private fun loadAnimatedArtworkCache(context: Context): HashMap<Long, String?> {
+            animatedArtworkCache?.let { return it }
+            val prefs = context.applicationContext
+                .getSharedPreferences(ANIMATED_ARTWORK_PREFS, Context.MODE_PRIVATE)
+            val map = HashMap<Long, String?>()
+            prefs.getString(ANIMATED_ARTWORK_PREFS_KEY, null)?.let { json ->
+                try {
+                    val obj = JSONObject(json)
+                    obj.keys().forEach { key ->
+                        val albumId = key.toLongOrNull() ?: return@forEach
+                        map[albumId] = if (obj.isNull(key)) null else obj.getString(key)
+                    }
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
+            }
+            animatedArtworkCache = map
+            return map
+        }
+
+        private fun persistAnimatedArtworkCache(context: Context) {
+            val map = animatedArtworkCache ?: return
+            val obj = JSONObject()
+            map.forEach { (albumId, url) -> obj.put(albumId.toString(), url) }
+            context.applicationContext
+                .getSharedPreferences(ANIMATED_ARTWORK_PREFS, Context.MODE_PRIVATE)
+                .edit()
+                .putString(ANIMATED_ARTWORK_PREFS_KEY, obj.toString())
+                .apply()
+        }
     }
 
     private val savedSortOrder: String
@@ -314,12 +351,13 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
     // 2) توكن مجهول الهوية (anonymous) زي اللي بيستخدمه أي زائر عادي لموقع music.apple.com
     private fun checkAndFetchAnimatedArtwork(albumData: Album) {
         val albumId = albumData.id
+        val cache = loadAnimatedArtworkCache(requireContext())
 
-        if (animatedArtworkCache.containsKey(albumId)) {
-            val cachedUrl = animatedArtworkCache[albumId]
+        if (cache.containsKey(albumId)) {
+            val cachedUrl = cache[albumId]
             debugToast(
                 if (cachedUrl != null) "فيديو محفوظ من قبل (cache) - هيتشغل"
-                else "متفحص قبل كده في نفس الجلسة ورجع مفيش فيديو (cache) - مش هيعمل طلب تاني"
+                else "متفحص قبل كده ورجع مفيش فيديو (cache) - مش هيعمل طلب تاني"
             )
             isVideoAlbum = cachedUrl != null
             showAlbum(albumData)
@@ -335,7 +373,8 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
                 debugToast("إكسبشن أثناء الفحص: ${e.message}")
                 null
             }
-            animatedArtworkCache[albumId] = videoUrl
+            cache[albumId] = videoUrl
+            persistAnimatedArtworkCache(requireContext())
 
             withContext(Dispatchers.Main) {
                 if (_binding == null) return@withContext
@@ -346,10 +385,12 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
         }
     }
 
-    // بيمسح نتيجة الفحص المحفوظة لألبوم معيّن عشان يجرب يجيبها تاني من الأول
-    // (مفيد وقت التجربة عشان متضطرش تقفل التطبيق كل مرة عشان تمسح الـ cache)
+    // بيمسح نتيجة الفحص المحفوظة لألبوم معيّن (من الذاكرة ومن التخزين الدائم) عشان يجرب
+    // يجيبها تاني من الأول - مفيد لو فيديو اتخزن غلط أو لو رابط الفيديو بقى مش شغال.
     private fun forceRecheckAnimatedArtwork(albumData: Album) {
-        animatedArtworkCache.remove(albumData.id)
+        val cache = loadAnimatedArtworkCache(requireContext())
+        cache.remove(albumData.id)
+        persistAnimatedArtworkCache(requireContext())
         checkAndFetchAnimatedArtwork(albumData)
     }
 
@@ -732,18 +773,6 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
         binding.image.transitionName = "${getString(R.string.transition_album_art)}_${album.id}"
         binding.videoImage?.transitionName = "${getString(R.string.transition_album_art)}_${album.id}"
 
-        // وضع تجربة بس: اعمل ضغطة طويلة على صورة الغلاف عشان تمسح نتيجة الفحص المحفوظة
-        // وتخلي التطبيق يجرب يجيب الـ Motion Artwork من تاني، من غير ما تحتاج تقفل التطبيق.
-        if (DEBUG_ANIMATED_ARTWORK) {
-            val forceRecheck = View.OnLongClickListener {
-                debugToast("بنمسح الـ cache ونجرب تاني...")
-                forceRecheckAnimatedArtwork(album)
-                true
-            }
-            binding.image.setOnLongClickListener(forceRecheck)
-            binding.videoImage?.setOnLongClickListener(forceRecheck)
-        }
-
         // يتم تحميل الصورة في كلا الواجهتين (لتكون فريم مبدئي للفيديو)
         loadAlbumCover(album)
         simpleSongAdapter.swapDataSet(album.songs)
@@ -853,9 +882,18 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
         binding.videoAlbumMetaText?.setTextColor(secondaryFgColor)
 
         if (isVideoAlbum && binding.videoHeaderContainer?.visibility == View.VISIBLE) {
+            // الألوان دي بتتوزع بالتساوي على طول الگراديانت (كل لون شغلته 25% من الارتفاع)،
+            // فبخلي أول نصف شفاف تمامًا عشان الغطاء الداكن يفضل قريب من الحافة السفلية
+            // بس، بدل ما يبان باهت وممتد على الصورة كلها.
             val gradient = GradientDrawable(
                 GradientDrawable.Orientation.TOP_BOTTOM,
-                intArrayOf(Color.TRANSPARENT, ColorUtils.setAlphaComponent(backgroundColor, 150), backgroundColor)
+                intArrayOf(
+                    Color.TRANSPARENT,
+                    Color.TRANSPARENT,
+                    ColorUtils.setAlphaComponent(backgroundColor, 130),
+                    ColorUtils.setAlphaComponent(backgroundColor, 220),
+                    backgroundColor
+                )
             )
             binding.videoGradient?.background = gradient
         }
