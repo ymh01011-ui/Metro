@@ -317,6 +317,10 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
 
         if (animatedArtworkCache.containsKey(albumId)) {
             val cachedUrl = animatedArtworkCache[albumId]
+            debugToast(
+                if (cachedUrl != null) "فيديو محفوظ من قبل (cache) - هيتشغل"
+                else "متفحص قبل كده في نفس الجلسة ورجع مفيش فيديو (cache) - مش هيعمل طلب تاني"
+            )
             isVideoAlbum = cachedUrl != null
             showAlbum(albumData)
             if (cachedUrl != null) setupVideoPlayer(cachedUrl)
@@ -328,6 +332,7 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
                 fetchAnimatedArtworkUrl(albumData)
             } catch (e: Exception) {
                 e.printStackTrace()
+                debugToast("إكسبشن أثناء الفحص: ${e.message}")
                 null
             }
             animatedArtworkCache[albumId] = videoUrl
@@ -339,6 +344,13 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
                 if (videoUrl != null) setupVideoPlayer(videoUrl)
             }
         }
+    }
+
+    // بيمسح نتيجة الفحص المحفوظة لألبوم معيّن عشان يجرب يجيبها تاني من الأول
+    // (مفيد وقت التجربة عشان متضطرش تقفل التطبيق كل مرة عشان تمسح الـ cache)
+    private fun forceRecheckAnimatedArtwork(albumData: Album) {
+        animatedArtworkCache.remove(albumData.id)
+        checkAndFetchAnimatedArtwork(albumData)
     }
 
     private fun fetchAnimatedArtworkUrl(albumData: Album): String? {
@@ -698,6 +710,18 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
         binding.fragmentAlbumContent.songTitle.text = songCountText
         binding.image.transitionName = "${getString(R.string.transition_album_art)}_${album.id}"
         binding.videoImage?.transitionName = "${getString(R.string.transition_album_art)}_${album.id}"
+
+        // وضع تجربة بس: اعمل ضغطة طويلة على صورة الغلاف عشان تمسح نتيجة الفحص المحفوظة
+        // وتخلي التطبيق يجرب يجيب الـ Motion Artwork من تاني، من غير ما تحتاج تقفل التطبيق.
+        if (DEBUG_ANIMATED_ARTWORK) {
+            val forceRecheck = View.OnLongClickListener {
+                debugToast("بنمسح الـ cache ونجرب تاني...")
+                forceRecheckAnimatedArtwork(album)
+                true
+            }
+            binding.image.setOnLongClickListener(forceRecheck)
+            binding.videoImage?.setOnLongClickListener(forceRecheck)
+        }
 
         // يتم تحميل الصورة في كلا الواجهتين (لتكون فريم مبدئي للفيديو)
         loadAlbumCover(album)
