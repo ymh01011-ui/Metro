@@ -882,16 +882,17 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
         binding.videoAlbumMetaText?.setTextColor(secondaryFgColor)
 
         if (isVideoAlbum && binding.videoHeaderContainer?.visibility == View.VISIBLE) {
-            // الألوان دي بتتوزع بالتساوي على طول الگراديانت (كل لون شغلته 25% من الارتفاع)،
-            // فبخلي أول نصف شفاف تمامًا عشان الغطاء الداكن يفضل قريب من الحافة السفلية
-            // بس، بدل ما يبان باهت وممتد على الصورة كلها.
+            // الألوان دي بتتوزع بالتساوي على طول الگراديانت (كل لون شغلته 1/6 من الارتفاع)،
+            // فبخلي أول 40% شفاف تمامًا عشان الغطاء الداكن يفضل قريب من الحافة السفلية بس
+            // (أقرب لتحت من قبل)، بدل ما يبان ممتد لفوق أكتر من اللازم.
             val gradient = GradientDrawable(
                 GradientDrawable.Orientation.TOP_BOTTOM,
                 intArrayOf(
                     Color.TRANSPARENT,
                     Color.TRANSPARENT,
-                    ColorUtils.setAlphaComponent(backgroundColor, 130),
-                    ColorUtils.setAlphaComponent(backgroundColor, 220),
+                    Color.TRANSPARENT,
+                    ColorUtils.setAlphaComponent(backgroundColor, 120),
+                    ColorUtils.setAlphaComponent(backgroundColor, 210),
                     backgroundColor
                 )
             )
