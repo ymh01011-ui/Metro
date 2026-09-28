@@ -10,6 +10,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.res.ColorStateList
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.graphics.Color
 import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.Drawable
@@ -33,7 +34,10 @@ import androidx.navigation.fragment.navArgs
 import androidx.recyclerview.widget.DefaultItemAnimator
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.constraintlayout.widget.ConstraintLayout
 import androidx.media3.common.MediaItem
+import androidx.media3.common.PlaybackException
+import androidx.media3.common.VideoSize
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.datasource.DefaultHttpDataSource
@@ -82,6 +86,8 @@ import org.koin.android.ext.android.get
 import org.koin.androidx.viewmodel.ext.android.viewModel
 import org.koin.core.parameter.parametersOf
 import java.io.File
+import java.io.FileOutputStream
+import java.util.Locale
 import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLDecoder
@@ -89,6 +95,16 @@ import java.net.URLEncoder
 import java.text.Collator
 
 private const val TOOLBAR_ICON_ALPHA = 0xCC
+
+// نتيجة فحص الـ Motion Artwork لألبوم واحد، بتتخزن بشكل دائم:
+// url   = رابط الفيديو (null = اتفحص وتأكدنا إن معندوش فيديو)
+// ratio = نسبة ارتفاع/عرض إطار الفيديو المقاسة من الفيديو نفسه
+// color = لون الخلفية المستخرج من الغلاف (عشان الصفحة تفتح بلونها الصح من غير ما تحمّل الغلاف الأصلي)
+internal data class AnimatedEntry(
+    val url: String?,
+    val ratio: Float? = null,
+    val color: Int? = null,
+)
 
 class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_details),
     IAlbumClickListener {
@@ -121,6 +137,12 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
     private var exoPlayer: ExoPlayer? = null
     private var isVideoAlbum = false
 
+    // true = الصفحة اتفتحت بأول فريم محفوظ من الفيديو (من غير تحميل الغلاف الأصلي خالص)
+    private var posterShown = false
+
+    // نسبة ارتفاع/عرض إطار الفيديو الحالية (اتقاست من الفيديو نفسه)
+    private var currentFrameRatio: Float? = null
+
     companion object {
         // خليها false في الإصدار النهائي؛ لو حبيت تشوف رسائل التشخيص وقت التطوير رجّعها true
         private const val DEBUG_ANIMATED_ARTWORK = false
@@ -136,21 +158,29 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
         private const val ANIMATED_ARTWORK_PREFS_KEY = "cache_json"
 
         // نسخة في الذاكرة من الكاش المحفوظ على القرص، بتتحمل مرة واحدة بس لكل عملية تشغيل
-        // للتطبيق، وبعدين بتتحدث في الذاكرة والقرص مع كل تغيير. albumId -> رابط الفيديو
-        // (null = اتفحص قبل كده وتأكدنا إن معندوش Motion Artwork).
-        private var animatedArtworkCache: HashMap<Long, String?>? = null
+        // للتطبيق، وبعدين بتتحدث في الذاكرة والقرص مع كل تغيير. albumId -> AnimatedEntry
+        private var animatedArtworkCache: HashMap<Long, AnimatedEntry>? = null
 
-        private fun loadAnimatedArtworkCache(context: Context): HashMap<Long, String?> {
+        private fun loadAnimatedArtworkCache(context: Context): HashMap<Long, AnimatedEntry> {
             animatedArtworkCache?.let { return it }
             val prefs = context.applicationContext
                 .getSharedPreferences(ANIMATED_ARTWORK_PREFS, Context.MODE_PRIVATE)
-            val map = HashMap<Long, String?>()
+            val map = HashMap<Long, AnimatedEntry>()
             prefs.getString(ANIMATED_ARTWORK_PREFS_KEY, null)?.let { json ->
                 try {
                     val obj = JSONObject(json)
                     obj.keys().forEach { key ->
                         val albumId = key.toLongOrNull() ?: return@forEach
-                        map[albumId] = if (obj.isNull(key)) null else obj.getString(key)
+                        map[albumId] = when (val v = if (obj.isNull(key)) null else obj.get(key)) {
+                            null -> AnimatedEntry(null)
+                            is String -> AnimatedEntry(v) // الصيغة القديمة: رابط بس
+                            is JSONObject -> AnimatedEntry(
+                                url = v.optString("url").takeIf { it.isNotBlank() },
+                                ratio = if (v.has("ratio")) v.optDouble("ratio").toFloat() else null,
+                                color = if (v.has("color")) v.optInt("color") else null,
+                            )
+                            else -> AnimatedEntry(null)
+                        }
                     }
                 } catch (e: Exception) {
                     e.printStackTrace()
@@ -163,13 +193,26 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
         private fun persistAnimatedArtworkCache(context: Context) {
             val map = animatedArtworkCache ?: return
             val obj = JSONObject()
-            map.forEach { (albumId, url) -> obj.put(albumId.toString(), url) }
+            map.forEach { (albumId, entry) ->
+                if (entry.url == null) {
+                    obj.put(albumId.toString(), JSONObject.NULL)
+                } else {
+                    val e = JSONObject().put("url", entry.url)
+                    entry.ratio?.let { e.put("ratio", it.toDouble()) }
+                    entry.color?.let { e.put("color", it) }
+                    obj.put(albumId.toString(), e)
+                }
+            }
             context.applicationContext
                 .getSharedPreferences(ANIMATED_ARTWORK_PREFS, Context.MODE_PRIVATE)
                 .edit()
                 .putString(ANIMATED_ARTWORK_PREFS_KEY, obj.toString())
                 .apply()
         }
+
+        // أول فريم من الفيديو متخزن كصورة دائمة (في filesDir مش cacheDir عشان النظام ميمسحهاش)
+        private fun posterFile(context: Context, albumId: Long): File =
+            File(File(context.applicationContext.filesDir, "animated_posters"), "$albumId.jpg")
     }
 
     private val savedSortOrder: String
@@ -194,6 +237,10 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
             originalStatusBarLight = (requireActivity().window.decorView.systemUiVisibility and
                 android.view.View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR) != 0
         }
+
+        // ألبوم ليه فيديو متخزن + أول فريم محفوظ: نفتح الصفحة بالصورة دي مباشرة (بدل الغلاف
+        // الأصلي) وبنفس نسبة الفيديو ولون الخلفية المحفوظ، فمفيش أي تبديل صور وقت الفتح.
+        applyCachedVideoHeaderIfPossible()
 
         AlbumDetailsCache.getColor(arguments.extraAlbumId)?.let { cachedColor ->
             dominantBackgroundColor = cachedColor
@@ -354,14 +401,14 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
         val cache = loadAnimatedArtworkCache(requireContext())
 
         if (cache.containsKey(albumId)) {
-            val cachedUrl = cache[albumId]
+            val cachedUrl = cache[albumId]?.url
             debugToast(
                 if (cachedUrl != null) "فيديو محفوظ من قبل (cache) - هيتشغل"
                 else "متفحص قبل كده ورجع مفيش فيديو (cache) - مش هيعمل طلب تاني"
             )
             isVideoAlbum = cachedUrl != null
             showAlbum(albumData)
-            if (cachedUrl != null) setupVideoPlayer(cachedUrl)
+            if (cachedUrl != null) setupVideoPlayer(cachedUrl, albumId)
             return
         }
 
@@ -373,25 +420,70 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
                 debugToast("إكسبشن أثناء الفحص: ${e.message}")
                 null
             }
-            cache[albumId] = videoUrl
+            cache[albumId] = AnimatedEntry(videoUrl)
             persistAnimatedArtworkCache(requireContext())
 
             withContext(Dispatchers.Main) {
                 if (_binding == null) return@withContext
                 isVideoAlbum = videoUrl != null
                 showAlbum(albumData)
-                if (videoUrl != null) setupVideoPlayer(videoUrl)
+                if (videoUrl != null) setupVideoPlayer(videoUrl, albumId)
             }
         }
     }
 
-    // بيمسح نتيجة الفحص المحفوظة لألبوم معيّن (من الذاكرة ومن التخزين الدائم) عشان يجرب
-    // يجيبها تاني من الأول - مفيد لو فيديو اتخزن غلط أو لو رابط الفيديو بقى مش شغال.
+    // بيمسح نتيجة الفحص المحفوظة لألبوم معيّن (والصورة المحفوظة بتاعته) عشان يجرب يجيبها تاني من الأول
     private fun forceRecheckAnimatedArtwork(albumData: Album) {
         val cache = loadAnimatedArtworkCache(requireContext())
         cache.remove(albumData.id)
         persistAnimatedArtworkCache(requireContext())
+        posterFile(requireContext(), albumData.id).delete()
         checkAndFetchAnimatedArtwork(albumData)
+    }
+
+    // لو الألبوم ليه فيديو متخزن + أول فريم محفوظ + النسبة واللون: بنجهز واجهة الفيديو بالكامل
+    // فورًا (قبل ما بيانات الألبوم توصل)، والصورة بتتفك من الملف مباشرة عشان الـ transition
+    // يبدأ وفيه صورة جاهزة. الغلاف الأصلي مبيتحملش خالص في الحالة دي.
+    private fun applyCachedVideoHeaderIfPossible() {
+        if (binding.videoHeaderContainer == null || binding.videoImage == null) return
+        val albumId = arguments.extraAlbumId
+        val entry = loadAnimatedArtworkCache(requireContext())[albumId] ?: return
+        val ratio = entry.ratio ?: return
+        val color = entry.color ?: return
+        if (entry.url == null) return
+        val file = posterFile(requireContext(), albumId)
+        if (!file.exists()) return
+        val poster = BitmapFactory.decodeFile(file.path) ?: return
+
+        isVideoAlbum = true
+        posterShown = true
+        applyVideoFrameRatio(ratio)
+        binding.videoImage?.setImageBitmap(poster)
+        binding.videoImage?.transitionName = "${getString(R.string.transition_album_art)}_$albumId"
+        binding.headerContainer.visibility = View.GONE
+        binding.fragmentAlbumContent.originalButtonsContainer?.visibility = View.GONE
+        binding.videoHeaderContainer?.visibility = View.VISIBLE
+
+        hasExtractedColors = true
+        dominantBackgroundColor = color
+        AlbumDetailsCache.putColor(albumId, color)
+        setColors(color)
+
+        view?.post { releaseEnterTransition() }
+    }
+
+    // بيضبط نسبة إطار الفيديو على نسبة الفيديو الحقيقية عشان مفيش قص. بنحصرها بين
+    // 0.9 و 1.6 عشان فيديو طويل جدًا ميخليش الهيدر ياخد الشاشة كلها.
+    private fun applyVideoFrameRatio(heightOverWidth: Float) {
+        val frame = binding.videoFrame ?: return
+        val ratio = heightOverWidth.coerceIn(0.9f, 1.6f)
+        currentFrameRatio = ratio
+        val lp = frame.layoutParams as? ConstraintLayout.LayoutParams ?: return
+        val newRatio = String.format(Locale.US, "1:%.4f", ratio)
+        if (lp.dimensionRatio != newRatio) {
+            lp.dimensionRatio = newRatio
+            frame.layoutParams = lp
+        }
     }
 
     private fun fetchAnimatedArtworkUrl(albumData: Album): String? {
@@ -652,9 +744,10 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
             .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
     }
 
-    private fun setupVideoPlayer(videoUrl: String) {
+    private fun setupVideoPlayer(videoUrl: String, albumId: Long) {
         if (_binding == null || binding.videoPlayerView == null) return
 
+        exoPlayer?.release()
         exoPlayer = ExoPlayer.Builder(requireContext()).build().apply {
             repeatMode = Player.REPEAT_MODE_ONE // تكرار لا نهائي
             volume = 0f // كتم الصوت
@@ -670,14 +763,96 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
         exoPlayer?.prepare()
         exoPlayer?.playWhenReady = true
 
-        // انتقال سلس: عند جاهزية الفيديو، نقوم بإخفاء الصورة الأساسية تدريجياً
         exoPlayer?.addListener(object : Player.Listener {
+            // انتقال سلس: عند جاهزية الفيديو، بنظهره فوق الصورة (اللي هي أول فريم منه)
             override fun onPlaybackStateChanged(playbackState: Int) {
                 if (playbackState == Player.STATE_READY) {
                     binding.videoPlayerView?.animate()?.alpha(1f)?.setDuration(500)?.start()
                 }
             }
+
+            // نقيس أبعاد الفيديو الحقيقية ونظبط إطار الصفحة عليها، فمفيش قص
+            override fun onVideoSizeChanged(videoSize: VideoSize) {
+                if (_binding == null || videoSize.width == 0 || videoSize.height == 0) return
+                var w = videoSize.width * videoSize.pixelWidthHeightRatio
+                var h = videoSize.height.toFloat()
+                if (videoSize.unappliedRotationDegrees == 90 || videoSize.unappliedRotationDegrees == 270) {
+                    val t = w; w = h; h = t
+                }
+                applyVideoFrameRatio(h / w)
+            }
+
+            // أول فريم اتعرض: نحفظه كصورة دائمة (مرة واحدة بس لكل ألبوم)
+            override fun onRenderedFirstFrame() {
+                capturePosterIfNeeded(albumId)
+            }
+
+            // لو رابط الفيديو المخزن مبقاش شغال (404/403) نمسحه عشان يتجاب من جديد المرة الجاية.
+            // أخطاء الشبكة/الأوفلاين مبنمسحش بيها حاجة.
+            override fun onPlayerError(error: PlaybackException) {
+                if (error.errorCode == PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS) {
+                    context?.applicationContext?.let { ctx ->
+                        loadAnimatedArtworkCache(ctx).remove(albumId)
+                        persistAnimatedArtworkCache(ctx)
+                        posterFile(ctx, albumId).delete()
+                    }
+                }
+            }
         })
+    }
+
+    private fun capturePosterIfNeeded(albumId: Long) {
+        val ctx = context?.applicationContext ?: return
+        val file = posterFile(ctx, albumId)
+        if (file.exists() || !hasExtractedColors) return
+        val textureView = binding.videoPlayerView?.videoSurfaceView as? TextureView ?: return
+
+        textureView.post {
+            if (_binding == null || textureView.width == 0 || textureView.height == 0) return@post
+            val frameRatio = currentFrameRatio ?: return@post
+            val bitmap = try { textureView.bitmap } catch (e: Exception) { null } ?: return@post
+            if (isMostlyBlack(bitmap)) return@post
+            val color = dominantBackgroundColor
+
+            lifecycleScope.launch(Dispatchers.IO) {
+                try {
+                    file.parentFile?.mkdirs()
+                    val tmp = File(file.parentFile, "$albumId.tmp")
+                    FileOutputStream(tmp).use { bitmap.compress(Bitmap.CompressFormat.JPEG, 92, it) }
+                    if (!tmp.renameTo(file)) { tmp.delete(); return@launch }
+                    val cache = loadAnimatedArtworkCache(ctx)
+                    cache[albumId]?.let { e ->
+                        if (e.url != null) {
+                            cache[albumId] = e.copy(ratio = frameRatio, color = color)
+                            persistAnimatedArtworkCache(ctx)
+                        }
+                    }
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                    file.delete()
+                }
+            }
+        }
+    }
+
+    // حماية من إننا نحفظ فريم أسود (لو الـ TextureView لسه مرسمش) كصورة دائمة
+    private fun isMostlyBlack(bitmap: Bitmap): Boolean {
+        val stepX = maxOf(bitmap.width / 12, 1)
+        val stepY = maxOf(bitmap.height / 12, 1)
+        var sum = 0L
+        var count = 0
+        var y = 0
+        while (y < bitmap.height) {
+            var x = 0
+            while (x < bitmap.width) {
+                val c = bitmap.getPixel(x, y)
+                sum += (Color.red(c) + Color.green(c) + Color.blue(c)) / 3
+                count++
+                x += stepX
+            }
+            y += stepY
+        }
+        return count == 0 || sum / count < 8
     }
 
     override fun onResume() {
@@ -773,8 +948,8 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
         binding.image.transitionName = "${getString(R.string.transition_album_art)}_${album.id}"
         binding.videoImage?.transitionName = "${getString(R.string.transition_album_art)}_${album.id}"
 
-        // يتم تحميل الصورة في كلا الواجهتين (لتكون فريم مبدئي للفيديو)
-        loadAlbumCover(album)
+        // لو الصفحة اتفتحت بأول فريم محفوظ من الفيديو، مبنحملش الغلاف الأصلي خالص
+        if (!posterShown) loadAlbumCover(album)
         simpleSongAdapter.swapDataSet(album.songs)
         
         if (albumArtistExists) {
@@ -882,17 +1057,14 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
         binding.videoAlbumMetaText?.setTextColor(secondaryFgColor)
 
         if (isVideoAlbum && binding.videoHeaderContainer?.visibility == View.VISIBLE) {
-            // الألوان دي بتتوزع بالتساوي على طول الگراديانت (كل لون شغلته 1/6 من الارتفاع)،
-            // فبخلي أول 40% شفاف تمامًا عشان الغطاء الداكن يفضل قريب من الحافة السفلية بس
-            // (أقرب لتحت من قبل)، بدل ما يبان ممتد لفوق أكتر من اللازم.
+            // الگراديانت بقى شريط ارتفاعه ثابت (في الـ XML) ملازق للحافة السفلية بس، فالتغميق
+            // مبيطلعش لفوق خالص وبيغطي بس مكان العنوان واسم الفنان والكابشن.
             val gradient = GradientDrawable(
                 GradientDrawable.Orientation.TOP_BOTTOM,
                 intArrayOf(
                     Color.TRANSPARENT,
-                    Color.TRANSPARENT,
-                    Color.TRANSPARENT,
-                    ColorUtils.setAlphaComponent(backgroundColor, 120),
-                    ColorUtils.setAlphaComponent(backgroundColor, 210),
+                    ColorUtils.setAlphaComponent(backgroundColor, 110),
+                    ColorUtils.setAlphaComponent(backgroundColor, 215),
                     backgroundColor
                 )
             )
@@ -1064,6 +1236,8 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
         exoPlayer = null
         customOverflowIcon = null
         transitionStarted = false
+        posterShown = false
+        currentFrameRatio = null
         originalStatusBarLight?.let { wasLight ->
             activity?.window?.let { window ->
                 androidx.core.view.WindowInsetsControllerCompat(window, window.decorView).isAppearanceLightStatusBars = wasLight
