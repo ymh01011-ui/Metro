@@ -30,12 +30,13 @@
                 android:visibility="gone"
                 tools:visibility="visible">
 
-                <!-- إطار الفيديو / الصورة: نفس نسبة الغلاف العادي المربع (1:1)، مش أطول منه -->
+                <!-- إطار الفيديو / الصورة: نسبة أطول شوية من المربع (زي أبعاد فيديوهات Apple
+                     Motion Artwork الأصلية) عشان الفيديو ميتقصش من فوق -->
                 <FrameLayout
                     android:id="@+id/videoFrame"
                     android:layout_width="match_parent"
                     android:layout_height="0dp"
-                    app:layout_constraintDimensionRatio="1:1"
+                    app:layout_constraintDimensionRatio="4:5"
                     app:layout_constraintTop_toTopOf="parent"
                     app:layout_constraintStart_toStartOf="parent"
                     app:layout_constraintEnd_toEndOf="parent">
@@ -89,7 +90,7 @@
                     android:id="@+id/videoAlbumText"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:layout_marginBottom="16dp"
+                    android:layout_marginBottom="8dp"
                     android:background="?attr/selectableItemBackgroundBorderless"
                     android:clickable="true"
                     android:focusable="true"
