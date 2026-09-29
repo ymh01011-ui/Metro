@@ -40,6 +40,7 @@ import androidx.media3.common.PlaybackException
 import androidx.media3.common.VideoSize
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.hls.offline.HlsDownloader
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.datasource.cache.CacheDataSource
 import androidx.media3.datasource.cache.SimpleCache
@@ -88,6 +89,9 @@ import org.koin.core.parameter.parametersOf
 import java.io.File
 import java.io.FileOutputStream
 import java.util.Locale
+import java.util.concurrent.ConcurrentHashMap
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.SupervisorJob
 import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLDecoder
@@ -97,14 +101,24 @@ import java.text.Collator
 private const val TOOLBAR_ICON_ALPHA = 0xCC
 
 // نتيجة فحص الـ Motion Artwork لألبوم واحد، بتتخزن بشكل دائم:
-// url   = رابط الفيديو (null = اتفحص وتأكدنا إن معندوش فيديو)
-// ratio = نسبة ارتفاع/عرض إطار الفيديو المقاسة من الفيديو نفسه
-// color = لون الخلفية المستخرج من الغلاف (عشان الصفحة تفتح بلونها الصح من غير ما تحمّل الغلاف الأصلي)
+// url         = رابط الفيديو (null = اتفحص وتأكدنا إن معندوش فيديو)
+// ratio       = نسبة ارتفاع/عرض إطار الفيديو المقاسة من الفيديو نفسه
+// posterColor = لون الخلفية المستخرج من أول فريم محفوظ من الفيديو (مش من الغلاف الأصلي)
+// ready       = الفيديو اتنزل كامل على الجهاز وبيشتغل أوفلاين
+// checkedAt   = وقت الفحص (بنعيد فحص الألبومات اللي معندهاش فيديو بعد فترة)
 internal data class AnimatedEntry(
     val url: String?,
     val ratio: Float? = null,
-    val color: Int? = null,
+    val posterColor: Int? = null,
+    val ready: Boolean = false,
+    val checkedAt: Long = 0L,
 )
+
+private sealed class FetchResult {
+    data class Found(val url: String) : FetchResult()
+    object NoVideo : FetchResult()
+    object Failed : FetchResult() // مفيش نت / خطأ مؤقت: مبنخزنش حاجة عشان نجرب تاني
+}
 
 class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_details),
     IAlbumClickListener {
@@ -137,6 +151,9 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
     private var exoPlayer: ExoPlayer? = null
     private var isVideoAlbum = false
 
+    // مكان السكرول اللي كنت واقف عليه قبل ما تفتح ألبوم تاني (بيتحفظ في onDestroyView)
+    private var savedScrollY = 0
+
     // true = الصفحة اتفتحت بأول فريم محفوظ من الفيديو (من غير تحميل الغلاف الأصلي خالص)
     private var posterShown = false
 
@@ -159,25 +176,35 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
 
         // نسخة في الذاكرة من الكاش المحفوظ على القرص، بتتحمل مرة واحدة بس لكل عملية تشغيل
         // للتطبيق، وبعدين بتتحدث في الذاكرة والقرص مع كل تغيير. albumId -> AnimatedEntry
-        private var animatedArtworkCache: HashMap<Long, AnimatedEntry>? = null
+        // (ConcurrentHashMap لأن التنزيل في الخلفية بيعدّل عليها من thread تاني)
+        private var animatedArtworkCache: ConcurrentHashMap<Long, AnimatedEntry>? = null
 
-        private fun loadAnimatedArtworkCache(context: Context): HashMap<Long, AnimatedEntry> {
+        // الألبومات اللي اتأكدنا إنها معندهاش فيديو بنعيد فحصها بعد الفترة دي
+        private const val NO_VIDEO_RECHECK_MS = 7L * 24 * 60 * 60 * 1000
+
+        private val downloadScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        private val downloadsInFlight: MutableSet<Long> = java.util.Collections.synchronizedSet(HashSet())
+
+        @Synchronized
+        private fun loadAnimatedArtworkCache(context: Context): ConcurrentHashMap<Long, AnimatedEntry> {
             animatedArtworkCache?.let { return it }
             val prefs = context.applicationContext
                 .getSharedPreferences(ANIMATED_ARTWORK_PREFS, Context.MODE_PRIVATE)
-            val map = HashMap<Long, AnimatedEntry>()
+            val map = ConcurrentHashMap<Long, AnimatedEntry>()
             prefs.getString(ANIMATED_ARTWORK_PREFS_KEY, null)?.let { json ->
                 try {
                     val obj = JSONObject(json)
                     obj.keys().forEach { key ->
                         val albumId = key.toLongOrNull() ?: return@forEach
                         map[albumId] = when (val v = if (obj.isNull(key)) null else obj.get(key)) {
-                            null -> AnimatedEntry(null)
-                            is String -> AnimatedEntry(v) // الصيغة القديمة: رابط بس
+                            null -> AnimatedEntry(null) // صيغة قديمة: checkedAt=0 يعني هيتفحص تاني
+                            is String -> AnimatedEntry(v) // صيغة قديمة: رابط بس
                             is JSONObject -> AnimatedEntry(
                                 url = v.optString("url").takeIf { it.isNotBlank() },
                                 ratio = if (v.has("ratio")) v.optDouble("ratio").toFloat() else null,
-                                color = if (v.has("color")) v.optInt("color") else null,
+                                posterColor = if (v.has("pcolor")) v.optInt("pcolor") else null,
+                                ready = v.optBoolean("ready", false),
+                                checkedAt = v.optLong("checkedAt", 0L),
                             )
                             else -> AnimatedEntry(null)
                         }
@@ -190,18 +217,18 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
             return map
         }
 
+        @Synchronized
         private fun persistAnimatedArtworkCache(context: Context) {
             val map = animatedArtworkCache ?: return
             val obj = JSONObject()
             map.forEach { (albumId, entry) ->
-                if (entry.url == null) {
-                    obj.put(albumId.toString(), JSONObject.NULL)
-                } else {
-                    val e = JSONObject().put("url", entry.url)
-                    entry.ratio?.let { e.put("ratio", it.toDouble()) }
-                    entry.color?.let { e.put("color", it) }
-                    obj.put(albumId.toString(), e)
-                }
+                val e = JSONObject()
+                entry.url?.let { e.put("url", it) }
+                entry.ratio?.let { e.put("ratio", it.toDouble()) }
+                entry.posterColor?.let { e.put("pcolor", it) }
+                if (entry.ready) e.put("ready", true)
+                if (entry.checkedAt > 0) e.put("checkedAt", entry.checkedAt)
+                obj.put(albumId.toString(), e)
             }
             context.applicationContext
                 .getSharedPreferences(ANIMATED_ARTWORK_PREFS, Context.MODE_PRIVATE)
@@ -213,6 +240,104 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
         // أول فريم من الفيديو متخزن كصورة دائمة (في filesDir مش cacheDir عشان النظام ميمسحهاش)
         private fun posterFile(context: Context, albumId: Long): File =
             File(File(context.applicationContext.filesDir, "animated_posters"), "$albumId.jpg")
+
+        // كاش ExoPlayer بقى في filesDir (مش cacheDir) عشان "مسح الكاش" من إعدادات النظام
+        // ميمسحش الفيديوهات المتنزلة، ولازم يكون واحد بس لكل التطبيق.
+        @Synchronized
+        private fun cacheDataSourceFactory(context: Context): CacheDataSource.Factory {
+            if (simpleCache == null) {
+                val app = context.applicationContext
+                val cacheDir = File(app.filesDir, "animated_covers_cache_v2")
+                simpleCache = SimpleCache(cacheDir, NoOpCacheEvictor(), StandaloneDatabaseProvider(app))
+            }
+            return CacheDataSource.Factory()
+                .setCache(simpleCache!!)
+                .setUpstreamDataSourceFactory(DefaultHttpDataSource.Factory())
+                .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
+        }
+
+        private fun fetchText(url: String): String? {
+            val c = URL(url).openConnection() as HttpURLConnection
+            return try {
+                c.connectTimeout = 8000
+                c.readTimeout = 8000
+                if (c.responseCode != 200) null else c.inputStream.bufferedReader().use { it.readText() }
+            } finally {
+                c.disconnect()
+            }
+        }
+
+        // الرابط اللي بيرجع من Apple هو playlist رئيسي فيه كذا جودة، وExoPlayer بيبدّل بينهم حسب
+        // النت، فمرة يتخزن جودة ومرة تانية — وأوفلاين بيطلب جودة مش متخزنة. عشان كده بنختار جودة
+        // واحدة (H.264 / SDR / أقل عرض >= عرض الشاشة) ونشغّل وننزّل playlist بتاعها هي بس.
+        private fun resolveBestVariantUrl(masterUrl: String, targetWidthPx: Int): String {
+            try {
+                val text = fetchText(masterUrl) ?: return masterUrl
+                class V(val bw: Int, val w: Int, val avc: Boolean, val sdr: Boolean, val uri: String)
+                val lines = text.lines()
+                val variants = mutableListOf<V>()
+                var i = 0
+                while (i < lines.size) {
+                    val l = lines[i].trim()
+                    if (l.startsWith("#EXT-X-STREAM-INF:")) {
+                        val attrs = l.substringAfter(':')
+                        val bw = Regex("""(?:^|,)BANDWIDTH=(\d+)""").find(attrs)?.groupValues?.get(1)?.toIntOrNull() ?: 0
+                        val w = Regex("""RESOLUTION=(\d+)x\d+""").find(attrs)?.groupValues?.get(1)?.toIntOrNull() ?: 0
+                        val codecs = Regex("CODECS=\"([^\"]*)\"").find(attrs)?.groupValues?.get(1) ?: ""
+                        val range = Regex("""VIDEO-RANGE=(\w+)""").find(attrs)?.groupValues?.get(1) ?: "SDR"
+                        var j = i + 1
+                        while (j < lines.size && (lines[j].isBlank() || lines[j].startsWith("#"))) j++
+                        if (j < lines.size) {
+                            variants += V(
+                                bw, w,
+                                codecs.isEmpty() || codecs.contains("avc1"),
+                                range.equals("SDR", true),
+                                URL(URL(masterUrl), lines[j].trim()).toString(),
+                            )
+                        }
+                        i = j
+                    }
+                    i++
+                }
+                if (variants.isEmpty()) return masterUrl
+                val pool = variants.filter { it.avc && it.sdr }
+                    .ifEmpty { variants.filter { it.sdr } }
+                    .ifEmpty { variants }
+                val enough = pool.filter { it.w >= targetWidthPx }
+                val best = if (enough.isNotEmpty()) {
+                    enough.minWithOrNull(compareBy<V>({ it.w }, { it.bw }))
+                } else {
+                    pool.maxWithOrNull(compareBy<V>({ it.w }, { it.bw }))
+                }
+                return best?.uri ?: masterUrl
+            } catch (e: Exception) {
+                return masterUrl
+            }
+        }
+
+        // بيقفل الفيديو كامل (playlist + كل الـ segments) جوه الكاش الدائم، في الخلفية وعلى مستوى
+        // التطبيق كله (مش مربوط بالصفحة) فمبيتوقفش لو خرجت من الألبوم قبل ما يخلص.
+        private fun ensureVideoDownloaded(context: Context, albumId: Long, url: String) {
+            val app = context.applicationContext
+            if (!downloadsInFlight.add(albumId)) return
+            downloadScope.launch {
+                try {
+                    val variantUrl = resolveBestVariantUrl(url, app.resources.displayMetrics.widthPixels)
+                    HlsDownloader(MediaItem.fromUri(variantUrl), cacheDataSourceFactory(app)).download(null)
+                    val cache = loadAnimatedArtworkCache(app)
+                    cache[albumId]?.let { e ->
+                        if (e.url != null) {
+                            cache[albumId] = e.copy(url = variantUrl, ready = true)
+                            persistAnimatedArtworkCache(app)
+                        }
+                    }
+                } catch (e: Exception) {
+                    e.printStackTrace() // غالبًا مفيش نت؛ هنجرب تاني في المرة الجاية
+                } finally {
+                    downloadsInFlight.remove(albumId)
+                }
+            }
+        }
     }
 
     private val savedSortOrder: String
@@ -264,6 +389,8 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
             setUpSortOrderMenu(toolbar.menu.findItem(R.id.action_sort_order).subMenu!!)
             toolbar.setOnMenuItemClickListener { item -> handleSortOrderMenuItem(item) }
             setUpCustomOverflowIcon(toolbar)
+            // الأيقونة اتعملت دلوقتي بس، فنطبق عليها اللون الحالي (وإلا هتفضل بيضاء بعد الرجوع)
+            reapplyColorsIfReady()
         }
 
         androidx.core.view.WindowCompat.setDecorFitsSystemWindows(requireActivity().window, false)
@@ -330,6 +457,9 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
         })
 
         setupRecyclerView()
+        // الأدابتر اتعمل دلوقتي، فنعيد تطبيق الألوان عشان الأغاني تاخد اللون الصح
+        reapplyColorsIfReady()
+        restoreScrollPosition()
         detailsViewModel.getAlbum().observe(viewLifecycleOwner) { album ->
             albumArtistExists = !album.albumArtist.isNullOrEmpty()
             checkAndFetchAnimatedArtwork(album)
@@ -398,30 +528,45 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
     // 2) توكن مجهول الهوية (anonymous) زي اللي بيستخدمه أي زائر عادي لموقع music.apple.com
     private fun checkAndFetchAnimatedArtwork(albumData: Album) {
         val albumId = albumData.id
-        val cache = loadAnimatedArtworkCache(requireContext())
+        val app = requireContext().applicationContext
+        val cache = loadAnimatedArtworkCache(app)
+        val entry = cache[albumId]
 
-        if (cache.containsKey(albumId)) {
-            val cachedUrl = cache[albumId]?.url
-            debugToast(
-                if (cachedUrl != null) "فيديو محفوظ من قبل (cache) - هيتشغل"
-                else "متفحص قبل كده ورجع مفيش فيديو (cache) - مش هيعمل طلب تاني"
-            )
+        // "معندوش فيديو" بنصدّقها لمدة محدودة بس (وأي نتيجة قديمة/فاشلة بتتفحص تاني)
+        val noVideoStillValid = entry != null && entry.url == null &&
+            System.currentTimeMillis() - entry.checkedAt < NO_VIDEO_RECHECK_MS
+
+        if (entry != null && (entry.url != null || noVideoStillValid)) {
+            val cachedUrl = entry.url
             isVideoAlbum = cachedUrl != null
             showAlbum(albumData)
-            if (cachedUrl != null) setupVideoPlayer(cachedUrl, albumId)
+            if (cachedUrl != null) {
+                setupVideoPlayer(cachedUrl, albumId)
+                if (!entry.ready) ensureVideoDownloaded(app, albumId, cachedUrl)
+            }
             return
         }
 
         lifecycleScope.launch(Dispatchers.IO) {
-            val videoUrl = try {
+            val result = try {
                 fetchAnimatedArtworkUrl(albumData)
             } catch (e: Exception) {
                 e.printStackTrace()
-                debugToast("إكسبشن أثناء الفحص: ${e.message}")
-                null
+                FetchResult.Failed
             }
-            cache[albumId] = AnimatedEntry(videoUrl)
-            persistAnimatedArtworkCache(requireContext())
+            val videoUrl = (result as? FetchResult.Found)?.url
+            when (result) {
+                is FetchResult.Found -> {
+                    cache[albumId] = AnimatedEntry(result.url, checkedAt = System.currentTimeMillis())
+                    persistAnimatedArtworkCache(app)
+                    ensureVideoDownloaded(app, albumId, result.url)
+                }
+                FetchResult.NoVideo -> {
+                    cache[albumId] = AnimatedEntry(null, checkedAt = System.currentTimeMillis())
+                    persistAnimatedArtworkCache(app)
+                }
+                FetchResult.Failed -> Unit // مفيش نت: منخزنش "معندوش فيديو" غلط
+            }
 
             withContext(Dispatchers.Main) {
                 if (_binding == null) return@withContext
@@ -449,7 +594,7 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
         val albumId = arguments.extraAlbumId
         val entry = loadAnimatedArtworkCache(requireContext())[albumId] ?: return
         val ratio = entry.ratio ?: return
-        val color = entry.color ?: return
+        val color = entry.posterColor ?: return
         if (entry.url == null) return
         val file = posterFile(requireContext(), albumId)
         if (!file.exists()) return
@@ -481,22 +626,24 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
         val lp = frame.layoutParams as? ConstraintLayout.LayoutParams ?: return
         val newRatio = String.format(Locale.US, "1:%.4f", ratio)
         if (lp.dimensionRatio != newRatio) {
+            albumTitleBottomInScrollContent = -1
             lp.dimensionRatio = newRatio
             frame.layoutParams = lp
         }
     }
 
-    private fun fetchAnimatedArtworkUrl(albumData: Album): String? {
+    // بيفرّق بين "معندوش فيديو" (NoVideo - بنخزنها) وبين فشل مؤقت زي مفيش نت (Failed - مبنخزنش حاجة)
+    private fun fetchAnimatedArtworkUrl(albumData: Album): FetchResult {
         val country = "us"
         val appleMusicId = findAppleMusicAlbumId(albumData, country)
         if (appleMusicId == null) {
             debugToast("منلقيتش الألبوم على Apple Music (iTunes search)")
-            return null
+            return FetchResult.NoVideo
         }
         val token = getAnonymousAppleMusicToken()
         if (token == null) {
             debugToast("منلقيتش توكن مجهول الهوية")
-            return null
+            return FetchResult.Failed
         }
 
         val extendParams = "editorialArtwork,editorialVideo,extendedAssetUrls,offers,seoDescription,seoTitle"
@@ -523,26 +670,31 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
             readTimeout = 8000
         }
         try {
+            if (connection.responseCode == 404) return FetchResult.NoVideo
             if (connection.responseCode != 200) {
                 debugToast("amp-api رجع ${connection.responseCode}")
-                return null
+                return FetchResult.Failed
             }
             val response = connection.inputStream.bufferedReader().use { it.readText() }
             val data = JSONObject(response).optJSONArray("data")
             if (data == null || data.length() == 0) {
                 debugToast("amp-api رجع من غير بيانات للألبوم")
-                return null
+                return FetchResult.NoVideo
             }
-            val attributes = data.getJSONObject(0).optJSONObject("attributes") ?: return null
+            val attributes = data.getJSONObject(0).optJSONObject("attributes") ?: return FetchResult.NoVideo
             val editorialVideo = attributes.optJSONObject("editorialVideo")
             if (editorialVideo == null) {
                 debugToast("الألبوم دا معندوش Motion Artwork على Apple Music")
-                return null
+                return FetchResult.NoVideo
             }
             val motion = editorialVideo.optJSONObject("motionDetailTall")
                 ?: editorialVideo.optJSONObject("motionSquareVideo1x1")
-                ?: return null
-            return motion.optString("video").takeIf { it.isNotBlank() }
+                ?: return FetchResult.NoVideo
+            val masterUrl = motion.optString("video").takeIf { it.isNotBlank() } ?: return FetchResult.NoVideo
+            // نختار جودة واحدة من الأول عشان اللي بيتشغل هو نفسه اللي بيتخزن
+            return FetchResult.Found(
+                resolveBestVariantUrl(masterUrl, resources.displayMetrics.widthPixels)
+            )
         } finally {
             connection.disconnect()
         }
@@ -566,7 +718,7 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
         try {
             if (connection.responseCode != 200) {
                 debugToast("iTunes search رجع ${connection.responseCode}")
-                return null
+                throw java.io.IOException("iTunes search HTTP ${connection.responseCode}")
             }
             val response = connection.inputStream.bufferedReader().use { it.readText() }
             val results = JSONObject(response).optJSONArray("results")
@@ -732,17 +884,8 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
         }
     }
 
-    private fun getCacheDataSourceFactory(): CacheDataSource.Factory {
-        if (simpleCache == null) {
-            val cacheDir = File(requireContext().cacheDir, "animated_covers_cache")
-            val databaseProvider = StandaloneDatabaseProvider(requireContext())
-            simpleCache = SimpleCache(cacheDir, NoOpCacheEvictor(), databaseProvider)
-        }
-        return CacheDataSource.Factory()
-            .setCache(simpleCache!!)
-            .setUpstreamDataSourceFactory(DefaultHttpDataSource.Factory())
-            .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
-    }
+    private fun getCacheDataSourceFactory(): CacheDataSource.Factory =
+        cacheDataSourceFactory(requireContext())
 
     private fun setupVideoPlayer(videoUrl: String, albumId: Long) {
         if (_binding == null || binding.videoPlayerView == null) return
@@ -801,10 +944,14 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
         })
     }
 
+    // بيحفظ أول فريم كصورة دائمة + بيستخرج لون الخلفية منه هو (مش من الغلاف الأصلي)،
+    // ويخزن اللون والنسبة مع الألبوم عشان الفتحات الجاية تبدأ بيهم على طول.
     private fun capturePosterIfNeeded(albumId: Long) {
         val ctx = context?.applicationContext ?: return
+        val entry = loadAnimatedArtworkCache(ctx)[albumId] ?: return
+        if (entry.url == null) return
         val file = posterFile(ctx, albumId)
-        if (file.exists() || !hasExtractedColors) return
+        if (file.exists() && entry.posterColor != null && entry.ratio != null) return
         val textureView = binding.videoPlayerView?.videoSurfaceView as? TextureView ?: return
 
         textureView.post {
@@ -812,19 +959,30 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
             val frameRatio = currentFrameRatio ?: return@post
             val bitmap = try { textureView.bitmap } catch (e: Exception) { null } ?: return@post
             if (isMostlyBlack(bitmap)) return@post
-            val color = dominantBackgroundColor
 
             lifecycleScope.launch(Dispatchers.IO) {
                 try {
+                    val color = AlbumPaletteEngine.findMostFrequentColor(bitmap)
                     file.parentFile?.mkdirs()
                     val tmp = File(file.parentFile, "$albumId.tmp")
                     FileOutputStream(tmp).use { bitmap.compress(Bitmap.CompressFormat.JPEG, 92, it) }
                     if (!tmp.renameTo(file)) { tmp.delete(); return@launch }
+
                     val cache = loadAnimatedArtworkCache(ctx)
                     cache[albumId]?.let { e ->
                         if (e.url != null) {
-                            cache[albumId] = e.copy(ratio = frameRatio, color = color)
+                            cache[albumId] = e.copy(ratio = frameRatio, posterColor = color)
                             persistAnimatedArtworkCache(ctx)
+                        }
+                    }
+
+                    withContext(Dispatchers.Main) {
+                        if (_binding == null) return@withContext
+                        AlbumDetailsCache.putColor(albumId, color)
+                        if (dominantBackgroundColor != color || !hasExtractedColors) {
+                            hasExtractedColors = true
+                            dominantBackgroundColor = color
+                            setColors(color)
                         }
                     }
                 } catch (e: Exception) {
@@ -1112,6 +1270,31 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
         moreAlbumAdapter?.setDynamicTextColors(fgColor, secondaryFgColor)
     }
 
+    private fun reapplyColorsIfReady() {
+        if (_binding != null && hasExtractedColors) setColors(dominantBackgroundColor)
+    }
+
+    // بيرجّعك لنفس مكان السكرول بعد الرجوع من ألبوم تاني. المحتوى (الأغاني والألبومات
+    // المقترحة) بيتحمل تدريجيًا، فبنستنى لحد ما الصفحة تبقى طويلة كفاية ونسكرول مرة واحدة.
+    private fun restoreScrollPosition() {
+        val target = savedScrollY
+        if (target <= 0) return
+        val scroll = binding.content
+        val listener = object : android.view.ViewTreeObserver.OnGlobalLayoutListener {
+            override fun onGlobalLayout() {
+                val child = scroll.getChildAt(0) ?: return
+                if (child.height - scroll.height >= target) {
+                    scroll.scrollTo(0, target)
+                    if (scroll.viewTreeObserver.isAlive) scroll.viewTreeObserver.removeOnGlobalLayoutListener(this)
+                }
+            }
+        }
+        scroll.viewTreeObserver.addOnGlobalLayoutListener(listener)
+        scroll.postDelayed({
+            if (scroll.viewTreeObserver.isAlive) scroll.viewTreeObserver.removeOnGlobalLayoutListener(listener)
+        }, 2000L)
+    }
+
     private fun applyStatusBarAppearance(isLightBackground: Boolean) {
         activity?.window?.let { window ->
             androidx.core.view.WindowInsetsControllerCompat(window, window.decorView).isAppearanceLightStatusBars = isLightBackground
@@ -1231,6 +1414,7 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
     }
 
     override fun onDestroyView() {
+        savedScrollY = _binding?.content?.scrollY ?: 0
         super.onDestroyView()
         exoPlayer?.release()
         exoPlayer = null
@@ -1238,6 +1422,7 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
         transitionStarted = false
         posterShown = false
         currentFrameRatio = null
+        albumTitleBottomInScrollContent = -1
         originalStatusBarLight?.let { wasLight ->
             activity?.window?.let { window ->
                 androidx.core.view.WindowInsetsControllerCompat(window, window.decorView).isAppearanceLightStatusBars = wasLight
