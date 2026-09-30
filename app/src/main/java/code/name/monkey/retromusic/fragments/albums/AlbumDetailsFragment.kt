@@ -172,7 +172,7 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
         private var cachedTokenExpiry: Long = 0L
 
         private const val ANIMATED_ARTWORK_PREFS = "animated_artwork_prefs"
-        private const val ANIMATED_ARTWORK_PREFS_KEY = "cache_json"
+        private const val ANIMATED_ARTWORK_PREFS_KEY = "cache_json_v2"
 
         // نسخة في الذاكرة من الكاش المحفوظ على القرص، بتتحمل مرة واحدة بس لكل عملية تشغيل
         // للتطبيق، وبعدين بتتحدث في الذاكرة والقرص مع كل تغيير. albumId -> AnimatedEntry
@@ -632,31 +632,22 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
         }
     }
 
-    // بيفرّق بين "معندوش فيديو" (NoVideo - بنخزنها) وبين فشل مؤقت زي مفيش نت (Failed - مبنخزنش حاجة)
-    private fun fetchAnimatedArtworkUrl(albumData: Album): FetchResult {
-        val country = "us"
-        val appleMusicId = findAppleMusicAlbumId(albumData, country)
-        if (appleMusicId == null) {
-            debugToast("منلقيتش الألبوم على Apple Music (iTunes search)")
-            return FetchResult.NoVideo
-        }
-        val token = getAnonymousAppleMusicToken()
-        if (token == null) {
-            debugToast("منلقيتش توكن مجهول الهوية")
-            return FetchResult.Failed
-        }
+    // ---------- أدوات مساعدة ----------
 
-        val extendParams = "editorialArtwork,editorialVideo,extendedAssetUrls,offers,seoDescription,seoTitle"
-        val url =
-            URL(
-                "https://amp-api.music.apple.com/v1/catalog/$country/albums/$appleMusicId" +
-                    "?extend=$extendParams&l=en-US&platform=web",
-            )
-        val connection = (url.openConnection() as HttpURLConnection).apply {
+    private fun normalizeName(s: String?): String =
+        (s ?: "").lowercase().replace(Regex("[^\\p{L}\\p{N}]+"), " ").trim()
+
+    // "Dreamland (+ Bonus Levels)" -> "Dreamland" ، "Foo - Single" -> "Foo"
+    private fun baseTitle(s: String): String =
+        s.replace(Regex("""\s*[\(\[][^)\]]*[)\]]"""), "")
+            .replace(Regex("""\s+-\s+(single|ep)\s*$""", RegexOption.IGNORE_CASE), "")
+            .trim()
+
+    // GET على amp-api بنفس الهيدرز القديمة. null = 404، وأي خطأ تاني بيرمي IOException (يعني Failed مؤقت)
+    private fun ampGetJson(urlStr: String, token: String): JSONObject? {
+        val connection = (URL(urlStr).openConnection() as HttpURLConnection).apply {
             requestMethod = "GET"
             setRequestProperty("Authorization", "Bearer $token")
-            // لازم يكون beta.music.apple.com بالظبط - ده الدومين الحقيقي اللي الموقع شغال
-            // عليه دلوقتي، مش music.apple.com القديم. لو مش مطابق، amp-api بترفض الطلب.
             setRequestProperty("Origin", "https://beta.music.apple.com")
             setRequestProperty("Accept", "*/*")
             setRequestProperty("x-apple-client-version", "2638.7.0-external")
@@ -670,84 +661,111 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
             readTimeout = 8000
         }
         try {
-            if (connection.responseCode == 404) return FetchResult.NoVideo
-            if (connection.responseCode != 200) {
-                debugToast("amp-api رجع ${connection.responseCode}")
-                return FetchResult.Failed
+            val code = connection.responseCode
+            if (code == 404) return null
+            if (code == 401 || code == 403) {
+                cachedAnonymousToken = null // التوكن باظ، نجيب واحد جديد المرة الجاية
+                throw java.io.IOException("amp-api HTTP $code")
             }
-            val response = connection.inputStream.bufferedReader().use { it.readText() }
-            val data = JSONObject(response).optJSONArray("data")
-            if (data == null || data.length() == 0) {
-                debugToast("amp-api رجع من غير بيانات للألبوم")
-                return FetchResult.NoVideo
-            }
-            val attributes = data.getJSONObject(0).optJSONObject("attributes") ?: return FetchResult.NoVideo
-            val editorialVideo = attributes.optJSONObject("editorialVideo")
-            if (editorialVideo == null) {
-                debugToast("الألبوم دا معندوش Motion Artwork على Apple Music")
-                return FetchResult.NoVideo
-            }
-            val motion = editorialVideo.optJSONObject("motionDetailTall")
-                ?: editorialVideo.optJSONObject("motionSquareVideo1x1")
-                ?: return FetchResult.NoVideo
-            val masterUrl = motion.optString("video").takeIf { it.isNotBlank() } ?: return FetchResult.NoVideo
-            // نختار جودة واحدة من الأول عشان اللي بيتشغل هو نفسه اللي بيتخزن
-            return FetchResult.Found(
-                resolveBestVariantUrl(masterUrl, resources.displayMetrics.widthPixels)
-            )
+            if (code != 200) throw java.io.IOException("amp-api HTTP $code")
+            return JSONObject(connection.inputStream.bufferedReader().use { it.readText() })
         } finally {
             connection.disconnect()
         }
     }
 
-    // بيدور على نفس الألبوم بالاسم + اسم الفنان عبر iTunes Search API (عام، من غير توكن ولا تسجيل دخول)
-    // عشان يجيب الـ ID الصحيح بتاعه على Apple Music بدل رقم ثابت.
-    // مهم: بنطلب explicit=Yes صراحة ونجيب أكتر من نتيجة، لأن من غيرها الـ API ممكن يرجع
-    // نسخة "clean" من الألبوم بـ ID مختلف عن النسخة الأصلية (Explicit) اللي فيها الـ Motion Artwork.
-    private fun findAppleMusicAlbumId(albumData: Album, country: String): String? {
-        val artist = if (albumArtistExists) albumData.albumArtist else albumData.artistName
-        val term = URLEncoder.encode("${artist ?: ""} ${albumData.title}".trim(), "UTF-8")
-        val url = URL(
-            "https://itunes.apple.com/search?term=$term&entity=album&limit=5&country=$country&explicit=Yes"
-        )
-        val connection = (url.openConnection() as HttpURLConnection).apply {
-            requestMethod = "GET"
-            connectTimeout = 8000
-            readTimeout = 8000
-        }
-        try {
-            if (connection.responseCode != 200) {
-                debugToast("iTunes search رجع ${connection.responseCode}")
-                throw java.io.IOException("iTunes search HTTP ${connection.responseCode}")
-            }
-            val response = connection.inputStream.bufferedReader().use { it.readText() }
-            val results = JSONObject(response).optJSONArray("results")
-            if (results == null || results.length() == 0) {
-                debugToast("iTunes search مفيهوش نتايج لـ ${albumData.title}")
-                return null
-            }
+    // ---------- 1) البحث في كتالوج Apple Music نفسه (نفس اللي تبويب Albums بيستخدمه) ----------
 
-            // فضّل النسخة الـ Explicit لو موجودة ضمن النتايج، وإلا ارجع لأول نتيجة
-            var chosen = results.getJSONObject(0)
-            for (i in 0 until results.length()) {
-                val candidate = results.getJSONObject(i)
-                if (candidate.optString("collectionExplicitness") == "explicit") {
-                    chosen = candidate
-                    break
+    // بيرجع أكتر من نسخة مرشحة للألبوم (الأصلي، Deluxe، Bonus...) مرتبة من الأقرب للأبعد
+    private fun searchAlbumCandidates(albumData: Album, country: String, token: String): List<String> {
+        val artist = (if (albumArtistExists) albumData.albumArtist else albumData.artistName).orEmpty()
+        val title = baseTitle(albumData.title.orEmpty())
+        val wantedTitle = normalizeName(title)
+        val wantedArtist = normalizeName(artist)
+            .takeIf { it.isNotBlank() && it != "various artists" }
+
+        // جرّب "فنان + عنوان" وبعدين العنوان لوحده (لو اسم الفنان في ملفاتك مكتوب بشكل مختلف)
+        val queries = listOf("$artist $title".trim(), title).filter { it.isNotBlank() }.distinct()
+
+        val scored = LinkedHashMap<String, Int>()
+        for (q in queries) {
+            val url = "https://amp-api.music.apple.com/v1/catalog/$country/search" +
+                "?term=${URLEncoder.encode(q, "UTF-8")}&types=albums&limit=10&l=en-US&platform=web"
+            val albums = ampGetJson(url, token)
+                ?.optJSONObject("results")?.optJSONObject("albums")?.optJSONArray("data") ?: continue
+
+            for (i in 0 until albums.length()) {
+                val item = albums.getJSONObject(i)
+                val id = item.optString("id")
+                val attrs = item.optJSONObject("attributes") ?: continue
+                val rawName = attrs.optString("name")
+                val name = normalizeName(rawName)
+                val baseName = normalizeName(baseTitle(rawName))
+                val itemArtist = normalizeName(attrs.optString("artistName"))
+
+                val artistOk = wantedArtist == null ||
+                    itemArtist.contains(wantedArtist) || wantedArtist.contains(itemArtist)
+                if (!artistOk) continue
+
+                val rank = when {
+                    name == wantedTitle -> 0
+                    baseName == wantedTitle -> 1
+                    else -> continue
                 }
+                if (id.isNotBlank() && id !in scored) scored[id] = rank * 1000 + rawName.length
             }
-
-            debugToast(
-                "اخترنا: ${chosen.optString("collectionName")} " +
-                    "(explicitness: ${chosen.optString("collectionExplicitness")}, " +
-                    "ID: ${chosen.optLong("collectionId", -1)})"
-            )
-
-            val collectionId = chosen.optLong("collectionId", -1)
-            return if (collectionId > 0) collectionId.toString() else null
-        } finally {
-            connection.disconnect()
+            if (scored.isNotEmpty()) break // لقينا مرشحين من أول استعلام، كفاية
         }
+        return scored.entries.sortedBy { it.value }.map { it.key }.take(4)
+    }
+
+    // ---------- 2) جلب رابط الفيديو لنسخة معيّنة ----------
+
+    private fun fetchMotionUrl(appleMusicId: String, country: String, token: String): FetchResult {
+        val extendParams = "editorialArtwork,editorialVideo,extendedAssetUrls,offers,seoDescription,seoTitle"
+        val json = ampGetJson(
+            "https://amp-api.music.apple.com/v1/catalog/$country/albums/$appleMusicId" +
+                "?extend=$extendParams&l=en-US&platform=web",
+            token,
+        ) ?: return FetchResult.NoVideo
+
+        val data = json.optJSONArray("data")
+        if (data == null || data.length() == 0) return FetchResult.NoVideo
+        val attributes = data.getJSONObject(0).optJSONObject("attributes") ?: return FetchResult.NoVideo
+        val editorialVideo = attributes.optJSONObject("editorialVideo") ?: return FetchResult.NoVideo
+
+        // المفاتيح المعروفة أولاً، وبعدين أي مفتاح تاني فيه "video" (أحياناً الاسم بيختلف)
+        val motion = editorialVideo.optJSONObject("motionDetailTall")
+            ?: editorialVideo.optJSONObject("motionSquareVideo1x1")
+            ?: editorialVideo.keys().asSequence()
+                .mapNotNull { editorialVideo.optJSONObject(it) }
+                .firstOrNull { it.optString("video").isNotBlank() }
+            ?: return FetchResult.NoVideo
+
+        val masterUrl = motion.optString("video").takeIf { it.isNotBlank() } ?: return FetchResult.NoVideo
+        return FetchResult.Found(resolveBestVariantUrl(masterUrl, resources.displayMetrics.widthPixels))
+    }
+
+    // ---------- 3) الدالة الرئيسية ----------
+
+    private fun fetchAnimatedArtworkUrl(albumData: Album): FetchResult {
+        val token = getAnonymousAppleMusicToken() ?: return FetchResult.Failed
+
+        // us الأول، وبعدين بلد الجهاز، وبعدين in/gb. بننتقل للبلد اللي بعده بس لو الألبوم
+        // مش موجود خالص في البلد الحالية (مش لو موجود ومعندوش فيديو)
+        val storefronts = listOf("us", java.util.Locale.getDefault().country.lowercase(), "in", "gb")
+            .filter { it.length == 2 }.distinct()
+
+        for (country in storefronts) {
+            val ids = searchAlbumCandidates(albumData, country, token)
+            if (ids.isEmpty()) continue
+            for (id in ids) {
+                val r = fetchMotionUrl(id, country, token)
+                if (r is FetchResult.Found) return r
+            }
+            return FetchResult.NoVideo // الألبوم موجود بس مفيش نسخة منه ليها فيديو
+        }
+        return FetchResult.NoVideo
     }
 
     // توكن مجهول الهوية، نفس اللي بيستخدمه أي زائر عادي لموقع Apple Music من غير حساب أو اشتراك.
