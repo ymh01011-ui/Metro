@@ -44,6 +44,21 @@ class AlbumsFragment : AbsRecyclerViewCustomGridSizeFragment<AlbumAdapter, GridL
     // انيميشن الفتح الأساسي بتاعها من غير ما نلمسه).
     private var openedAlbumDetails = false
 
+    // الـ Transition بتاعة الصفحة (زي Fade Through اللي بتتحط عادة في الـ base fragment) بتاخد
+    // أولوية على أنيميشن الـ Navigation وبتتنفذ وإحنا راجعين، وده السبب إن انيميشن الرجوع كان بيتتجاهل.
+    // فبنطفيها مؤقتًا من ساعة فتح التفاصيل لحد ما نرجع، وبعدين بنرجّعها زي ما كانت.
+    private var savedReenterTransition: Any? = null
+    private var reenterTransitionSuppressed = false
+
+    override fun onResume() {
+        super.onResume()
+        if (reenterTransitionSuppressed) {
+            reenterTransition = savedReenterTransition
+            savedReenterTransition = null
+            reenterTransitionSuppressed = false
+        }
+    }
+
     // الأنيميشن بيتحدد هنا بشكل صريح لكل حالة، فمبيحصلش تعارض مع أي أنيميشن أساسي للصفحة
     override fun onCreateAnimation(transit: Int, enter: Boolean, nextAnim: Int): Animation? {
         if (openedAlbumDetails) {
@@ -186,6 +201,11 @@ class AlbumsFragment : AbsRecyclerViewCustomGridSizeFragment<AlbumAdapter, GridL
             .build()
 
         openedAlbumDetails = true
+        if (!reenterTransitionSuppressed) {
+            savedReenterTransition = reenterTransition
+            reenterTransition = null
+            reenterTransitionSuppressed = true
+        }
         findNavController().navigate(
             R.id.albumDetailsFragment,
             bundleOf(EXTRA_ALBUM_ID to albumId),
