@@ -18,6 +18,8 @@ import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
 import android.util.TypedValue
 import android.view.*
+import android.view.animation.Animation
+import android.view.animation.AnimationUtils
 import android.widget.ImageView
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
@@ -28,6 +30,7 @@ import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.updatePadding
 import androidx.lifecycle.lifecycleScope
+import androidx.navigation.NavBackStackEntry
 import androidx.navigation.NavOptions
 import androidx.navigation.fragment.findNavController
 import androidx.navigation.fragment.navArgs
@@ -100,6 +103,9 @@ import java.text.Collator
 
 private const val TOOLBAR_ICON_ALPHA = 0xCC
 
+// ارتفاع تدرج اللون فوق الفيديو كنسبة من ارتفاع إطار الفيديو (كل ما تكبر الرقم يغطي الفيديو أكتر)
+private const val VIDEO_GRADIENT_HEIGHT_FRACTION = 0.5f
+
 // نتيجة فحص الـ Motion Artwork لألبوم واحد، بتتخزن بشكل دائم:
 // url         = رابط الفيديو (null = اتفحص وتأكدنا إن معندوش فيديو)
 // ratio       = نسبة ارتفاع/عرض إطار الفيديو المقاسة من الفيديو نفسه
@@ -145,7 +151,9 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
     private var albumTitleBottomInScrollContent: Int = -1
     private var foregroundColor: Int = Color.WHITE
     private var secondaryForegroundColor: Int = Color.WHITE
-    private var originalStatusBarLight: Boolean? = null
+    private var statusBarRegistered = false
+    private var lastStatusBarLight: Boolean? = null
+    private var navEntry: NavBackStackEntry? = null
 
     // Video Player Properties
     private var exoPlayer: ExoPlayer? = null
@@ -166,6 +174,12 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
 
         // Shared cache instance for ExoPlayer to avoid locking issues
         private var simpleCache: SimpleCache? = null
+
+        // حالة شريط الحالة (ستاتس بار) الأصلية، مشتركة بين كل نسخ صفحة الألبوم. بنحفظها مرة
+        // واحدة لما أول صفحة ألبوم تفتح، ومبنرجّعها غير لما آخر صفحة ألبوم تتقفل. كده فتح ألبوم
+        // من جوه ألبوم (أو العكس) مبيخليش اللون المتغير يتحفظ على إنه "الأصلي" ويفضل معلق.
+        private var baseStatusBarLight: Boolean? = null
+        private var albumPagesAlive = 0
 
         // Anonymous (no-login) Apple Music web token, shared across instances
         private var cachedAnonymousToken: String? = null
@@ -358,9 +372,12 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
             shadowColor = 0x3D000000
         }
 
-        if (originalStatusBarLight == null) {
-            originalStatusBarLight = (requireActivity().window.decorView.systemUiVisibility and
-                android.view.View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR) != 0
+        registerStatusBar()
+        navEntry = runCatching { findNavController().currentBackStackEntry }.getOrNull()
+
+        // ارتفاع التدرج فوق الفيديو بيتحسب من ارتفاع إطار الفيديو الفعلي
+        binding.videoFrame?.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
+            updateVideoGradientHeight()
         }
 
         // ألبوم ليه فيديو متخزن + أول فريم محفوظ: نفتح الصفحة بالصورة دي مباشرة (بدل الغلاف
@@ -1034,6 +1051,8 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
     override fun onResume() {
         super.onResume()
         exoPlayer?.playWhenReady = true
+        // أي شاشة تانية أو حوار أو الـ Activity ممكن يكون غيّر ألوان الستاتس بار، فبنعيد تطبيق لون الصفحة
+        lastStatusBarLight?.let { applyStatusBarAppearance(it) }
     }
 
     override fun onPause() {
@@ -1045,6 +1064,8 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
         if (transitionStarted) return
         transitionStarted = true
         startPostponedEnterTransition()
+        // بعد ما الانتقال يبدأ، ساعات الـ Activity بيرجّع لون الستاتس بار بتاعه، فنثبّت لون الصفحة
+        view?.post { lastStatusBarLight?.let { applyStatusBarAppearance(it) } }
     }
 
     private fun showArtistPickerDialog(artists: List<Artist>) {
@@ -1235,16 +1256,20 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
         if (isVideoAlbum && binding.videoHeaderContainer?.visibility == View.VISIBLE) {
             // الگراديانت بقى شريط ارتفاعه ثابت (في الـ XML) ملازق للحافة السفلية بس، فالتغميق
             // مبيطلعش لفوق خالص وبيغطي بس مكان العنوان واسم الفنان والكابشن.
+            // التدرج بقى أطول ومتدرج على مراحل أكتر، فلون الصفحة بينزل على الفيديو ويغطيه أكتر
             val gradient = GradientDrawable(
                 GradientDrawable.Orientation.TOP_BOTTOM,
                 intArrayOf(
                     Color.TRANSPARENT,
-                    ColorUtils.setAlphaComponent(backgroundColor, 110),
-                    ColorUtils.setAlphaComponent(backgroundColor, 215),
+                    ColorUtils.setAlphaComponent(backgroundColor, 45),
+                    ColorUtils.setAlphaComponent(backgroundColor, 120),
+                    ColorUtils.setAlphaComponent(backgroundColor, 195),
+                    ColorUtils.setAlphaComponent(backgroundColor, 240),
                     backgroundColor
                 )
             )
             binding.videoGradient?.background = gradient
+            updateVideoGradientHeight()
         }
 
         val toolbar = binding.toolbar
@@ -1313,7 +1338,76 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
         }, 2000L)
     }
 
+    private fun updateVideoGradientHeight() {
+        if (_binding == null) return
+        val gradientView = binding.videoGradient ?: return
+        val frame = binding.videoFrame ?: return
+        if (frame.height <= 0) return
+        val target = (frame.height * VIDEO_GRADIENT_HEIGHT_FRACTION).toInt()
+        val lp = gradientView.layoutParams ?: return
+        if (lp.height != target) {
+            lp.height = target
+            gradientView.layoutParams = lp
+        }
+    }
+
+    // ---------- ستاتس بار: حفظ الحالة الأصلية مرة واحدة وإرجاعها لما آخر صفحة ألبوم تتقفل ----------
+
+    private fun readStatusBarLight(): Boolean? {
+        val window = activity?.window ?: return null
+        return androidx.core.view.WindowInsetsControllerCompat(window, window.decorView).isAppearanceLightStatusBars
+    }
+
+    private fun registerStatusBar() {
+        if (statusBarRegistered) return
+        if (albumPagesAlive <= 0 || baseStatusBarLight == null) {
+            baseStatusBarLight = readStatusBarLight()
+        }
+        albumPagesAlive++
+        statusBarRegistered = true
+    }
+
+    private fun releaseStatusBar() {
+        if (!statusBarRegistered) return
+        statusBarRegistered = false
+        albumPagesAlive--
+        if (albumPagesAlive <= 0) {
+            albumPagesAlive = 0
+            val base = baseStatusBarLight
+            baseStatusBarLight = null
+            if (base != null) {
+                activity?.window?.let { window ->
+                    androidx.core.view.WindowInsetsControllerCompat(window, window.decorView).isAppearanceLightStatusBars = base
+                }
+            }
+        }
+    }
+
+    // ---------- انيميشن الخروج ----------
+
+    // true = الصفحة دي بتتقفل (رجوع) ورايحة لشاشة مش صفحة ألبوم (زي قايمة الألبومات).
+    // في الفتح (push) الصفحة بتفضل في الـ back stack، وفي الرجوع (pop) بتتشال منه.
+    private fun isPoppedToNonAlbumPage(): Boolean {
+        val entry = navEntry ?: return false
+        val nav = runCatching { findNavController() }.getOrNull() ?: return false
+        val stillInStack = entry == nav.currentBackStackEntry || entry == nav.previousBackStackEntry
+        if (stillInStack) return false
+        return nav.currentDestination?.id != R.id.albumDetailsFragment
+    }
+
+    override fun onCreateAnimation(transit: Int, enter: Boolean, nextAnim: Int): Animation? {
+        if (!enter && isPoppedToNonAlbumPage()) {
+            // رجوع لقايمة الألبومات: ستاتس بار يرجع فورًا + انيميشن خروج خاص بالرجوع
+            // (مبقاش بيستعمل انيميشن الفتح). الدخول لأي صفحة تانية مبيتغيرش.
+            releaseStatusBar()
+            return AnimationUtils.loadAnimation(requireContext(), R.anim.nav_slide_out_right)
+        }
+        return super.onCreateAnimation(transit, enter, nextAnim)
+    }
+
     private fun applyStatusBarAppearance(isLightBackground: Boolean) {
+        if (!statusBarRegistered) return // الصفحة بدأت تتقفل: مننفضش على الستاتس بار تاني
+        lastStatusBarLight = isLightBackground
         activity?.window?.let { window ->
             androidx.core.view.WindowInsetsControllerCompat(window, window.decorView).isAppearanceLightStatusBars = isLightBackground
         }
@@ -1441,11 +1535,9 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
         posterShown = false
         currentFrameRatio = null
         albumTitleBottomInScrollContent = -1
-        originalStatusBarLight?.let { wasLight ->
-            activity?.window?.let { window ->
-                androidx.core.view.WindowInsetsControllerCompat(window, window.decorView).isAppearanceLightStatusBars = wasLight
-            }
-        }
+        releaseStatusBar()
+        navEntry = null
+        lastStatusBarLight = null
         _binding = null
     }
 
