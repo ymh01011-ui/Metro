@@ -50,15 +50,6 @@ class AlbumsFragment : AbsRecyclerViewCustomGridSizeFragment<AlbumAdapter, GridL
     private var savedReenterTransition: Any? = null
     private var reenterTransitionSuppressed = false
 
-    override fun onResume() {
-        super.onResume()
-        if (reenterTransitionSuppressed) {
-            reenterTransition = savedReenterTransition
-            savedReenterTransition = null
-            reenterTransitionSuppressed = false
-        }
-    }
-
     // الأنيميشن بيتحدد هنا بشكل صريح لكل حالة، فمبيحصلش تعارض مع أي أنيميشن أساسي للصفحة
     override fun onCreateAnimation(transit: Int, enter: Boolean, nextAnim: Int): Animation? {
         if (openedAlbumDetails) {
@@ -419,6 +410,11 @@ class AlbumsFragment : AbsRecyclerViewCustomGridSizeFragment<AlbumAdapter, GridL
 
     override fun onResume() {
         super.onResume()
+        if (reenterTransitionSuppressed) {
+            reenterTransition = savedReenterTransition
+            savedReenterTransition = null
+            reenterTransitionSuppressed = false
+        }
         libraryViewModel.forceReload(ReloadType.Albums)
     }
 
