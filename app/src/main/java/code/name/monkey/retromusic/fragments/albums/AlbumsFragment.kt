@@ -16,6 +16,8 @@ package code.name.monkey.retromusic.fragments.albums
 
 import android.os.Bundle
 import android.view.*
+import android.view.animation.Animation
+import android.view.animation.AnimationUtils
 import androidx.core.os.bundleOf
 import androidx.core.view.updatePadding
 import androidx.navigation.NavOptions
@@ -36,6 +38,26 @@ import code.name.monkey.retromusic.util.RetroUtil
 
 class AlbumsFragment : AbsRecyclerViewCustomGridSizeFragment<AlbumAdapter, GridLayoutManager>(),
     IAlbumClickListener {
+
+    // true من ساعة ما بنفتح صفحة تفاصيل ألبوم لحد ما نرجع لهنا. بنستعمله عشان نفرّق بين
+    // "رجوع من تفاصيل الألبوم" (لازم انيميشن الرجوع) وبين فتح صفحة الألبومات عادي (بتاخد
+    // انيميشن الفتح الأساسي بتاعها من غير ما نلمسه).
+    private var openedAlbumDetails = false
+
+    // الأنيميشن بيتحدد هنا بشكل صريح لكل حالة، فمبيحصلش تعارض مع أي أنيميشن أساسي للصفحة
+    override fun onCreateAnimation(transit: Int, enter: Boolean, nextAnim: Int): Animation? {
+        if (openedAlbumDetails) {
+            if (enter) {
+                // رجعنا من تفاصيل الألبوم: انيميشن الرجوع
+                openedAlbumDetails = false
+                return AnimationUtils.loadAnimation(requireContext(), R.anim.nav_slide_in_left)
+            } else {
+                // بنفتح تفاصيل الألبوم: الصفحة دي بتطلع لليسار
+                return AnimationUtils.loadAnimation(requireContext(), R.anim.nav_slide_out_left)
+            }
+        }
+        return super.onCreateAnimation(transit, enter, nextAnim)
+    }
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
@@ -163,6 +185,7 @@ class AlbumsFragment : AbsRecyclerViewCustomGridSizeFragment<AlbumAdapter, GridL
             .setPopExitAnim(R.anim.nav_slide_out_right)
             .build()
 
+        openedAlbumDetails = true
         findNavController().navigate(
             R.id.albumDetailsFragment,
             bundleOf(EXTRA_ALBUM_ID to albumId),
