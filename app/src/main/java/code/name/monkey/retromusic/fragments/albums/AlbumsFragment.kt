@@ -44,11 +44,6 @@ class AlbumsFragment : AbsRecyclerViewCustomGridSizeFragment<AlbumAdapter, GridL
     // انيميشن الفتح الأساسي بتاعها من غير ما نلمسه).
     private var openedAlbumDetails = false
 
-    // الـ Transition بتاعة الصفحة (زي Fade Through اللي بتتحط عادة في الـ base fragment) بتاخد
-    // أولوية على أنيميشن الـ Navigation وبتتنفذ وإحنا راجعين، وده السبب إن انيميشن الرجوع كان بيتتجاهل.
-    // فبنطفيها مؤقتًا من ساعة فتح التفاصيل لحد ما نرجع، وبعدين بنرجّعها زي ما كانت.
-    private var savedReenterTransition: Any? = null
-    private var reenterTransitionSuppressed = false
 
     // الأنيميشن بيتحدد هنا بشكل صريح لكل حالة، فمبيحصلش تعارض مع أي أنيميشن أساسي للصفحة
     override fun onCreateAnimation(transit: Int, enter: Boolean, nextAnim: Int): Animation? {
@@ -67,6 +62,12 @@ class AlbumsFragment : AbsRecyclerViewCustomGridSizeFragment<AlbumAdapter, GridL
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
+        // الـ base fragment بيحط transition (Fade Through) على الصفحة في كل مرة الـ view بيتبني من جديد،
+        // وده بيتنفذ بدل أنيميشن الرجوع. فلو راجعين من تفاصيل ألبوم بنشيله هنا، بعد ما الـ base يحطه.
+        // فتح الصفحة عادي بيفضل بالأنيميشن الأساسي لأن الشرط ده مش بيتحقق وقتها.
+        if (openedAlbumDetails) {
+            reenterTransition = null
+        }
         applyAlbumGridPadding(itemLayoutRes())
         libraryViewModel.getAlbums().observe(viewLifecycleOwner) {
             if (it.isNotEmpty())
@@ -192,11 +193,6 @@ class AlbumsFragment : AbsRecyclerViewCustomGridSizeFragment<AlbumAdapter, GridL
             .build()
 
         openedAlbumDetails = true
-        if (!reenterTransitionSuppressed) {
-            savedReenterTransition = reenterTransition
-            reenterTransition = null
-            reenterTransitionSuppressed = true
-        }
         findNavController().navigate(
             R.id.albumDetailsFragment,
             bundleOf(EXTRA_ALBUM_ID to albumId),
@@ -410,11 +406,6 @@ class AlbumsFragment : AbsRecyclerViewCustomGridSizeFragment<AlbumAdapter, GridL
 
     override fun onResume() {
         super.onResume()
-        if (reenterTransitionSuppressed) {
-            reenterTransition = savedReenterTransition
-            savedReenterTransition = null
-            reenterTransitionSuppressed = false
-        }
         libraryViewModel.forceReload(ReloadType.Albums)
     }
 
