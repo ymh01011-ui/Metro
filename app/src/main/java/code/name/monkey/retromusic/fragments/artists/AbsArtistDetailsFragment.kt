@@ -88,6 +88,10 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
     // اللي بيترجع للون الافتراضي في ظروف معينة مش واضحة (شوف setUpCustomOverflowIcon).
     private var customOverflowIcon: ImageView? = null
 
+    // آخر لون اتحسب لأيقونات التولبار. بنحفظه عشان أيقونة النقط بتتبني متأخر (view.post)،
+    // فلو اللون اتطبق قبل ما تتبني (زي لما نرجع للصفحة والألوان جاهزة من الكاش) نطبقه عليها أول ما تتبني.
+    private var currentToolbarIconColor: Int? = null
+
     // الصفحة دي بتدير التولبار والمنيو بتاعتها بنفسها بالكامل (توولبار محلي
     // مش الـ Action Bar المشترك)، فمفيش داعي تتسجل كـ MenuProvider على
     // الـ MenuHost بتاع الـ Activity زي باقي فراجمنتات AbsMainActivityFragment
@@ -736,6 +740,7 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
 
         val toolbar = binding.toolbar
         val iconColor = ColorUtils.setAlphaComponent(foregroundColor, TOOLBAR_ICON_ALPHA)
+        currentToolbarIconColor = iconColor
         if (toolbar is TintableToolbar) {
             toolbar.navigationIcon?.let { DrawableCompat.setTint(it, iconColor) }
             customOverflowIcon?.drawable?.let { DrawableCompat.setTint(it.mutate(), iconColor) }
@@ -923,6 +928,10 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
         imageView.bringToFront()
         customOverflowIcon = imageView
 
+        // الأيقونة اتبنت دلوقتي، فلو لون الصفحة اتطبق قبل كده نطبقه عليها فورًا
+        // (من غير ما نستنى applyContrastingForegroundColor يتنده تاني)
+        currentToolbarIconColor?.let { DrawableCompat.setTint(icon, it) }
+
         fun repositionOverImageView() {
             val toolbarLoc = IntArray(2)
             toolbar.getLocationInWindow(toolbarLoc)
@@ -1030,6 +1039,7 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
         // + طلب سيرة ذاتية مع كل تغيير في المكتبة (وبيزيد مع كل صفحة تفتحها).
         mainActivity.removeMusicServiceEventListener(detailsViewModel)
         customOverflowIcon = null
+        currentToolbarIconColor = null
         transitionStarted = false
         _binding = null
     }
