@@ -1244,15 +1244,13 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
         if (!posterShown) loadAlbumCover(album)
         bindSongsStaggered(album.songs)
 
-        // ألبومات الفنان تحت الشاشة، فنستنى الأنيميشن يخلص قبل ما نبنيها (ونسجّل الـ observer مرة واحدة بس)
+        // ألبومات الفنان بتتحمل فورًا من غير تأجيل (ونسجّل الـ observer مرة واحدة بس)
         if (!moreAlbumsRequested) {
             moreAlbumsRequested = true
-            runWhenEnterSettled {
-                if (albumArtistExists) {
-                    detailsViewModel.getAlbumArtist(album.albumArtist.toString()).observe(viewLifecycleOwner) { loadMoreAlbums(it) }
-                } else {
-                    detailsViewModel.getArtist(album.artistId).observe(viewLifecycleOwner) { loadMoreAlbums(it) }
-                }
+            if (albumArtistExists) {
+                detailsViewModel.getAlbumArtist(album.albumArtist.toString()).observe(viewLifecycleOwner) { loadMoreAlbums(it) }
+            } else {
+                detailsViewModel.getArtist(album.artistId).observe(viewLifecycleOwner) { loadMoreAlbums(it) }
             }
         }
     }
