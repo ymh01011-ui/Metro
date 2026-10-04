@@ -44,6 +44,19 @@ class AlbumsFragment : AbsRecyclerViewCustomGridSizeFragment<AlbumAdapter, GridL
     // انيميشن الفتح الأساسي بتاعها من غير ما نلمسه).
     private var openedAlbumDetails = false
 
+    // true من لحظة فتح تفاصيل ألبوم لحد أول onResume بعد الرجوع. بنستعمله عشان منعملش إعادة تحميل
+    // كاملة للمكتبة (forceReload) وإحنا راجعين - كانت بتشتغل في نفس وقت أنيميشن الرجوع وتتقل عليه.
+    private var returningFromDetails = false
+
+    // بصمة القايمة اللي اتعرضت فعلًا في الـ adapter الحالي. الـ adapter بيتبني من جديد مع كل
+    // onViewCreated، فبتتصفّر هناك. لو نفس القايمة جت تاني (بعد reload مثلًا) منعيدش ربط كل الصفوف.
+    private var appliedAlbumsSignature: Int? = null
+
+    private fun albumsSignature(albums: List<code.name.monkey.retromusic.model.Album>): Int =
+        albums.fold(albums.size) { acc, a ->
+            31 * (31 * (31 * acc + a.id.hashCode()) + a.songCount) + (a.title?.hashCode() ?: 0)
+        }
+
 
     // الأنيميشن بيتحدد هنا بشكل صريح لكل حالة، فمبيحصلش تعارض مع أي أنيميشن أساسي للصفحة
     override fun onCreateAnimation(transit: Int, enter: Boolean, nextAnim: Int): Animation? {
@@ -69,7 +82,11 @@ class AlbumsFragment : AbsRecyclerViewCustomGridSizeFragment<AlbumAdapter, GridL
             reenterTransition = null
         }
         applyAlbumGridPadding(itemLayoutRes())
+        appliedAlbumsSignature = null
         libraryViewModel.getAlbums().observe(viewLifecycleOwner) {
+            val signature = albumsSignature(it)
+            if (signature == appliedAlbumsSignature) return@observe
+            appliedAlbumsSignature = signature
             if (it.isNotEmpty())
                 adapter?.swapDataSet(it)
             else
@@ -193,6 +210,7 @@ class AlbumsFragment : AbsRecyclerViewCustomGridSizeFragment<AlbumAdapter, GridL
             .build()
 
         openedAlbumDetails = true
+        returningFromDetails = true
         findNavController().navigate(
             R.id.albumDetailsFragment,
             bundleOf(EXTRA_ALBUM_ID to albumId),
@@ -406,7 +424,13 @@ class AlbumsFragment : AbsRecyclerViewCustomGridSizeFragment<AlbumAdapter, GridL
 
     override fun onResume() {
         super.onResume()
-        libraryViewModel.forceReload(ReloadType.Albums)
+        // راجعين من تفاصيل ألبوم: القايمة موجودة بالفعل ومحدّثة (الـ ViewModel بيتحدث لوحده مع أي
+        // تغيير في المكتبة)، فمنعيدش تحميلها من MediaStore وإحنا في نص الأنيميشن
+        if (returningFromDetails) {
+            returningFromDetails = false
+        } else {
+            libraryViewModel.forceReload(ReloadType.Albums)
+        }
     }
 
     override fun onPause() {
