@@ -16,6 +16,7 @@ import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.Drawable
 import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
+import android.util.LruCache
 import android.util.TypedValue
 import android.view.*
 import android.view.animation.Animation
@@ -42,6 +43,7 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.VideoSize
 import androidx.media3.common.Player
+import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.hls.offline.HlsDownloader
 import androidx.media3.datasource.DefaultHttpDataSource
@@ -73,6 +75,7 @@ import code.name.monkey.retromusic.helper.SortOrder.AlbumSongSortOrder.Companion
 import code.name.monkey.retromusic.interfaces.IAlbumClickListener
 import code.name.monkey.retromusic.model.Album
 import code.name.monkey.retromusic.model.Artist
+import code.name.monkey.retromusic.model.Song
 import code.name.monkey.retromusic.repository.RealRepository
 import code.name.monkey.retromusic.util.*
 import code.name.monkey.retromusic.views.TintableToolbar
@@ -105,6 +108,12 @@ private const val TOOLBAR_ICON_ALPHA = 0xCC
 
 // ارتفاع تدرج اللون فوق الفيديو كنسبة من ارتفاع إطار الفيديو (كل ما تكبر الرقم يغطي الفيديو أكتر)
 private const val VIDEO_GRADIENT_HEIGHT_FRACTION = 0.5f
+
+// عدد صفوف الأغاني اللي بتتبند فورًا وقت فتح الصفحة (الباقي بيتبند بعد ما الأنيميشن يخلص)
+private const val VISIBLE_SONGS_IMMEDIATE = 4
+
+// لو أنيميشن الدخول مخلصش (أو مفيش أنيميشن) نعتبر الصفحة استقرت بعد المدة دي من بداية الانتقال
+private const val ENTER_SETTLE_FALLBACK_MS = 700L
 
 // نتيجة فحص الـ Motion Artwork لألبوم واحد، بتتخزن بشكل دائم:
 // url         = رابط الفيديو (null = اتفحص وتأكدنا إن معندوش فيديو)
@@ -151,6 +160,13 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
     private var albumTitleBottomInScrollContent: Int = -1
     private var foregroundColor: Int = Color.WHITE
     private var secondaryForegroundColor: Int = Color.WHITE
+    // الصفحة "استقرت" لما أنيميشن الدخول يخلص. الشغل التقيل (تشغيل الفيديو، ربط باقي الأغاني،
+    // ألبومات الفنان) بيتأجل لحد كده عشان مايزاحمش الأنيميشن زي صفحة الفنان.
+    private var enterSettled = false
+    private val settledCallbacks = mutableListOf<() -> Unit>()
+    private var currentVideoUrl: String? = null
+    private var videoVisibleOnScreen = true
+    private var moreAlbumsRequested = false
     private var statusBarRegistered = false
     private var lastStatusBarLight: Boolean? = null
     private var navEntry: NavBackStackEntry? = null
@@ -180,6 +196,15 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
         // من جوه ألبوم (أو العكس) مبيخليش اللون المتغير يتحفظ على إنه "الأصلي" ويفضل معلق.
         private var baseStatusBarLight: Boolean? = null
         private var albumPagesAlive = 0
+
+        // آخر صور أول فريم (poster) اتفكت من الملف، في الذاكرة، عشان الفتح التاني لنفس الألبوم
+        // مايفكش الصورة من القرص على الـ Main Thread تاني
+        private val posterMemoryCache = LruCache<Long, Bitmap>(2)
+
+        // آخر غلاف ألبوم اتفتحت صفحته (سلوت واحد)، زي كاش صفحة الفنان: لو رجعت لنفس الألبوم
+        // قبل ما تفتح غيره، الغلاف بيظهر فورًا من غير تحميل تاني
+        private var lastVisitedCoverAlbumId: Long = -1L
+        private var lastVisitedCoverBitmap: Bitmap? = null
 
         // Anonymous (no-login) Apple Music web token, shared across instances
         private var cachedAnonymousToken: String? = null
@@ -361,6 +386,10 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
         super.onViewCreated(view, savedInstanceState)
 
         postponeEnterTransition()
+        enterSettled = false
+        settledCallbacks.clear()
+        videoVisibleOnScreen = true
+        moreAlbumsRequested = false
         _binding = FragmentAlbumDetailsBinding.bind(view)
         mainActivity.addMusicServiceEventListener(detailsViewModel)
 
@@ -432,6 +461,16 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
         binding.content.isVerticalScrollBarEnabled = false
 
         binding.content.setOnScrollChangeListener(androidx.core.widget.NestedScrollView.OnScrollChangeListener { _, _, scrollY, _, _ ->
+            // الفيديو مش ظاهر لما نسكرول بعيد عنه، فنوقفه عشان نوفر المعالجة والبطارية
+            if (isVideoAlbum) {
+                val frameHeight = binding.videoFrame?.height ?: 0
+                val visibleNow = frameHeight <= 0 || scrollY < frameHeight
+                if (visibleNow != videoVisibleOnScreen) {
+                    videoVisibleOnScreen = visibleNow
+                    exoPlayer?.playWhenReady = visibleNow && isResumed
+                }
+            }
+
             val activeTitleView: View = if (isVideoAlbum && binding.videoHeaderContainer?.visibility == View.VISIBLE && binding.videoAlbumTitle != null) {
                 binding.videoAlbumTitle!!
             } else {
@@ -558,8 +597,10 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
             isVideoAlbum = cachedUrl != null
             showAlbum(albumData)
             if (cachedUrl != null) {
-                setupVideoPlayer(cachedUrl, albumId)
-                if (!entry.ready) ensureVideoDownloaded(app, albumId, cachedUrl)
+                runWhenEnterSettled {
+                    setupVideoPlayer(cachedUrl, albumId)
+                    if (!entry.ready) ensureVideoDownloaded(app, albumId, cachedUrl)
+                }
             }
             return
         }
@@ -589,7 +630,7 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
                 if (_binding == null) return@withContext
                 isVideoAlbum = videoUrl != null
                 showAlbum(albumData)
-                if (videoUrl != null) setupVideoPlayer(videoUrl, albumId)
+                if (videoUrl != null) runWhenEnterSettled { setupVideoPlayer(videoUrl, albumId) }
             }
         }
     }
@@ -600,6 +641,7 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
         cache.remove(albumData.id)
         persistAnimatedArtworkCache(requireContext())
         posterFile(requireContext(), albumData.id).delete()
+        posterMemoryCache.remove(albumData.id)
         checkAndFetchAnimatedArtwork(albumData)
     }
 
@@ -615,7 +657,7 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
         if (entry.url == null) return
         val file = posterFile(requireContext(), albumId)
         if (!file.exists()) return
-        val poster = BitmapFactory.decodeFile(file.path) ?: return
+        val poster = loadPosterBitmap(albumId, file) ?: return
 
         isVideoAlbum = true
         posterShown = true
@@ -632,6 +674,20 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
         setColors(color)
 
         view?.post { releaseEnterTransition() }
+    }
+
+    // بيفك صورة أول فريم بحجم مناسب للشاشة (مش أكبر من 1.5x عرض الشاشة) ويحتفظ بيها في الذاكرة
+    private fun loadPosterBitmap(albumId: Long, file: File): Bitmap? {
+        posterMemoryCache.get(albumId)?.let { return it }
+        val maxSide = minOf((resources.displayMetrics.widthPixels * 3) / 2, 2048)
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeFile(file.path, bounds)
+        var sample = 1
+        while (maxOf(bounds.outWidth, bounds.outHeight) / (sample * 2) >= maxSide) sample *= 2
+        val bitmap = BitmapFactory.decodeFile(file.path, BitmapFactory.Options().apply { inSampleSize = sample })
+            ?: return null
+        posterMemoryCache.put(albumId, bitmap)
+        return bitmap
     }
 
     // بيضبط نسبة إطار الفيديو على نسبة الفيديو الحقيقية عشان مفيش قص. بنحصرها بين
@@ -925,10 +981,24 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
     private fun setupVideoPlayer(videoUrl: String, albumId: Long) {
         if (_binding == null || binding.videoPlayerView == null) return
 
+        // نفس الفيديو شغال بالفعل (الـ observer ممكن يتنده أكتر من مرة): منعيدش بناء المشغل
+        if (exoPlayer != null && currentVideoUrl == videoUrl) return
+        currentVideoUrl = videoUrl
+
         exoPlayer?.release()
-        exoPlayer = ExoPlayer.Builder(requireContext()).build().apply {
+        // بافر صغير: الفيديو قصير وبيتكرر ومكتوم، فمش محتاجين نحمّل ونحتفظ بأكتر من كده في الذاكرة
+        val loadControl = DefaultLoadControl.Builder()
+            .setBufferDurationsMs(2_000, 10_000, 500, 1_000)
+            .build()
+        val screenW = resources.displayMetrics.widthPixels
+        val screenH = resources.displayMetrics.heightPixels
+        exoPlayer = ExoPlayer.Builder(requireContext()).setLoadControl(loadControl).build().apply {
             repeatMode = Player.REPEAT_MODE_ONE // تكرار لا نهائي
             volume = 0f // كتم الصوت
+            // مفيش داعي نفك فيديو أكبر من شاشة الجهاز
+            trackSelectionParameters = trackSelectionParameters.buildUpon()
+                .setMaxVideoSize(screenW, screenH)
+                .build()
         }
 
         binding.videoPlayerView?.player = exoPlayer
@@ -939,7 +1009,7 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
 
         exoPlayer?.setMediaSource(mediaSource)
         exoPlayer?.prepare()
-        exoPlayer?.playWhenReady = true
+        exoPlayer?.playWhenReady = videoVisibleOnScreen && isResumed
 
         exoPlayer?.addListener(object : Player.Listener {
             // انتقال سلس: عند جاهزية الفيديو، بنظهره فوق الصورة (اللي هي أول فريم منه)
@@ -973,6 +1043,7 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
                         loadAnimatedArtworkCache(ctx).remove(albumId)
                         persistAnimatedArtworkCache(ctx)
                         posterFile(ctx, albumId).delete()
+                        posterMemoryCache.remove(albumId)
                     }
                 }
             }
@@ -1002,6 +1073,7 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
                     val tmp = File(file.parentFile, "$albumId.tmp")
                     FileOutputStream(tmp).use { bitmap.compress(Bitmap.CompressFormat.JPEG, 92, it) }
                     if (!tmp.renameTo(file)) { tmp.delete(); return@launch }
+                    posterMemoryCache.remove(albumId)
 
                     val cache = loadAnimatedArtworkCache(ctx)
                     cache[albumId]?.let { e ->
@@ -1050,7 +1122,7 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
 
     override fun onResume() {
         super.onResume()
-        exoPlayer?.playWhenReady = true
+        exoPlayer?.playWhenReady = videoVisibleOnScreen
         // أي شاشة تانية أو حوار أو الـ Activity ممكن يكون غيّر ألوان الستاتس بار، فبنعيد تطبيق لون الصفحة
         lastStatusBarLight?.let { applyStatusBarAppearance(it) }
     }
@@ -1066,6 +1138,29 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
         startPostponedEnterTransition()
         // بعد ما الانتقال يبدأ، ساعات الـ Activity بيرجّع لون الستاتس بار بتاعه، فنثبّت لون الصفحة
         view?.post { lastStatusBarLight?.let { applyStatusBarAppearance(it) } }
+        // شبكة أمان: لو أنيميشن الدخول مبلّغش إنه خلص (مفيش أنيميشن مثلًا)، نعتبر الصفحة استقرت
+        view?.postDelayed({ markEnterSettled() }, ENTER_SETTLE_FALLBACK_MS)
+    }
+
+    // ينفّذ الشغل التقيل بعد ما أنيميشن الدخول يخلص (أو فورًا لو خلص بالفعل)
+    private fun runWhenEnterSettled(block: () -> Unit) {
+        if (_binding == null) return
+        if (enterSettled) block() else settledCallbacks.add(block)
+    }
+
+    // بينفّذ الشغل المؤجل، كل حاجة على فريم لوحدها عشان مفيش فريم واحد تقيل يوقف الحركة
+    private fun markEnterSettled() {
+        if (enterSettled || _binding == null) return
+        enterSettled = true
+        val pending = settledCallbacks.toList()
+        settledCallbacks.clear()
+        fun runNext(index: Int) {
+            val root = view ?: return
+            if (_binding == null || index >= pending.size) return
+            pending[index]()
+            root.postOnAnimation { runNext(index + 1) }
+        }
+        view?.postOnAnimation { runNext(0) }
     }
 
     private fun showArtistPickerDialog(artists: List<Artist>) {
@@ -1101,7 +1196,7 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
         )
         binding.fragmentAlbumContent.recyclerView.apply {
             layoutManager = LinearLayoutManager(requireContext())
-            itemAnimator = DefaultItemAnimator()
+            itemAnimator = null
             isNestedScrollingEnabled = false
             adapter = simpleSongAdapter
         }
@@ -1147,12 +1242,32 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
 
         // لو الصفحة اتفتحت بأول فريم محفوظ من الفيديو، مبنحملش الغلاف الأصلي خالص
         if (!posterShown) loadAlbumCover(album)
-        simpleSongAdapter.swapDataSet(album.songs)
-        
-        if (albumArtistExists) {
-            detailsViewModel.getAlbumArtist(album.albumArtist.toString()).observe(viewLifecycleOwner) { loadMoreAlbums(it) }
-        } else {
-            detailsViewModel.getArtist(album.artistId).observe(viewLifecycleOwner) { loadMoreAlbums(it) }
+        bindSongsStaggered(album.songs)
+
+        // ألبومات الفنان تحت الشاشة، فنستنى الأنيميشن يخلص قبل ما نبنيها (ونسجّل الـ observer مرة واحدة بس)
+        if (!moreAlbumsRequested) {
+            moreAlbumsRequested = true
+            runWhenEnterSettled {
+                if (albumArtistExists) {
+                    detailsViewModel.getAlbumArtist(album.albumArtist.toString()).observe(viewLifecycleOwner) { loadMoreAlbums(it) }
+                } else {
+                    detailsViewModel.getArtist(album.artistId).observe(viewLifecycleOwner) { loadMoreAlbums(it) }
+                }
+            }
+        }
+    }
+
+    // أول صفوف بس (اللي ظاهرة قبل السكرول) بتتبند فورًا، والباقي بعد ما الأنيميشن يخلص.
+    // القايمة جوه NestedScrollView فبتتقاس كلها مرة واحدة، فكل صف زيادة بيتقل على الأنيميشن.
+    private fun bindSongsStaggered(songs: List<Song>) {
+        val immediate = minOf(VISIBLE_SONGS_IMMEDIATE, songs.size)
+        if (enterSettled || songs.size <= immediate) {
+            simpleSongAdapter.swapDataSet(songs)
+            return
+        }
+        simpleSongAdapter.swapDataSet(songs.subList(0, immediate))
+        runWhenEnterSettled {
+            if (::simpleSongAdapter.isInitialized) simpleSongAdapter.swapDataSet(songs)
         }
     }
 
@@ -1179,6 +1294,22 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
             setColors(dominantBackgroundColor)
             view?.post { releaseEnterTransition() }
             return
+        }
+
+        // نفس آخر ألبوم اتفتح: الغلاف واللون جاهزين، من غير Glide ولا حساب ألوان
+        if (lastVisitedCoverAlbumId == album.id) {
+            val bmp = lastVisitedCoverBitmap
+            val color = AlbumDetailsCache.getColor(album.id)
+            if (bmp != null && color != null) {
+                cachedBitmap = bmp
+                dominantBackgroundColor = color
+                hasExtractedColors = true
+                binding.image.setImageBitmap(bmp)
+                binding.videoImage?.setImageBitmap(bmp)
+                setColors(color)
+                view?.post { releaseEnterTransition() }
+                return
+            }
         }
 
         val maxImageSide = minOf((resources.displayMetrics.widthPixels * 3) / 2, 2048)
@@ -1220,6 +1351,8 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
                 hasExtractedColors = true
                 dominantBackgroundColor = mostFrequentColor
                 AlbumDetailsCache.putColor(albumId, mostFrequentColor)
+                lastVisitedCoverAlbumId = albumId
+                lastVisitedCoverBitmap = bitmap
 
                 if (_binding != null) {
                     binding.image.setImageBitmap(bitmap)
@@ -1402,7 +1535,23 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
             releaseStatusBar()
             return AnimationUtils.loadAnimation(requireContext(), R.anim.nav_slide_out_right)
         }
-        return super.onCreateAnimation(transit, enter, nextAnim)
+        val anim = super.onCreateAnimation(transit, enter, nextAnim)
+            ?: if (enter && nextAnim != 0 &&
+                runCatching { resources.getResourceTypeName(nextAnim) == "anim" }.getOrDefault(false)
+            ) {
+                // نفس اللي الـ framework كان هيعمله بالظبط، بس بنمسك منه لحظة انتهاء الأنيميشن
+                runCatching { AnimationUtils.loadAnimation(requireContext(), nextAnim) }.getOrNull()
+            } else null
+        if (enter && anim != null) {
+            anim.setAnimationListener(object : Animation.AnimationListener {
+                override fun onAnimationStart(animation: Animation?) {}
+                override fun onAnimationRepeat(animation: Animation?) {}
+                override fun onAnimationEnd(animation: Animation?) {
+                    markEnterSettled()
+                }
+            })
+        }
+        return anim
     }
 
     private fun applyStatusBarAppearance(isLightBackground: Boolean) {
@@ -1530,6 +1679,9 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
         super.onDestroyView()
         exoPlayer?.release()
         exoPlayer = null
+        currentVideoUrl = null
+        settledCallbacks.clear()
+        enterSettled = false
         customOverflowIcon = null
         transitionStarted = false
         posterShown = false
