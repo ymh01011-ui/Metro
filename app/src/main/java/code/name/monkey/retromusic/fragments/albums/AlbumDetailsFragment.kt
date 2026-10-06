@@ -204,6 +204,9 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
         // خليها false في الإصدار النهائي؛ لو حبيت تشوف رسائل التشخيص وقت التطوير رجّعها true
         private const val DEBUG_ANIMATED_ARTWORK = false
 
+        // مؤقت: بيطلّع Toast بيقولك لون Apple جه ولا لأ ولون الصفحة جاي منين. اقفله (false) بعد ما تتأكد.
+        private const val DEBUG_APPLE_COLOR = true
+
         // Shared cache instance for ExoPlayer to avoid locking issues
         private var simpleCache: SimpleCache? = null
 
@@ -729,6 +732,7 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
             persistAnimatedArtworkCache(app)
             if (bg != null) withContext(Dispatchers.Main) {
                 if (_binding == null) return@withContext
+                colorToast("اتطبّق لون Apple على الصفحة: ${hexOf(bg)}")
                 AlbumDetailsCache.putColor(albumId, bg)
                 hasExtractedColors = true
                 dominantBackgroundColor = bg
@@ -952,11 +956,16 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
             for ((index, id) in ids.withIndex()) {
                 val r = fetchMotionUrl(id, country, token)
                 if (index == 0) firstBg = r.bgColor // أقرب نسخة للاسم
-                if (r.url != null) return AppleLookup(FetchResult.Found(r.url, r.bgColor), r.bgColor)
+                if (r.url != null) {
+                    colorToast("Apple ($country): \"${albumData.title}\" فيه فيديو، لون Apple: ${hexOf(r.bgColor)}")
+                    return AppleLookup(FetchResult.Found(r.url, r.bgColor), r.bgColor)
+                }
             }
             // الألبوم موجود بس مفيش نسخة منه ليها فيديو: نرجّع لون أقرب نسخة
+            colorToast("Apple ($country): \"${albumData.title}\" مفيش فيديو، لون Apple: ${hexOf(firstBg)}")
             return AppleLookup(FetchResult.NoVideo, firstBg)
         }
+        colorToast("Apple: \"${albumData.title}\" مش موجود في البحث خالص، فاللون محسوب من الموبايل")
         return AppleLookup(FetchResult.NoVideo, null)
     }
 
@@ -1069,6 +1078,18 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
 
     // Toast بسيط بيوضح بالظبط فين بقى الفشل، عشان تقدر تشخّص المشكلة من غير كمبيوتر أو logcat.
     // خليها DEBUG_ANIMATED_ARTWORK = false لما تتأكد إن كل حاجة شغالة تمام.
+    private fun colorToast(message: String) {
+        if (!DEBUG_APPLE_COLOR) return
+        activity?.runOnUiThread {
+            if (isAdded && _binding != null) {
+                android.widget.Toast.makeText(requireContext(), "🎨 $message", android.widget.Toast.LENGTH_LONG).show()
+            }
+        }
+    }
+
+    private fun hexOf(color: Int?): String =
+        if (color == null) "مفيش" else String.format("#%06X", color and 0xFFFFFF)
+
     private fun debugToast(message: String) {
         if (!DEBUG_ANIMATED_ARTWORK) return
         activity?.runOnUiThread {
@@ -1467,6 +1488,10 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
             val appleColor = if (appCtx != null) loadAnimatedArtworkCache(appCtx)[albumId]?.appleBgColor else null
             val mostFrequentColor = appleColor
                 ?: if (isVideoAlbum) bottomHalfColor(bitmap) else AlbumPaletteEngine.findMostFrequentColor(bitmap)
+            colorToast(
+                if (appleColor != null) "لون الصفحة: من Apple ${hexOf(appleColor)}"
+                else "لون الصفحة: محسوب من الموبايل ${hexOf(mostFrequentColor)} (لون Apple لسه مجاش أو مش موجود)"
+            )
             withContext(Dispatchers.Main) {
                 hasExtractedColors = true
                 dominantBackgroundColor = mostFrequentColor
