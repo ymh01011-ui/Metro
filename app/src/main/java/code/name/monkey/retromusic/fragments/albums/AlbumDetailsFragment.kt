@@ -139,6 +139,11 @@ internal data class AnimatedEntry(
     val appleBgChecked: Boolean = false,
 )
 
+// نتيجة البحث في Apple: الفيديو (لو فيه) + لون الخلفية الجاهز (لأي ألبوم، فيه فيديو أو لأ)
+private class AppleLookup(val result: FetchResult, val bgColor: Int?)
+
+private class MotionLookup(val url: String?, val bgColor: Int?)
+
 private sealed class FetchResult {
     data class Found(val url: String, val bgColor: Int? = null) : FetchResult()
     object NoVideo : FetchResult()
@@ -664,19 +669,20 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
                     setupVideoPlayer(cachedUrl, albumId)
                     if (!entry.ready) ensureVideoDownloaded(app, albumId, cachedUrl)
                 }
-                // ألبومات اتخزنت قبل ما نضيف لون Apple: نجيب اللون مرة واحدة في الخلفية
-                if (entry.appleBgColor == null && !entry.appleBgChecked) backfillAppleColor(app, albumData)
             }
+            // ألبومات اتخزنت قبل ما نضيف لون Apple (فيديو أو من غير): نجيب اللون مرة واحدة في الخلفية
+            if (entry.appleBgColor == null && !entry.appleBgChecked) backfillAppleColor(app, albumData)
             return
         }
 
         lifecycleScope.launch(Dispatchers.IO) {
-            val result = try {
+            val lookup = try {
                 fetchAnimatedArtworkUrl(albumData)
             } catch (e: Exception) {
                 e.printStackTrace()
-                FetchResult.Failed
+                AppleLookup(FetchResult.Failed, null)
             }
+            val result = lookup.result
             val videoUrl = (result as? FetchResult.Found)?.url
             when (result) {
                 is FetchResult.Found -> {
@@ -690,7 +696,12 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
                     ensureVideoDownloaded(app, albumId, result.url)
                 }
                 FetchResult.NoVideo -> {
-                    cache[albumId] = AnimatedEntry(null, checkedAt = System.currentTimeMillis())
+                    cache[albumId] = AnimatedEntry(
+                        null,
+                        checkedAt = System.currentTimeMillis(),
+                        appleBgColor = lookup.bgColor,
+                        appleBgChecked = true,
+                    )
                     persistAnimatedArtworkCache(app)
                 }
                 FetchResult.Failed -> Unit // مفيش نت: منخزنش "معندوش فيديو" غلط
@@ -709,9 +720,9 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
     private fun backfillAppleColor(app: Context, albumData: Album) {
         val albumId = albumData.id
         lifecycleScope.launch(Dispatchers.IO) {
-            val result = try { fetchAnimatedArtworkUrl(albumData) } catch (e: Exception) { return@launch }
-            if (result is FetchResult.Failed) return@launch // مفيش نت: نجرب في فتحة تانية
-            val bg = (result as? FetchResult.Found)?.bgColor
+            val lookup = try { fetchAnimatedArtworkUrl(albumData) } catch (e: Exception) { return@launch }
+            if (lookup.result is FetchResult.Failed) return@launch // مفيش نت: نجرب في فتحة تانية
+            val bg = lookup.bgColor
             val cache = loadAnimatedArtworkCache(app)
             val current = cache[albumId] ?: return@launch
             cache[albumId] = current.copy(appleBgColor = bg, appleBgChecked = true)
@@ -885,18 +896,22 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
 
     // ---------- 2) جلب رابط الفيديو لنسخة معيّنة ----------
 
-    private fun fetchMotionUrl(appleMusicId: String, country: String, token: String): FetchResult {
+    private fun fetchMotionUrl(appleMusicId: String, country: String, token: String): MotionLookup {
         val extendParams = "editorialArtwork,editorialVideo,extendedAssetUrls,offers,seoDescription,seoTitle"
         val json = ampGetJson(
             "https://amp-api.music.apple.com/v1/catalog/$country/albums/$appleMusicId" +
                 "?extend=$extendParams&l=en-US&platform=web",
             token,
-        ) ?: return FetchResult.NoVideo
+        ) ?: return MotionLookup(null, null)
 
         val data = json.optJSONArray("data")
-        if (data == null || data.length() == 0) return FetchResult.NoVideo
-        val attributes = data.getJSONObject(0).optJSONObject("attributes") ?: return FetchResult.NoVideo
-        val editorialVideo = attributes.optJSONObject("editorialVideo") ?: return FetchResult.NoVideo
+        if (data == null || data.length() == 0) return MotionLookup(null, null)
+        val attributes = data.getJSONObject(0).optJSONObject("attributes") ?: return MotionLookup(null, null)
+
+        // لون الغلاف الجاهز من Apple: موجود لأي ألبوم، حتى لو مفيش فيديو
+        val artworkBg = parseAppleColor(attributes.optJSONObject("artwork")?.optString("bgColor"))
+
+        val editorialVideo = attributes.optJSONObject("editorialVideo") ?: return MotionLookup(null, artworkBg)
 
         // المفاتيح المعروفة أولاً، وبعدين أي مفتاح تاني فيه "video" (أحياناً الاسم بيختلف)
         val motion = editorialVideo.optJSONObject("motionDetailTall")
@@ -904,13 +919,13 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
             ?: editorialVideo.keys().asSequence()
                 .mapNotNull { editorialVideo.optJSONObject(it) }
                 .firstOrNull { it.optString("video").isNotBlank() }
-            ?: return FetchResult.NoVideo
+            ?: return MotionLookup(null, artworkBg)
 
-        val masterUrl = motion.optString("video").takeIf { it.isNotBlank() } ?: return FetchResult.NoVideo
-        // لون الخلفية الجاهز من Apple: من أول فريم الفيديو (previewFrame) لو موجود، وإلا من غلاف الألبوم
-        val appleBg = parseAppleColor(motion.optJSONObject("previewFrame")?.optString("bgColor"))
-            ?: parseAppleColor(attributes.optJSONObject("artwork")?.optString("bgColor"))
-        return FetchResult.Found(resolveBestVariantUrl(masterUrl, resources.displayMetrics.widthPixels), appleBg)
+        val masterUrl = motion.optString("video").takeIf { it.isNotBlank() }
+            ?: return MotionLookup(null, artworkBg)
+        // للألبوم اللي فيه فيديو: لون أول فريم الفيديو (previewFrame) لو موجود، وإلا لون الغلاف
+        val videoBg = parseAppleColor(motion.optJSONObject("previewFrame")?.optString("bgColor")) ?: artworkBg
+        return MotionLookup(resolveBestVariantUrl(masterUrl, resources.displayMetrics.widthPixels), videoBg)
     }
 
     // Apple بتبعت اللون كـ hex من 6 حروف من غير # (زي "0b1b18")
@@ -919,9 +934,11 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
             ?.let { runCatching { Color.parseColor("#$it") }.getOrNull() }
 
     // ---------- 3) الدالة الرئيسية ----------
+    // نفس البحث (نفس النسخ المرشحة ونفس الـ storefronts) بيجيب الفيديو واللون مع بعض،
+    // فأي ألبوم بيلاقيه البحث بيجيب له لون، سواء فيه فيديو أو لأ.
 
-    private fun fetchAnimatedArtworkUrl(albumData: Album): FetchResult {
-        val token = getAnonymousAppleMusicToken() ?: return FetchResult.Failed
+    private fun fetchAnimatedArtworkUrl(albumData: Album): AppleLookup {
+        val token = getAnonymousAppleMusicToken() ?: return AppleLookup(FetchResult.Failed, null)
 
         // us الأول، وبعدين بلد الجهاز، وبعدين in/gb. بننتقل للبلد اللي بعده بس لو الألبوم
         // مش موجود خالص في البلد الحالية (مش لو موجود ومعندوش فيديو)
@@ -931,13 +948,16 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
         for (country in storefronts) {
             val ids = searchAlbumCandidates(albumData, country, token)
             if (ids.isEmpty()) continue
-            for (id in ids) {
+            var firstBg: Int? = null
+            for ((index, id) in ids.withIndex()) {
                 val r = fetchMotionUrl(id, country, token)
-                if (r is FetchResult.Found) return r
+                if (index == 0) firstBg = r.bgColor // أقرب نسخة للاسم
+                if (r.url != null) return AppleLookup(FetchResult.Found(r.url, r.bgColor), r.bgColor)
             }
-            return FetchResult.NoVideo // الألبوم موجود بس مفيش نسخة منه ليها فيديو
+            // الألبوم موجود بس مفيش نسخة منه ليها فيديو: نرجّع لون أقرب نسخة
+            return AppleLookup(FetchResult.NoVideo, firstBg)
         }
-        return FetchResult.NoVideo
+        return AppleLookup(FetchResult.NoVideo, null)
     }
 
     // توكن مجهول الهوية، نفس اللي بيستخدمه أي زائر عادي لموقع Apple Music من غير حساب أو اشتراك.
@@ -1444,7 +1464,7 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
     private fun extractColorAndApplyBackground(albumId: Long, bitmap: Bitmap) {
         val appCtx = context?.applicationContext
         lifecycleScope.launch(Dispatchers.Default) {
-            val appleColor = if (isVideoAlbum && appCtx != null) loadAnimatedArtworkCache(appCtx)[albumId]?.appleBgColor else null
+            val appleColor = if (appCtx != null) loadAnimatedArtworkCache(appCtx)[albumId]?.appleBgColor else null
             val mostFrequentColor = appleColor
                 ?: if (isVideoAlbum) bottomHalfColor(bitmap) else AlbumPaletteEngine.findMostFrequentColor(bitmap)
             withContext(Dispatchers.Main) {
