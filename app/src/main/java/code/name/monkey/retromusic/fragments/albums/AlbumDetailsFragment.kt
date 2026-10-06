@@ -112,7 +112,11 @@ private const val TOOLBAR_ICON_ALPHA = 0xCC
 
 // التدرج بيتحسب من مكان العنوان فعليًا (يبدأ من أول العنوان وينتهي في آخر الإطار). النسبة دي
 // بتتستعمل بس كاحتياطي لو مقدرناش نقيس مكان العنوان
-private const val VIDEO_GRADIENT_FALLBACK_FRACTION = 0.3f
+private const val VIDEO_GRADIENT_FALLBACK_FRACTION = 0.5f
+
+// التدرج بيبدأ من فوق العنوان بمقدار (النسبة دي × المسافة من أول العنوان لآخر الإطار)، زي Apple Music:
+// الفيديو بيتلوّن تدريجيًا قبل العنوان ويبقى لون الصفحة كامل عند الأزرار
+private const val VIDEO_GRADIENT_EXTRA = 0.7f
 
 // نسخة منطق استخراج لون الفيديو (2 = من النص التحتاني من الفريم بس). لو اتغيرت، الألوان المحفوظة
 // القديمة بتتحسب تاني مرة واحدة من الصور المحفوظة
@@ -260,9 +264,9 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
         private val downloadScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
         private val downloadsInFlight: MutableSet<Long> = java.util.Collections.synchronizedSet(HashSet())
 
-        // لون الصفحة: اللون الأكتر شيوعًا على الصورة كلها (مش نص بس)، بدقة 5 بت لكل قناة بعد تصغيرها.
-        // اتجرّب على لقطة Apple Music الحقيقية لألبوم Whitney Houston وطلع قريب جدًا من لونها الأخضر،
-        // بينما النص التحتاني بس طلع رمادي مزرق بعيد عنها.
+        // لون الصفحة: اللون الأكتر شيوعًا على أطراف الصورة كلها (يمين وشمال وفوق وتحت، عرض الطرف 12%)
+        // بعد تصغيرها. لو اللون ده أبيض أو أسود ونسبته (من الأطراف كلها) مش أكتر من 25%، بناخد التاني.
+        // اتجرّب على لقطة Apple Music حقيقية لألبوم Whitney Houston وطلع قريب جدًا من لونها.
         private fun extractPageColor(bitmap: Bitmap): Int {
             val source = if (bitmap.config == Bitmap.Config.HARDWARE) {
                 bitmap.copy(Bitmap.Config.ARGB_8888, false) ?: return AlbumPaletteEngine.findMostFrequentColor(bitmap)
@@ -275,23 +279,51 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
             if (small !== source) small.recycle()
             if (source !== bitmap) source.recycle()
 
+            val edgeX = maxOf(2, (w * 0.12f).toInt())
+            val edgeY = maxOf(2, (h * 0.12f).toInt())
             val counts = HashMap<Int, Int>()
             val sums = HashMap<Int, LongArray>()
-            for (p in pixels) {
-                if ((p ushr 24) < 200) continue // نتجاهل البكسلات الشفافة
-                val r = (p shr 16) and 0xFF
-                val g = (p shr 8) and 0xFF
-                val b = p and 0xFF
-                val key = ((r shr 3) shl 10) or ((g shr 3) shl 5) or (b shr 3)
-                counts[key] = (counts[key] ?: 0) + 1
-                val s = sums.getOrPut(key) { LongArray(3) }
-                s[0] += r.toLong(); s[1] += g.toLong(); s[2] += b.toLong()
+            var total = 0
+            var blackCount = 0
+            var whiteCount = 0
+            for (y in 0 until h) {
+                for (x in 0 until w) {
+                    val onEdge = x < edgeX || x >= w - edgeX || y < edgeY || y >= h - edgeY
+                    if (!onEdge) continue
+                    val p = pixels[y * w + x]
+                    if ((p ushr 24) < 200) continue // نتجاهل البكسلات الشفافة
+                    val r = (p shr 16) and 0xFF
+                    val g = (p shr 8) and 0xFF
+                    val b = p and 0xFF
+                    total++
+                    if (maxOf(r, g, b) < 48) blackCount++
+                    if (minOf(r, g, b) > 208) whiteCount++
+                    val key = ((r shr 4) shl 8) or ((g shr 4) shl 4) or (b shr 4) // 4 بت لكل قناة
+                    counts[key] = (counts[key] ?: 0) + 1
+                    val s = sums.getOrPut(key) { LongArray(3) }
+                    s[0] += r.toLong(); s[1] += g.toLong(); s[2] += b.toLong()
+                }
             }
-            val best = counts.maxByOrNull { it.value }?.key
-                ?: return AlbumPaletteEngine.findMostFrequentColor(bitmap)
-            val n = counts.getValue(best).toLong()
-            val s = sums.getValue(best)
-            return Color.rgb((s[0] / n).toInt(), (s[1] / n).toInt(), (s[2] / n).toInt())
+            if (total == 0 || counts.isEmpty()) return AlbumPaletteEngine.findMostFrequentColor(bitmap)
+
+            fun avgOf(key: Int): Int {
+                val n = counts.getValue(key).toLong()
+                val s = sums.getValue(key)
+                return Color.rgb((s[0] / n).toInt(), (s[1] / n).toInt(), (s[2] / n).toInt())
+            }
+            fun isBlack(c: Int) = maxOf(Color.red(c), Color.green(c), Color.blue(c)) < 48
+            fun isWhite(c: Int) = minOf(Color.red(c), Color.green(c), Color.blue(c)) > 208
+
+            val ranked = counts.entries.sortedByDescending { it.value }.map { it.key }
+            val top = avgOf(ranked[0])
+            val skipBlack = isBlack(top) && blackCount / total.toFloat() <= 0.25f
+            val skipWhite = isWhite(top) && whiteCount / total.toFloat() <= 0.25f
+            for (key in ranked) {
+                val c = avgOf(key)
+                if ((skipBlack && isBlack(c)) || (skipWhite && isWhite(c))) continue
+                return c
+            }
+            return top
         }
 
         private var posterColorsMigrationStarted = false
@@ -1620,20 +1652,9 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
         binding.videoAlbumMetaText?.setTextColor(secondaryFgColor)
 
         if (isVideoAlbum && binding.videoHeaderContainer?.visibility == View.VISIBLE) {
-            // الگراديانت بقى شريط ارتفاعه ثابت (في الـ XML) ملازق للحافة السفلية بس، فالتغميق
-            // مبيطلعش لفوق خالص وبيغطي بس مكان العنوان واسم الفنان والكابشن.
-            // التدرج بيغطي منطقة النص بس (من أول العنوان لآخر الإطار، اللي آخرها سطر السنة وعدد الأغاني)
-            // ومبيطلعش فوقها
-            // التدرج ناعم: بدل 4 درجات حادة، 12 درجة بمنحنى smootherstep (بداية ونهاية هادية جدًا
-            // وتغميق تدريجي في النص)، فمفيش خط واضح بين الفيديو واللون
-            val steps = 12
-            val smoothColors = IntArray(steps + 1) { i ->
-                val x = i / steps.toFloat()
-                val eased = x * x * x * (x * (x * 6f - 15f) + 10f)
-                ColorUtils.setAlphaComponent(backgroundColor, (eased * 255f).toInt().coerceIn(0, 255))
-            }
-            val gradient = GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, smoothColors)
-            binding.videoGradient?.background = gradient
+            // تدرج ناعم من الفيديو للون الصفحة (زي Apple Music): بيبدأ من فوق العنوان وبيوصل للون الكامل عند الأزرار
+            binding.videoGradient?.background =
+                GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, smoothFade(backgroundColor, 0f))
             updateVideoGradientHeight()
         }
 
@@ -1703,6 +1724,17 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
         }, 2000L)
     }
 
+    // منحنى تغميق ناعم (smootherstep) من شفاف للون الصفحة. startFraction = أول جزء من الارتفاع يفضل شفاف
+    private fun smoothFade(color: Int, startFraction: Float): IntArray {
+        val steps = 14
+        return IntArray(steps + 1) { i ->
+            val pos = i / steps.toFloat()
+            val x = ((pos - startFraction) / (0.92f - startFraction)).coerceIn(0f, 1f)
+            val eased = x * x * x * (x * (x * 6f - 15f) + 10f)
+            ColorUtils.setAlphaComponent(color, (eased * 255f).toInt().coerceIn(0, 255))
+        }
+    }
+
     private fun updateVideoGradientHeight() {
         if (_binding == null) return
         val gradientView = binding.videoGradient ?: return
@@ -1719,8 +1751,9 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
             val fromTitleTop = frameLoc[1] + frame.height - titleLoc[1]
             if (fromTitleTop > 0) videoGradientHeightPx = fromTitleTop.coerceAtMost(frame.height)
         }
-        val target = if (videoGradientHeightPx > 0) videoGradientHeightPx
-        else (frame.height * VIDEO_GRADIENT_FALLBACK_FRACTION).toInt()
+        val target = if (videoGradientHeightPx > 0) {
+            (videoGradientHeightPx * (1f + VIDEO_GRADIENT_EXTRA)).toInt().coerceAtMost(frame.height)
+        } else (frame.height * VIDEO_GRADIENT_FALLBACK_FRACTION).toInt()
         val lp = gradientView.layoutParams ?: return
         if (lp.height != target) {
             lp.height = target
