@@ -120,7 +120,7 @@ private const val VIDEO_GRADIENT_EXTRA = 0.7f
 
 // نسخة منطق استخراج لون الفيديو (2 = من النص التحتاني من الفريم بس). لو اتغيرت، الألوان المحفوظة
 // القديمة بتتحسب تاني مرة واحدة من الصور المحفوظة
-private const val POSTER_COLOR_VERSION = 3
+private const val POSTER_COLOR_VERSION = 4
 private const val POSTER_COLOR_VERSION_KEY = "poster_color_version"
 
 // عدد صفوف الأغاني اللي بتتبند فورًا وقت فتح الصفحة (الباقي بيتبند بعد ما الأنيميشن يخلص)
@@ -146,6 +146,46 @@ internal data class AnimatedEntry(
     // اتفحص قبل كده لون Apple لهذا الألبوم (عشان منعيدش الفحص لو Apple معندهاش لون)
     val appleBgChecked: Boolean = false,
 )
+
+// منطقة من الصورة بنعدّ ألوانها (مجموعات 4 بت لكل قناة) وبنحسب نسبة الأسود والأبيض فيها
+private class ColorRegion {
+    val counts = HashMap<Int, Int>()
+    val sums = HashMap<Int, LongArray>()
+    var total = 0
+    var black = 0
+    var white = 0
+
+    fun add(r: Int, g: Int, b: Int) {
+        total++
+        val c = Color.rgb(r, g, b)
+        if (isNearBlack(c)) black++
+        if (isNearWhite(c)) white++
+        val key = ((r shr 4) shl 8) or ((g shr 4) shl 4) or (b shr 4)
+        counts[key] = (counts[key] ?: 0) + 1
+        val s = sums.getOrPut(key) { LongArray(3) }
+        s[0] += r.toLong(); s[1] += g.toLong(); s[2] += b.toLong()
+    }
+
+    fun avg(key: Int): Int {
+        val n = counts.getValue(key).toLong()
+        val s = sums.getValue(key)
+        return Color.rgb((s[0] / n).toInt(), (s[1] / n).toInt(), (s[2] / n).toInt())
+    }
+
+    fun ranked(): List<Int> = counts.entries.sortedByDescending { it.value }.map { it.key }
+
+    // نسبة الأسود (أو الأبيض) في المنطقة، حسب نوع اللون المعطى
+    fun shareOfClass(c: Int): Float =
+        if (total == 0) 0f else (if (isNearBlack(c)) black else white) / total.toFloat()
+}
+
+// "أسود/أبيض" مش بس الصريح: أي درجة غامقة جدًا قريبة من الأسود، أو فاتحة جدًا قريبة من الأبيض
+private fun lightnessOf(c: Int): Float = (maxOf(Color.red(c), Color.green(c), Color.blue(c)) +
+    minOf(Color.red(c), Color.green(c), Color.blue(c))) / 510f
+
+private fun isNearBlack(c: Int): Boolean = lightnessOf(c) < 0.14f
+
+private fun isNearWhite(c: Int): Boolean = lightnessOf(c) > 0.86f
 
 // نتيجة البحث في Apple: الفيديو (لو فيه) + لون الخلفية الجاهز (لأي ألبوم، فيه فيديو أو لأ)
 private class AppleLookup(
@@ -264,9 +304,10 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
         private val downloadScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
         private val downloadsInFlight: MutableSet<Long> = java.util.Collections.synchronizedSet(HashSet())
 
-        // لون الصفحة: اللون الأكتر شيوعًا على أطراف الصورة كلها (يمين وشمال وفوق وتحت، عرض الطرف 12%)
-        // بعد تصغيرها. لو اللون ده أبيض أو أسود ونسبته (من الأطراف كلها) مش أكتر من 25%، بناخد التاني.
-        // اتجرّب على لقطة Apple Music حقيقية لألبوم Whitney Houston وطلع قريب جدًا من لونها.
+        // لون الصفحة:
+        // 1) اللون الأكتر شيوعًا على الأطراف الأربعة (عرض الطرف 12%).
+        // 2) لو ده أسود أو أبيض (حتى القريب منهم) ونسبته من الأطراف كلها أقل من 50%: بنستخدم الطرف التحتاني بس.
+        // 3) ولو اللون الأكتر في الطرف التحتاني برضه أسود/أبيض ونسبته فيه أقل من 50%: بناخد ثاني أكتر لون.
         private fun extractPageColor(bitmap: Bitmap): Int {
             val source = if (bitmap.config == Bitmap.Config.HARDWARE) {
                 bitmap.copy(Bitmap.Config.ARGB_8888, false) ?: return AlbumPaletteEngine.findMostFrequentColor(bitmap)
@@ -281,49 +322,39 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
 
             val edgeX = maxOf(2, (w * 0.12f).toInt())
             val edgeY = maxOf(2, (h * 0.12f).toInt())
-            val counts = HashMap<Int, Int>()
-            val sums = HashMap<Int, LongArray>()
-            var total = 0
-            var blackCount = 0
-            var whiteCount = 0
+            val allEdges = ColorRegion()
+            val bottomEdge = ColorRegion()
             for (y in 0 until h) {
                 for (x in 0 until w) {
-                    val onEdge = x < edgeX || x >= w - edgeX || y < edgeY || y >= h - edgeY
-                    if (!onEdge) continue
                     val p = pixels[y * w + x]
                     if ((p ushr 24) < 200) continue // نتجاهل البكسلات الشفافة
                     val r = (p shr 16) and 0xFF
                     val g = (p shr 8) and 0xFF
                     val b = p and 0xFF
-                    total++
-                    if (maxOf(r, g, b) < 48) blackCount++
-                    if (minOf(r, g, b) > 208) whiteCount++
-                    val key = ((r shr 4) shl 8) or ((g shr 4) shl 4) or (b shr 4) // 4 بت لكل قناة
-                    counts[key] = (counts[key] ?: 0) + 1
-                    val s = sums.getOrPut(key) { LongArray(3) }
-                    s[0] += r.toLong(); s[1] += g.toLong(); s[2] += b.toLong()
+                    if (x < edgeX || x >= w - edgeX || y < edgeY || y >= h - edgeY) allEdges.add(r, g, b)
+                    if (y >= h - edgeY) bottomEdge.add(r, g, b)
                 }
             }
-            if (total == 0 || counts.isEmpty()) return AlbumPaletteEngine.findMostFrequentColor(bitmap)
+            if (allEdges.total == 0) return AlbumPaletteEngine.findMostFrequentColor(bitmap)
 
-            fun avgOf(key: Int): Int {
-                val n = counts.getValue(key).toLong()
-                val s = sums.getValue(key)
-                return Color.rgb((s[0] / n).toInt(), (s[1] / n).toInt(), (s[2] / n).toInt())
-            }
-            fun isBlack(c: Int) = maxOf(Color.red(c), Color.green(c), Color.blue(c)) < 48
-            fun isWhite(c: Int) = minOf(Color.red(c), Color.green(c), Color.blue(c)) > 208
+            val topAll = allEdges.avg(allEdges.ranked()[0])
+            val topIsBw = isNearBlack(topAll) || isNearWhite(topAll)
+            if (!topIsBw || allEdges.shareOfClass(topAll) >= 0.5f) return topAll
 
-            val ranked = counts.entries.sortedByDescending { it.value }.map { it.key }
-            val top = avgOf(ranked[0])
-            val skipBlack = isBlack(top) && blackCount / total.toFloat() <= 0.25f
-            val skipWhite = isWhite(top) && whiteCount / total.toFloat() <= 0.25f
-            for (key in ranked) {
-                val c = avgOf(key)
-                if ((skipBlack && isBlack(c)) || (skipWhite && isWhite(c))) continue
-                return c
+            // الطرف التحتاني بس
+            if (bottomEdge.total == 0) return topAll
+            val rankedBottom = bottomEdge.ranked()
+            val topBottom = bottomEdge.avg(rankedBottom[0])
+            val bottomIsBw = isNearBlack(topBottom) || isNearWhite(topBottom)
+            if (!bottomIsBw || bottomEdge.shareOfClass(topBottom) >= 0.5f) return topBottom
+
+            // ثاني أكتر لون في الطرف التحتاني (بنتخطى درجات نفس الأسود/الأبيض)
+            for (key in rankedBottom) {
+                val c = bottomEdge.avg(key)
+                val sameClass = if (isNearBlack(topBottom)) isNearBlack(c) else isNearWhite(c)
+                if (!sameClass) return c
             }
-            return top
+            return topBottom
         }
 
         private var posterColorsMigrationStarted = false
