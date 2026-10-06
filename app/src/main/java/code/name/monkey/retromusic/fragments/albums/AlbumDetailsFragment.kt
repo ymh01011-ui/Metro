@@ -133,10 +133,14 @@ internal data class AnimatedEntry(
     val posterColor: Int? = null,
     val ready: Boolean = false,
     val checkedAt: Long = 0L,
+    // لون الخلفية الجاهز من Apple (bgColor) لو موجود، وبياخد أولوية على أي لون بنحسبه إحنا
+    val appleBgColor: Int? = null,
+    // اتفحص قبل كده لون Apple لهذا الألبوم (عشان منعيدش الفحص لو Apple معندهاش لون)
+    val appleBgChecked: Boolean = false,
 )
 
 private sealed class FetchResult {
-    data class Found(val url: String) : FetchResult()
+    data class Found(val url: String, val bgColor: Int? = null) : FetchResult()
     object NoVideo : FetchResult()
     object Failed : FetchResult() // مفيش نت / خطأ مؤقت: مبنخزنش حاجة عشان نجرب تاني
 }
@@ -294,6 +298,8 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
                                 posterColor = if (v.has("pcolor")) v.optInt("pcolor") else null,
                                 ready = v.optBoolean("ready", false),
                                 checkedAt = v.optLong("checkedAt", 0L),
+                                appleBgColor = if (v.has("abg")) v.optInt("abg") else null,
+                                appleBgChecked = v.optBoolean("abgChecked", false),
                             )
                             else -> AnimatedEntry(null)
                         }
@@ -317,6 +323,8 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
                 entry.posterColor?.let { e.put("pcolor", it) }
                 if (entry.ready) e.put("ready", true)
                 if (entry.checkedAt > 0) e.put("checkedAt", entry.checkedAt)
+                entry.appleBgColor?.let { e.put("abg", it) }
+                if (entry.appleBgChecked) e.put("abgChecked", true)
                 obj.put(albumId.toString(), e)
             }
             context.applicationContext
@@ -656,6 +664,8 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
                     setupVideoPlayer(cachedUrl, albumId)
                     if (!entry.ready) ensureVideoDownloaded(app, albumId, cachedUrl)
                 }
+                // ألبومات اتخزنت قبل ما نضيف لون Apple: نجيب اللون مرة واحدة في الخلفية
+                if (entry.appleBgColor == null && !entry.appleBgChecked) backfillAppleColor(app, albumData)
             }
             return
         }
@@ -670,7 +680,12 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
             val videoUrl = (result as? FetchResult.Found)?.url
             when (result) {
                 is FetchResult.Found -> {
-                    cache[albumId] = AnimatedEntry(result.url, checkedAt = System.currentTimeMillis())
+                    cache[albumId] = AnimatedEntry(
+                        result.url,
+                        checkedAt = System.currentTimeMillis(),
+                        appleBgColor = result.bgColor,
+                        appleBgChecked = true,
+                    )
                     persistAnimatedArtworkCache(app)
                     ensureVideoDownloaded(app, albumId, result.url)
                 }
@@ -686,6 +701,27 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
                 isVideoAlbum = videoUrl != null
                 showAlbum(albumData)
                 if (videoUrl != null) runWhenEnterSettled { setupVideoPlayer(videoUrl, albumId) }
+            }
+        }
+    }
+
+    // بيجيب لون Apple لألبوم متخزن من غير لون (مرة واحدة)، ويطبقه على الصفحة لو لسه مفتوحة
+    private fun backfillAppleColor(app: Context, albumData: Album) {
+        val albumId = albumData.id
+        lifecycleScope.launch(Dispatchers.IO) {
+            val result = try { fetchAnimatedArtworkUrl(albumData) } catch (e: Exception) { return@launch }
+            if (result is FetchResult.Failed) return@launch // مفيش نت: نجرب في فتحة تانية
+            val bg = (result as? FetchResult.Found)?.bgColor
+            val cache = loadAnimatedArtworkCache(app)
+            val current = cache[albumId] ?: return@launch
+            cache[albumId] = current.copy(appleBgColor = bg, appleBgChecked = true)
+            persistAnimatedArtworkCache(app)
+            if (bg != null) withContext(Dispatchers.Main) {
+                if (_binding == null) return@withContext
+                AlbumDetailsCache.putColor(albumId, bg)
+                hasExtractedColors = true
+                dominantBackgroundColor = bg
+                setColors(bg)
             }
         }
     }
@@ -708,7 +744,7 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
         val albumId = arguments.extraAlbumId
         val entry = loadAnimatedArtworkCache(requireContext())[albumId] ?: return
         val ratio = entry.ratio ?: return
-        val color = entry.posterColor ?: return
+        val color = entry.appleBgColor ?: entry.posterColor ?: return
         if (entry.url == null) return
         val file = posterFile(requireContext(), albumId)
         if (!file.exists()) return
@@ -871,8 +907,16 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
             ?: return FetchResult.NoVideo
 
         val masterUrl = motion.optString("video").takeIf { it.isNotBlank() } ?: return FetchResult.NoVideo
-        return FetchResult.Found(resolveBestVariantUrl(masterUrl, resources.displayMetrics.widthPixels))
+        // لون الخلفية الجاهز من Apple: من أول فريم الفيديو (previewFrame) لو موجود، وإلا من غلاف الألبوم
+        val appleBg = parseAppleColor(motion.optJSONObject("previewFrame")?.optString("bgColor"))
+            ?: parseAppleColor(attributes.optJSONObject("artwork")?.optString("bgColor"))
+        return FetchResult.Found(resolveBestVariantUrl(masterUrl, resources.displayMetrics.widthPixels), appleBg)
     }
+
+    // Apple بتبعت اللون كـ hex من 6 حروف من غير # (زي "0b1b18")
+    private fun parseAppleColor(hex: String?): Int? =
+        hex?.trim()?.takeIf { it.length == 6 }
+            ?.let { runCatching { Color.parseColor("#$it") }.getOrNull() }
 
     // ---------- 3) الدالة الرئيسية ----------
 
@@ -1123,7 +1167,7 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
 
             lifecycleScope.launch(Dispatchers.IO) {
                 try {
-                    val color = bottomHalfColor(bitmap)
+                    val color = entry.appleBgColor ?: bottomHalfColor(bitmap)
                     file.parentFile?.mkdirs()
                     val tmp = File(file.parentFile, "$albumId.tmp")
                     FileOutputStream(tmp).use { bitmap.compress(Bitmap.CompressFormat.JPEG, 92, it) }
@@ -1398,9 +1442,11 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
     }
 
     private fun extractColorAndApplyBackground(albumId: Long, bitmap: Bitmap) {
+        val appCtx = context?.applicationContext
         lifecycleScope.launch(Dispatchers.Default) {
-            val mostFrequentColor =
-                if (isVideoAlbum) bottomHalfColor(bitmap) else AlbumPaletteEngine.findMostFrequentColor(bitmap)
+            val appleColor = if (isVideoAlbum && appCtx != null) loadAnimatedArtworkCache(appCtx)[albumId]?.appleBgColor else null
+            val mostFrequentColor = appleColor
+                ?: if (isVideoAlbum) bottomHalfColor(bitmap) else AlbumPaletteEngine.findMostFrequentColor(bitmap)
             withContext(Dispatchers.Main) {
                 hasExtractedColors = true
                 dominantBackgroundColor = mostFrequentColor
