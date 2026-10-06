@@ -106,8 +106,14 @@ import java.text.Collator
 
 private const val TOOLBAR_ICON_ALPHA = 0xCC
 
-// ارتفاع تدرج اللون فوق الفيديو كنسبة من ارتفاع إطار الفيديو (كل ما تكبر الرقم يغطي الفيديو أكتر)
-private const val VIDEO_GRADIENT_HEIGHT_FRACTION = 0.5f
+// التدرج بيتحسب من مكان العنوان فعليًا (يبدأ من أول العنوان وينتهي في آخر الإطار). النسبة دي
+// بتتستعمل بس كاحتياطي لو مقدرناش نقيس مكان العنوان
+private const val VIDEO_GRADIENT_FALLBACK_FRACTION = 0.3f
+
+// نسخة منطق استخراج لون الفيديو (2 = من النص التحتاني من الفريم بس). لو اتغيرت، الألوان المحفوظة
+// القديمة بتتحسب تاني مرة واحدة من الصور المحفوظة
+private const val POSTER_COLOR_VERSION = 2
+private const val POSTER_COLOR_VERSION_KEY = "poster_color_version"
 
 // عدد صفوف الأغاني اللي بتتبند فورًا وقت فتح الصفحة (الباقي بيتبند بعد ما الأنيميشن يخلص)
 private const val VISIBLE_SONGS_IMMEDIATE = 4
@@ -165,6 +171,7 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
     private var enterSettled = false
     private val settledCallbacks = mutableListOf<() -> Unit>()
     private var currentVideoUrl: String? = null
+    private var videoGradientHeightPx: Int = -1
     private var videoVisibleOnScreen = true
     private var moreAlbumsRequested = false
     private var statusBarRegistered = false
@@ -223,6 +230,49 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
 
         private val downloadScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
         private val downloadsInFlight: MutableSet<Long> = java.util.Collections.synchronizedSet(HashSet())
+
+        // لون الفيديو بيتاخد من النص التحتاني من الفريم بس (المنطقة اللي التدرج بيغطيها)، مش الفريم كله
+        private fun bottomHalfColor(bitmap: Bitmap): Int {
+            val half = bitmap.height / 2
+            if (half <= 0 || bitmap.width <= 0) return AlbumPaletteEngine.findMostFrequentColor(bitmap)
+            val bottom = Bitmap.createBitmap(bitmap, 0, half, bitmap.width, bitmap.height - half)
+            return try {
+                AlbumPaletteEngine.findMostFrequentColor(bottom)
+            } finally {
+                if (bottom !== bitmap) bottom.recycle()
+            }
+        }
+
+        private var posterColorsMigrationStarted = false
+
+        // مرة واحدة: بيعيد حساب لون كل فيديو متخزن من النص التحتاني من صورته المحفوظة،
+        // عشان الألوان القديمة (اللي اتحسبت من الفريم كله) متفضلش
+        private fun migratePosterColorsIfNeeded(appContext: Context) {
+            if (posterColorsMigrationStarted) return
+            val prefs = appContext.getSharedPreferences(ANIMATED_ARTWORK_PREFS, Context.MODE_PRIVATE)
+            if (prefs.getInt(POSTER_COLOR_VERSION_KEY, 1) >= POSTER_COLOR_VERSION) return
+            posterColorsMigrationStarted = true
+            kotlinx.coroutines.CoroutineScope(Dispatchers.IO).launch {
+                try {
+                    val cache = loadAnimatedArtworkCache(appContext)
+                    cache.entries.toList().forEach { (albumId, entry) ->
+                        if (entry.url == null || entry.posterColor == null) return@forEach
+                        val file = posterFile(appContext, albumId)
+                        if (!file.exists()) return@forEach
+                        val bmp = BitmapFactory.decodeFile(file.path, BitmapFactory.Options().apply { inSampleSize = 4 })
+                            ?: return@forEach
+                        val color = bottomHalfColor(bmp)
+                        bmp.recycle()
+                        cache[albumId] = entry.copy(posterColor = color)
+                    }
+                    persistAnimatedArtworkCache(appContext)
+                    prefs.edit().putInt(POSTER_COLOR_VERSION_KEY, POSTER_COLOR_VERSION).apply()
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                    posterColorsMigrationStarted = false
+                }
+            }
+        }
 
         @Synchronized
         private fun loadAnimatedArtworkCache(context: Context): ConcurrentHashMap<Long, AnimatedEntry> {
@@ -405,9 +455,14 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
         navEntry = runCatching { findNavController().currentBackStackEntry }.getOrNull()
 
         // ارتفاع التدرج فوق الفيديو بيتحسب من ارتفاع إطار الفيديو الفعلي
+        videoGradientHeightPx = -1
         binding.videoFrame?.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
             updateVideoGradientHeight()
         }
+        binding.videoAlbumTitle?.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
+            updateVideoGradientHeight()
+        }
+        context?.applicationContext?.let { migratePosterColorsIfNeeded(it) }
 
         // ألبوم ليه فيديو متخزن + أول فريم محفوظ: نفتح الصفحة بالصورة دي مباشرة (بدل الغلاف
         // الأصلي) وبنفس نسبة الفيديو ولون الخلفية المحفوظ، فمفيش أي تبديل صور وقت الفتح.
@@ -1068,7 +1123,7 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
 
             lifecycleScope.launch(Dispatchers.IO) {
                 try {
-                    val color = AlbumPaletteEngine.findMostFrequentColor(bitmap)
+                    val color = bottomHalfColor(bitmap)
                     file.parentFile?.mkdirs()
                     val tmp = File(file.parentFile, "$albumId.tmp")
                     FileOutputStream(tmp).use { bitmap.compress(Bitmap.CompressFormat.JPEG, 92, it) }
@@ -1344,7 +1399,8 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
 
     private fun extractColorAndApplyBackground(albumId: Long, bitmap: Bitmap) {
         lifecycleScope.launch(Dispatchers.Default) {
-            val mostFrequentColor = AlbumPaletteEngine.findMostFrequentColor(bitmap)
+            val mostFrequentColor =
+                if (isVideoAlbum) bottomHalfColor(bitmap) else AlbumPaletteEngine.findMostFrequentColor(bitmap)
             withContext(Dispatchers.Main) {
                 hasExtractedColors = true
                 dominantBackgroundColor = mostFrequentColor
@@ -1387,15 +1443,14 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
         if (isVideoAlbum && binding.videoHeaderContainer?.visibility == View.VISIBLE) {
             // الگراديانت بقى شريط ارتفاعه ثابت (في الـ XML) ملازق للحافة السفلية بس، فالتغميق
             // مبيطلعش لفوق خالص وبيغطي بس مكان العنوان واسم الفنان والكابشن.
-            // التدرج بقى أطول ومتدرج على مراحل أكتر، فلون الصفحة بينزل على الفيديو ويغطيه أكتر
+            // التدرج بيغطي منطقة النص بس (من أول العنوان لآخر الإطار، اللي آخرها سطر السنة وعدد الأغاني)
+            // ومبيطلعش فوقها
             val gradient = GradientDrawable(
                 GradientDrawable.Orientation.TOP_BOTTOM,
                 intArrayOf(
                     Color.TRANSPARENT,
-                    ColorUtils.setAlphaComponent(backgroundColor, 45),
-                    ColorUtils.setAlphaComponent(backgroundColor, 120),
-                    ColorUtils.setAlphaComponent(backgroundColor, 195),
-                    ColorUtils.setAlphaComponent(backgroundColor, 240),
+                    ColorUtils.setAlphaComponent(backgroundColor, 110),
+                    ColorUtils.setAlphaComponent(backgroundColor, 215),
                     backgroundColor
                 )
             )
@@ -1474,7 +1529,19 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
         val gradientView = binding.videoGradient ?: return
         val frame = binding.videoFrame ?: return
         if (frame.height <= 0) return
-        val target = (frame.height * VIDEO_GRADIENT_HEIGHT_FRACTION).toInt()
+
+        // القياس بيتم والصفحة فوق خالص (scrollY = 0) عشان مكان العنوان بالنسبة للإطار يكون ثابت
+        val title = binding.videoAlbumTitle
+        if (title != null && title.height > 0 && binding.content.scrollY == 0) {
+            val frameLoc = IntArray(2)
+            val titleLoc = IntArray(2)
+            frame.getLocationInWindow(frameLoc)
+            title.getLocationInWindow(titleLoc)
+            val fromTitleTop = frameLoc[1] + frame.height - titleLoc[1]
+            if (fromTitleTop > 0) videoGradientHeightPx = fromTitleTop.coerceAtMost(frame.height)
+        }
+        val target = if (videoGradientHeightPx > 0) videoGradientHeightPx
+        else (frame.height * VIDEO_GRADIENT_FALLBACK_FRACTION).toInt()
         val lp = gradientView.layoutParams ?: return
         if (lp.height != target) {
             lp.height = target
