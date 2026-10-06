@@ -1445,15 +1445,15 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
             // مبيطلعش لفوق خالص وبيغطي بس مكان العنوان واسم الفنان والكابشن.
             // التدرج بيغطي منطقة النص بس (من أول العنوان لآخر الإطار، اللي آخرها سطر السنة وعدد الأغاني)
             // ومبيطلعش فوقها
-            val gradient = GradientDrawable(
-                GradientDrawable.Orientation.TOP_BOTTOM,
-                intArrayOf(
-                    Color.TRANSPARENT,
-                    ColorUtils.setAlphaComponent(backgroundColor, 110),
-                    ColorUtils.setAlphaComponent(backgroundColor, 215),
-                    backgroundColor
-                )
-            )
+            // التدرج ناعم: بدل 4 درجات حادة، 12 درجة بمنحنى smootherstep (بداية ونهاية هادية جدًا
+            // وتغميق تدريجي في النص)، فمفيش خط واضح بين الفيديو واللون
+            val steps = 12
+            val smoothColors = IntArray(steps + 1) { i ->
+                val x = i / steps.toFloat()
+                val eased = x * x * x * (x * (x * 6f - 15f) + 10f)
+                ColorUtils.setAlphaComponent(backgroundColor, (eased * 255f).toInt().coerceIn(0, 255))
+            }
+            val gradient = GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, smoothColors)
             binding.videoGradient?.background = gradient
             updateVideoGradientHeight()
         }
