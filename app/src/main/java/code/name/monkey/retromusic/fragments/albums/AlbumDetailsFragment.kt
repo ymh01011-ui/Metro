@@ -240,6 +240,7 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
     private var videoGradientHeightPx: Int = -1
     private var videoVisibleOnScreen = true
     private var moreAlbumsRequested = false
+    private var aboutRequested = false
     private var statusBarRegistered = false
     private var lastStatusBarLight: Boolean? = null
     private var navEntry: NavBackStackEntry? = null
@@ -558,6 +559,7 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
         settledCallbacks.clear()
         videoVisibleOnScreen = true
         moreAlbumsRequested = false
+        aboutRequested = false
         _binding = FragmentAlbumDetailsBinding.bind(view)
         mainActivity.addMusicServiceEventListener(detailsViewModel)
 
@@ -692,6 +694,19 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
         detailsViewModel.getAlbum().observe(viewLifecycleOwner) { album ->
             albumArtistExists = !album.albumArtist.isNullOrEmpty()
             checkAndFetchAnimatedArtwork(album)
+        }
+
+        // نبذة الألبوم (About): نفس فكرة Biography في صفحة الفنان
+        detailsViewModel.getAbout().observe(viewLifecycleOwner) { text -> bindAbout(text) }
+        binding.fragmentAlbumContent.aboutMore.setOnClickListener {
+            val aboutText = binding.fragmentAlbumContent.aboutText
+            if (aboutText.maxLines > 3) {
+                aboutText.maxLines = 3
+                binding.fragmentAlbumContent.aboutMore.text = "More"
+            } else {
+                aboutText.maxLines = Int.MAX_VALUE
+                binding.fragmentAlbumContent.aboutMore.text = "Less"
+            }
         }
 
         val artistClickListener = View.OnClickListener {
@@ -1539,6 +1554,17 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
         if (!posterShown) loadAlbumCover(album)
         bindSongsStaggered(album.songs)
 
+        // نبذة الألبوم من Last.fm: بنجرب Album artist الأول، وبعدين الفنان، وأول اسم من أي تاج متعدد
+        if (!aboutRequested) {
+            aboutRequested = true
+            val rawNames = listOfNotNull(if (albumArtistExists) album.albumArtist else null, album.artistName)
+            val candidates = rawNames
+                .flatMap { name -> listOf(name) + ArtistTagUtil.splitArtistNames(name).take(1) }
+                .filter { it.isNotBlank() }
+                .distinct()
+            detailsViewModel.loadAbout(requireContext(), candidates, album.title.orEmpty())
+        }
+
         // ألبومات الفنان بتتحمل فورًا من غير تأجيل (ونسجّل الـ observer مرة واحدة بس)
         if (!moreAlbumsRequested) {
             moreAlbumsRequested = true
@@ -1562,6 +1588,22 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
         runWhenEnterSettled {
             if (::simpleSongAdapter.isInitialized) simpleSongAdapter.swapDataSet(songs)
         }
+    }
+
+    private fun bindAbout(text: String?) {
+        if (_binding == null) return
+        val content = binding.fragmentAlbumContent
+        if (text.isNullOrBlank()) {
+            content.aboutTitle.visibility = View.GONE
+            content.aboutCardWrapper.visibility = View.GONE
+            return
+        }
+        content.aboutTitle.visibility = View.VISIBLE
+        content.aboutCardWrapper.visibility = View.VISIBLE
+        content.aboutText.text = text
+        // نرجّعها تتقفل (3 أسطر) كل ما ألبوم جديد يتحمل
+        content.aboutText.maxLines = 3
+        content.aboutMore.text = "More"
     }
 
     private fun moreAlbums(albums: List<Album>) {
@@ -1704,6 +1746,11 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
 
         binding.fragmentAlbumContent.songTitle.setTextColor(fgColor)
         binding.fragmentAlbumContent.moreTitle.setTextColor(fgColor)
+        binding.fragmentAlbumContent.aboutTitle.setTextColor(fgColor)
+        binding.fragmentAlbumContent.aboutText.setTextColor(secondaryFgColor)
+        binding.fragmentAlbumContent.aboutMore.setTextColor(fgColor)
+        binding.fragmentAlbumContent.aboutCardGlass.cornerRadiusPx = 12f * resources.displayMetrics.density
+        binding.fragmentAlbumContent.aboutCardGlass.setBackdropColor(backgroundColor)
         applyStatusBarAppearance(isLightBackground)
 
         binding.fragmentAlbumContent.shuffleActionGlass.setBackdropColor(backgroundColor)
@@ -1804,10 +1851,26 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
         return androidx.core.view.WindowInsetsControllerCompat(window, window.decorView).isAppearanceLightStatusBars
     }
 
+    // الصفحات اللي بتتحكم في لون الستاتس بار بنفسها (كل واحدة بتطبق لونها حسب لون صفحتها).
+    // لو رايحين لواحدة منها (أو جايين منها) مبنلمسش الستاتس بار، عشان منكتبش فوق لونها.
+    private fun isSelfManagedStatusBarDestination(id: Int?): Boolean = id != null && (
+        id == R.id.albumDetailsFragment ||
+            id == R.id.artistDetailsFragment ||
+            id == R.id.albumArtistDetailsFragment ||
+            id == R.id.multiArtistDetailsFragment ||
+            id == R.id.artistAllSongsFragment
+        )
+
     private fun registerStatusBar() {
         if (statusBarRegistered) return
-        if (albumPagesAlive <= 0 || baseStatusBarLight == null) {
-            baseStatusBarLight = readStatusBarLight()
+        // اللون الأصلي بنحفظه مرة واحدة بس، ومن شاشة مش بتلوّن الستاتس بار بنفسها (زي قايمة الألبومات).
+        // لو جايين من صفحة فنان/ألبوم، الستاتس بار الحالي هو لون الصفحة دي مش الأصلي، فبنفترض الافتراضي
+        // (نفس اللي صفحة الفنان بترجعله لما تخرج: أيقونات فاتحة).
+        if (baseStatusBarLight == null) {
+            val cameFromSelfManaged = runCatching {
+                isSelfManagedStatusBarDestination(findNavController().previousBackStackEntry?.destination?.id)
+            }.getOrDefault(false)
+            baseStatusBarLight = if (cameFromSelfManaged) false else readStatusBarLight()
         }
         albumPagesAlive++
         statusBarRegistered = true
@@ -1817,14 +1880,20 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
         if (!statusBarRegistered) return
         statusBarRegistered = false
         albumPagesAlive--
-        if (albumPagesAlive <= 0) {
-            albumPagesAlive = 0
-            val base = baseStatusBarLight
-            baseStatusBarLight = null
-            if (base != null) {
-                activity?.window?.let { window ->
-                    androidx.core.view.WindowInsetsControllerCompat(window, window.decorView).isAppearanceLightStatusBars = base
-                }
+        if (albumPagesAlive > 0) return
+        albumPagesAlive = 0
+
+        // رايحين لصفحة فنان/ألبوم تانية: هي بتلوّن الستاتس بار بنفسها حسب لونها، فلو رجّعنا اللون
+        // الأصلي هنا (وده بيحصل بعد الأنيميشن) هنكتب فوق لونها وهتبان بأيقونات بيضا على صفحة فاتحة.
+        // بنسيب اللون الأصلي محفوظ لحد ما نخرج فعلًا لشاشة عادية.
+        val destinationId = runCatching { findNavController().currentDestination?.id }.getOrNull()
+        if (isSelfManagedStatusBarDestination(destinationId)) return
+
+        val base = baseStatusBarLight
+        baseStatusBarLight = null
+        if (base != null) {
+            activity?.window?.let { window ->
+                androidx.core.view.WindowInsetsControllerCompat(window, window.decorView).isAppearanceLightStatusBars = base
             }
         }
     }
