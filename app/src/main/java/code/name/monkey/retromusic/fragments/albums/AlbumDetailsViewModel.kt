@@ -14,10 +14,12 @@
  */
 package code.name.monkey.retromusic.fragments.albums
 
+import android.content.Context
 import androidx.lifecycle.*
 import code.name.monkey.retromusic.interfaces.IMusicServiceEventListener
 import code.name.monkey.retromusic.model.Album
 import code.name.monkey.retromusic.model.Artist
+import code.name.monkey.retromusic.network.LastFmBiographyFetcher
 import code.name.monkey.retromusic.repository.RealRepository
 import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.delay
@@ -57,7 +59,12 @@ internal fun Album.contentSignature(): Int {
 object AlbumDetailsCache {
     private const val MAX_ENTRIES = 6
 
-    private class Entry(val album: Album, val signature: Int, var color: Int? = null)
+    private class Entry(
+        val album: Album,
+        val signature: Int,
+        var color: Int? = null,
+        var about: String? = null
+    )
 
     private val entries = object : LinkedHashMap<Long, Entry>(8, 0.75f, true) {
         override fun removeEldestEntry(eldest: MutableMap.MutableEntry<Long, Entry>?): Boolean {
@@ -71,13 +78,21 @@ object AlbumDetailsCache {
     @Synchronized
     fun getColor(albumId: Long): Int? = entries[albumId]?.color
 
+    @Synchronized
+    fun getAbout(albumId: Long): String? = entries[albumId]?.about
+
+    @Synchronized
+    fun putAbout(albumId: Long, about: String) {
+        entries[albumId]?.about = about
+    }
+
     /** بترجع true لو الألبوم جديد أو محتواه اتغير عن اللي متخزن. */
     @Synchronized
     fun put(albumId: Long, album: Album): Boolean {
         val signature = album.contentSignature()
         val existing = entries[albumId]
         if (existing != null && existing.signature == signature) return false
-        entries[albumId] = Entry(album, signature, existing?.color)
+        entries[albumId] = Entry(album, signature, existing?.color, existing?.about)
         return true
     }
 
@@ -92,8 +107,17 @@ class AlbumDetailsViewModel(
     private val albumId: Long
 ) : ViewModel(), IMusicServiceEventListener {
     private val albumDetails = MutableLiveData<Album>()
+    private val about = MutableLiveData<String?>()
+
+    @Volatile
+    private var aboutRequested = false
 
     init {
+        // نبذة الألبوم من الكاش (لو اتحملت قبل كده): بتظهر فورًا مع أول رسم
+        AlbumDetailsCache.getAbout(albumId)?.let { cachedAbout ->
+            about.value = cachedAbout
+            aboutRequested = true
+        }
         var hasCachedAlbum = false
         AlbumDetailsCache.get(albumId)?.let { cachedAlbum ->
             albumDetails.value = cachedAlbum
@@ -115,6 +139,24 @@ class AlbumDetailsViewModel(
     }
 
     fun getAlbum(): LiveData<Album> = albumDetails
+    fun getAbout(): LiveData<String?> = about
+
+    /** بيجيب نبذة الألبوم من Last.fm مرة واحدة (بنفس فكرة biography في ArtistDetailsViewModel). */
+    fun loadAbout(context: Context, artistCandidates: List<String>, albumTitle: String) {
+        if (aboutRequested) return
+        aboutRequested = true
+        val appContext = context.applicationContext
+        viewModelScope.launch(IO) {
+            val text = LastFmBiographyFetcher.fetchAlbumAbout(appContext, artistCandidates, albumTitle)
+            if (text.isNullOrBlank()) {
+                // فشل أو مفيش نبذة - نسمح بمحاولة تانية في التحميل الجاي.
+                aboutRequested = false
+            } else {
+                AlbumDetailsCache.putAbout(albumId, text)
+            }
+            about.postValue(text)
+        }
+    }
 
     fun getArtist(artistId: Long): LiveData<Artist> = liveData(IO) {
         val artist = repository.artistById(artistId)
