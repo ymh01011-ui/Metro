@@ -711,13 +711,9 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
                 }
             } else {
                 if (albumArtistExists) {
-                    findActivityNavController(R.id.fragment_container).navigate(
-                        R.id.albumArtistDetailsFragment, bundleOf(EXTRA_ARTIST_NAME to album.albumArtist)
-                    )
+                    navigateToArtistPage(R.id.albumArtistDetailsFragment, bundleOf(EXTRA_ARTIST_NAME to album.albumArtist))
                 } else {
-                    findActivityNavController(R.id.fragment_container).navigate(
-                        R.id.artistDetailsFragment, bundleOf(EXTRA_ARTIST_ID to album.artistId)
-                    )
+                    navigateToArtistPage(R.id.artistDetailsFragment, bundleOf(EXTRA_ARTIST_ID to album.artistId))
                 }
             }
         }
@@ -1459,16 +1455,24 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
         MaterialAlertDialogBuilder(requireContext())
             .setTitle(R.string.action_go_to_artist)
             .setAdapter(adapter) { _, which ->
-                findActivityNavController(R.id.fragment_container).navigate(
-                    R.id.multiArtistDetailsFragment, bundleOf(EXTRA_ARTIST_NAME to artists[which].name)
-                )
+                navigateToArtistPage(R.id.multiArtistDetailsFragment, bundleOf(EXTRA_ARTIST_NAME to artists[which].name))
             }
             .show()
     }
 
     private fun goToMultiArtistFromAlbum(artistName: String) {
-        findActivityNavController(R.id.fragment_container)
-            .navigate(R.id.multiArtistDetailsFragment, bundleOf(EXTRA_ARTIST_NAME to artistName))
+        navigateToArtistPage(R.id.multiArtistDetailsFragment, bundleOf(EXTRA_ARTIST_NAME to artistName))
+    }
+
+    // فتح صفحة الفنان بنفس أنيميشن الدخول والخروج (والرجوع) اللي بنستخدمها لفتح ألبوم تاني
+    private fun navigateToArtistPage(destinationId: Int, args: Bundle) {
+        val navOptions = NavOptions.Builder()
+            .setEnterAnim(R.anim.nav_slide_in_right)
+            .setExitAnim(R.anim.nav_slide_out_left)
+            .setPopEnterAnim(R.anim.nav_slide_in_left)
+            .setPopExitAnim(R.anim.nav_slide_out_right)
+            .build()
+        findActivityNavController(R.id.fragment_container).navigate(destinationId, args, navOptions)
     }
 
     private fun addAlbumSongsToPlaylist() {
@@ -1563,7 +1567,8 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
     private fun moreAlbums(albums: List<Album>) {
         binding.fragmentAlbumContent.moreTitle.show()
         binding.fragmentAlbumContent.moreRecyclerView.show()
-        binding.fragmentAlbumContent.moreTitle.text = String.format(getString(R.string.label_more_from), album.artistName)
+        val moreFromName = if (albumArtistExists) album.albumArtist.toString() else album.artistName
+        binding.fragmentAlbumContent.moreTitle.text = String.format(getString(R.string.label_more_from), moreFromName)
 
         val albumAdapter = HorizontalAlbumAdapter(requireActivity() as AppCompatActivity, albums, this)
         moreAlbumAdapter = albumAdapter
