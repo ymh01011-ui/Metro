@@ -16,8 +16,11 @@ package code.name.monkey.retromusic.fragments.playlists
 
 import android.os.Bundle
 import android.view.*
+import android.view.animation.Animation
+import android.view.animation.AnimationUtils
 import androidx.core.os.bundleOf
 import androidx.core.view.MenuCompat
+import androidx.navigation.NavOptions
 import androidx.navigation.fragment.findNavController
 import androidx.recyclerview.widget.GridLayoutManager
 import code.name.monkey.retromusic.EXTRA_PLAYLIST_ID
@@ -30,14 +33,36 @@ import code.name.monkey.retromusic.helper.SortOrder.PlaylistSortOrder
 import code.name.monkey.retromusic.interfaces.IPlaylistClickListener
 import code.name.monkey.retromusic.util.PreferenceUtil
 import code.name.monkey.retromusic.util.RetroUtil
-import com.google.android.material.transition.MaterialSharedAxis
 
 class PlaylistsFragment :
     AbsRecyclerViewCustomGridSizeFragment<PlaylistAdapter, GridLayoutManager>(),
     IPlaylistClickListener {
 
+    // true من ساعة ما بنفتح صفحة تفاصيل playlist لحد ما نرجع لهنا. بنفرّق بيه بين "رجوع من التفاصيل"
+    // (لازم انيميشن الرجوع) وبين فتح صفحة الـ Playlists عادي (بيفضل بالانيميشن الأساسي).
+    private var openedPlaylistDetails = false
+
+    override fun onCreateAnimation(transit: Int, enter: Boolean, nextAnim: Int): Animation? {
+        if (openedPlaylistDetails) {
+            return if (enter) {
+                // رجعنا من التفاصيل
+                openedPlaylistDetails = false
+                AnimationUtils.loadAnimation(requireContext(), R.anim.nav_slide_in_left)
+            } else {
+                // بنفتح التفاصيل: الصفحة دي بتطلع لليسار
+                AnimationUtils.loadAnimation(requireContext(), R.anim.nav_slide_out_left)
+            }
+        }
+        return super.onCreateAnimation(transit, enter, nextAnim)
+    }
+
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
+        // الـ base fragment بيحط transition على الصفحة بعد ما الـ view يتبني، وده بيتنفذ بدل
+        // أنيميشن الرجوع. فلو راجعين من التفاصيل بنشيله هنا.
+        if (openedPlaylistDetails) {
+            reenterTransition = null
+        }
         libraryViewModel.getPlaylists().observe(viewLifecycleOwner) {
             if (it.isNotEmpty())
                 adapter?.swapDataSet(it)
@@ -237,11 +262,18 @@ class PlaylistsFragment :
     }
 
     override fun onPlaylistClick(playlistWithSongs: PlaylistWithSongs, view: View) {
-        exitTransition = MaterialSharedAxis(MaterialSharedAxis.Z, true).addTarget(requireView())
-        reenterTransition = MaterialSharedAxis(MaterialSharedAxis.Z, false)
+        // نفس أنيميشن صفحة الألبوم/الفنان (nav_slide_*)
+        val navOptions = NavOptions.Builder()
+            .setEnterAnim(R.anim.nav_slide_in_right)
+            .setExitAnim(R.anim.nav_slide_out_left)
+            .setPopEnterAnim(R.anim.nav_slide_in_left)
+            .setPopExitAnim(R.anim.nav_slide_out_right)
+            .build()
+        openedPlaylistDetails = true
         findNavController().navigate(
             R.id.playlistDetailsFragment,
-            bundleOf(EXTRA_PLAYLIST_ID to playlistWithSongs.playlistEntity.playListId)
+            bundleOf(EXTRA_PLAYLIST_ID to playlistWithSongs.playlistEntity.playListId),
+            navOptions
         )
     }
 }
