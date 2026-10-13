@@ -33,6 +33,7 @@ import com.bumptech.glide.request.target.Target
 import com.bumptech.glide.request.transition.DrawableCrossFadeFactory
 import com.bumptech.glide.request.transition.Transition
 import com.bumptech.glide.signature.MediaStoreSignature
+import com.bumptech.glide.signature.ObjectKey
 import java.io.File
 
 
@@ -51,6 +52,8 @@ object RetroGlideExtension {
     // يعيد التحميل من الإنترنت من الصفر تاني بدل ما يعمل فك تشفير محلي بس.
     private val DEFAULT_DISK_CACHE_STRATEGY_ARTIST = DiskCacheStrategy.AUTOMATIC
     private val DEFAULT_DISK_CACHE_STRATEGY = DiskCacheStrategy.RESOURCE
+
+    private const val PLAYLIST_COLLAGE_VERSION = "collage_v2_45deg"
 
     private const val DEFAULT_ANIMATION = android.R.anim.fade_in
 
@@ -161,6 +164,9 @@ object RetroGlideExtension {
         return diskCacheStrategy(DiskCacheStrategy.AUTOMATIC)
             .placeholder(getDrawable(DEFAULT_ALBUM_IMAGE))
             .error(getDrawable(DEFAULT_ALBUM_IMAGE))
+            // بيجبر Glide يعيد رسم صور الـ playlist بالميل الجديد (45°) بدل النسخ القديمة المحفوظة.
+            // لو غيرت شكل الصورة تاني، غيّر الرقم ده.
+            .signature(ObjectKey(PLAYLIST_COLLAGE_VERSION))
     }
 
     private fun createSignature(song: Song): Key {
