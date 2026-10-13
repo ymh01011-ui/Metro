@@ -1,13 +1,29 @@
 package code.name.monkey.retromusic.fragments.playlists
 
+import android.content.res.ColorStateList
 import android.graphics.Color
+import android.graphics.drawable.ColorDrawable
+import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
+import android.util.TypedValue
 import android.view.Menu
 import android.view.MenuInflater
 import android.view.MenuItem
 import android.view.View
-import androidx.core.view.doOnPreDraw
+import android.view.ViewGroup
+import android.view.animation.Animation
+import android.view.animation.AnimationUtils
+import android.widget.ImageView
+import androidx.core.content.ContextCompat
+import androidx.core.graphics.ColorUtils
+import androidx.core.graphics.drawable.DrawableCompat
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.isVisible
+import androidx.core.view.updatePadding
+import androidx.lifecycle.lifecycleScope
+import androidx.navigation.NavBackStackEntry
 import androidx.navigation.fragment.findNavController
 import androidx.navigation.fragment.navArgs
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -17,27 +33,35 @@ import code.name.monkey.retromusic.adapter.song.OrderablePlaylistSongAdapter
 import code.name.monkey.retromusic.databinding.FragmentPlaylistDetailNewBinding
 import code.name.monkey.retromusic.db.PlaylistWithSongs
 import code.name.monkey.retromusic.db.toSongs
-import code.name.monkey.retromusic.extensions.accentColor
-import code.name.monkey.retromusic.extensions.elevatedAccentColor
-import code.name.monkey.retromusic.extensions.surfaceColor
+import code.name.monkey.retromusic.dialogs.AddToPlaylistDialog
 import code.name.monkey.retromusic.fragments.base.AbsMainActivityFragment
 import code.name.monkey.retromusic.glide.RetroGlideExtension.playlistOptions
 import code.name.monkey.retromusic.glide.playlistPreview.PlaylistPreview
 import code.name.monkey.retromusic.helper.MusicPlayerRemote
 import code.name.monkey.retromusic.helper.menu.PlaylistMenuHelper
 import code.name.monkey.retromusic.model.Song
+import code.name.monkey.retromusic.repository.RealRepository
 import code.name.monkey.retromusic.util.MusicUtil
 import code.name.monkey.retromusic.util.ThemedFastScroller
+import code.name.monkey.retromusic.views.TintableToolbar
 import com.bumptech.glide.Glide
-import com.google.android.material.shape.MaterialShapeDrawable
-import com.google.android.material.transition.MaterialArcMotion
-import com.google.android.material.transition.MaterialContainerTransform
-import com.google.android.material.transition.MaterialSharedAxis
+import com.bumptech.glide.load.resource.drawable.DrawableTransitionOptions
 import com.h6ah4i.android.widget.advrecyclerview.animator.DraggableItemAnimator
 import com.h6ah4i.android.widget.advrecyclerview.draggable.RecyclerViewDragDropManager
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import org.koin.android.ext.android.get
 import org.koin.androidx.viewmodel.ext.android.viewModel
 import org.koin.core.parameter.parametersOf
 
+// نفس قيم صفحة الألبوم بالظبط
+private const val TOOLBAR_ICON_ALPHA = 0xCC
+private const val GRADIENT_EXTRA = 0.7f
+private const val GRADIENT_FALLBACK_FRACTION = 0.5f
+private const val VISIBLE_SONGS_IMMEDIATE = 14
+private const val ENTER_SETTLE_FALLBACK_MS = 700L
+private const val COLLAGE_SIZE_PX = 1200
 
 class PlaylistDetailsFragment : AbsMainActivityFragment(R.layout.fragment_playlist_detail_new) {
     private val arguments by navArgs<PlaylistDetailsFragmentArgs>()
@@ -48,40 +72,94 @@ class PlaylistDetailsFragment : AbsMainActivityFragment(R.layout.fragment_playli
     private var _binding: FragmentPlaylistDetailNewBinding? = null
     private val binding get() = _binding!!
 
-    private lateinit var playlist: PlaylistWithSongs
-    private lateinit var playlistSongAdapter: OrderablePlaylistSongAdapter
+    // القائمة بتتحكم في الـ toolbar بنفسها (زي صفحة الألبوم)
+    override val registersMenuProvider: Boolean = false
 
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        sharedElementEnterTransition = MaterialContainerTransform(requireContext(), true).apply {
-            drawingViewId = R.id.fragment_container
-            scrimColor = Color.TRANSPARENT
-            setAllContainerColors(surfaceColor())
-            setPathMotion(MaterialArcMotion())
-        }
-    }
+    private var playlist: PlaylistWithSongs? = null
+    private var allSongs: List<Song> = emptyList()
+    private lateinit var playlistSongAdapter: OrderablePlaylistSongAdapter
+    private var dragDropManager: RecyclerViewDragDropManager? = null
+
+    // الأغاني اتربطت كلها في الـ adapter؟ (قبل كده بيبقى فيه أول دفعة بس). مهم عشان الحفظ.
+    private var songsFullyBound = false
+    private var appliedSongsSignature: Int? = null
+    private var appliedCollageKey: Int? = null
+
+    private var customOverflowIcon: ImageView? = null
+    private var surfaceColor: Int = Color.BLACK
+    private var foregroundColor: Int = Color.WHITE
+    private var navEntry: NavBackStackEntry? = null
+    private var transitionStarted = false
+
+    // الصفحة "استقرت" لما أنيميشن الدخول يخلص: الشغل التقيل بيتأجل لحد كده
+    private var enterSettled = false
+    private val settledCallbacks = mutableListOf<() -> Unit>()
+
+    // مكان القايمة قبل ما نفتح صفحة تانية (بيتحفظ في onDestroyView)
+    private var savedFirstPosition = 0
+    private var savedFirstOffset = 0
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
+
+        postponeEnterTransition()
+        enterSettled = false
+        settledCallbacks.clear()
+        songsFullyBound = false
+        appliedSongsSignature = null
+        appliedCollageKey = null
         _binding = FragmentPlaylistDetailNewBinding.bind(view)
-        enterTransition = MaterialSharedAxis(MaterialSharedAxis.Z, true).addTarget(view)
-        returnTransition = MaterialSharedAxis(MaterialSharedAxis.Z, false)
-        mainActivity.setSupportActionBar(binding.toolbar)
-        binding.toolbar.title = null
-//        binding.container.transitionName = playlist.playlistEntity.playlistName
+        navEntry = runCatching { findNavController().currentBackStackEntry }.getOrNull()
+
+        // لون الصفحة من الثيم (مش من الصورة)
+        surfaceColor = resolveSurfaceColor()
+        binding.rootLayout.setBackgroundColor(surfaceColor)
+        binding.image.setImageResource(R.drawable.default_album_art)
+
+        WindowCompat.setDecorFitsSystemWindows(requireActivity().window, false)
+
+        val toolbar = binding.toolbar as TintableToolbar
+        toolbar.title = null
+        toolbar.contentInsetStartWithNavigation = 0
+        toolbar.setTitleMarginStart(0)
+        toolbar.contentInsetEndWithActions = 0
+        toolbar.setPadding(toolbar.paddingLeft, toolbar.paddingTop, 0, toolbar.paddingBottom)
+        toolbar.setNavigationOnClickListener { findNavController().navigateUp() }
+
+        view.post {
+            if (_binding == null) return@post
+            toolbar.inflateMenu(R.menu.menu_playlist_detail)
+            toolbar.setOnMenuItemClickListener { item ->
+                val current = playlist
+                current != null && PlaylistMenuHelper.handleMenuClick(requireActivity(), current, item)
+            }
+            setUpCustomOverflowIcon(toolbar)
+            applyColors()
+        }
+
+        binding.appBarLayout.let { appBar ->
+            ViewCompat.setOnApplyWindowInsetsListener(appBar) { v, insets ->
+                val statusBarInsets = insets.getInsets(WindowInsetsCompat.Type.statusBars())
+                v.updatePadding(top = statusBarInsets.top)
+                insets
+            }
+        }
 
         setUpRecyclerView()
         setupButtons()
+
+        // الهيدر لما يتقاس: نظبط مسافة القايمة والتدرج، ونبدأ الانتقال
+        binding.headerContainer.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
+            onHeaderLaidOut()
+        }
+        applyColors()
+
         viewModel.getPlaylist().observe(viewLifecycleOwner) { playlistWithSongs ->
             playlist = playlistWithSongs
-            Glide.with(this)
-                .load(PlaylistPreview(playlistWithSongs))
-                .playlistOptions()
-                .into(binding.image)
-            binding.title.text = playlist.playlistEntity.playlistName
-            binding.subtitle.text =
-                MusicUtil.getPlaylistInfoString(requireContext(), playlist.songs.toSongs())
-            binding.collapsingAppBarLayout.title = playlist.playlistEntity.playlistName
+            binding.playlistTitle.text = playlistWithSongs.playlistEntity.playlistName
+            binding.playlistInfo.text =
+                MusicUtil.getPlaylistInfoString(requireContext(), playlistWithSongs.songs.toSongs())
+            loadCollage(playlistWithSongs)
         }
         viewModel.getSongs().observe(viewLifecycleOwner) {
             songs(it.toSongs())
@@ -91,26 +169,55 @@ class PlaylistDetailsFragment : AbsMainActivityFragment(R.layout.fragment_playli
                 findNavController().navigateUp()
             }
         }
-        postponeEnterTransition()
-        view.doOnPreDraw { startPostponedEnterTransition() }
-        binding.appBarLayout.statusBarForeground =
-            MaterialShapeDrawable.createWithElevationOverlay(requireContext())
+
+        // شبكة أمان: لو الهيدر اتأخر في القياس، الصفحة تفتح برضه
+        view.postDelayed({ releaseEnterTransition() }, 400L)
     }
 
-    private fun setupButtons() {
-        binding.playButton.apply {
-            setOnClickListener {
-                MusicPlayerRemote.openQueue(playlistSongAdapter.dataSet, 0, true)
-            }
-            accentColor()
-        }
-        binding.shuffleButton.apply {
-            setOnClickListener {
-                MusicPlayerRemote.openAndShuffleQueue(playlistSongAdapter.dataSet, true)
-            }
-            elevatedAccentColor()
+    // ---------- الصورة التلقائية (من صور الأغاني) ----------
+
+    private fun loadCollage(playlistWithSongs: PlaylistWithSongs) {
+        val key = 31 * playlistWithSongs.playlistEntity.playListId.hashCode() +
+            playlistWithSongs.songs.size
+        if (key == appliedCollageKey) return
+        appliedCollageKey = key
+        // توليد الصورة (تحميل أغلفة + رسم) بيتأجل لحد ما أنيميشن الدخول يخلص
+        runWhenEnterSettled {
+            if (_binding == null) return@runWhenEnterSettled
+            Glide.with(this)
+                .load(PlaylistPreview(playlistWithSongs))
+                .playlistOptions()
+                .override(COLLAGE_SIZE_PX)
+                .transition(DrawableTransitionOptions.withCrossFade(200))
+                .into(binding.image)
         }
     }
+
+    // ---------- الأزرار ----------
+
+    private fun setupButtons() {
+        binding.playAction.setOnClickListener {
+            if (allSongs.isNotEmpty()) MusicPlayerRemote.openQueue(allSongs, 0, true)
+        }
+        binding.shuffleAction.setOnClickListener {
+            if (allSongs.isNotEmpty()) MusicPlayerRemote.openAndShuffleQueue(allSongs, true)
+        }
+        binding.addAction.setOnClickListener {
+            val songs = allSongs
+            if (songs.isEmpty()) return@setOnClickListener
+            lifecycleScope.launch(Dispatchers.IO) {
+                val playlists = get<RealRepository>().fetchPlaylists()
+                withContext(Dispatchers.Main) {
+                    if (_binding != null) {
+                        AddToPlaylistDialog.create(playlists, songs)
+                            .show(requireActivity().supportFragmentManager, "ADD_PLAYLIST")
+                    }
+                }
+            }
+        }
+    }
+
+    // ---------- القايمة ----------
 
     private fun setUpRecyclerView() {
         playlistSongAdapter = OrderablePlaylistSongAdapter(
@@ -120,66 +227,360 @@ class PlaylistDetailsFragment : AbsMainActivityFragment(R.layout.fragment_playli
             R.layout.item_queue
         )
 
-        val dragDropManager = RecyclerViewDragDropManager()
-
+        val manager = RecyclerViewDragDropManager()
+        dragDropManager = manager
         val wrappedAdapter: RecyclerView.Adapter<*> =
-            dragDropManager.createWrappedAdapter(playlistSongAdapter)
+            manager.createWrappedAdapter(playlistSongAdapter)
+
+        val bottomPadding =
+            resources.getDimensionPixelSize(R.dimen.mini_player_height) +
+                (32 * resources.displayMetrics.density).toInt()
 
         binding.recyclerView.apply {
             adapter = wrappedAdapter
             layoutManager = LinearLayoutManager(requireContext())
             itemAnimator = DraggableItemAnimator()
-            dragDropManager.attachRecyclerView(this)
+            updatePadding(bottom = bottomPadding)
+            manager.attachRecyclerView(this)
             ThemedFastScroller.create(this)
+            addOnScrollListener(object : RecyclerView.OnScrollListener() {
+                override fun onScrolled(recyclerView: RecyclerView, dx: Int, dy: Int) {
+                    syncHeaderWithList()
+                }
+            })
         }
         playlistSongAdapter.registerAdapterDataObserver(object :
             RecyclerView.AdapterDataObserver() {
             override fun onChanged() {
-                super.onChanged()
                 checkIsEmpty()
+                postSyncHeader()
             }
+
+            override fun onItemRangeInserted(positionStart: Int, itemCount: Int) = postSyncHeader()
+            override fun onItemRangeRemoved(positionStart: Int, itemCount: Int) = postSyncHeader()
+            override fun onItemRangeMoved(fromPosition: Int, toPosition: Int, itemCount: Int) =
+                postSyncHeader()
         })
     }
 
-    override fun onCreateMenu(menu: Menu, inflater: MenuInflater) {
-        inflater.inflate(R.menu.menu_playlist_detail, menu)
-    }
-
-    override fun onMenuItemSelected(item: MenuItem): Boolean {
-        return PlaylistMenuHelper.handleMenuClick(requireActivity(), playlist, item)
-    }
-
-    private fun checkIsEmpty() {
-        binding.empty.isVisible = playlistSongAdapter.itemCount == 0
-        binding.emptyText.isVisible = playlistSongAdapter.itemCount == 0
-    }
-
-    override fun onDestroy() {
-        super.onDestroy()
-        _binding = null
-    }
-
-    override fun onPause() {
-        playlistSongAdapter.saveSongs(playlist.playlistEntity)
-        super.onPause()
-    }
-
-    private fun showEmptyView() {
-        binding.empty.isVisible = true
-        binding.emptyText.isVisible = true
+    private fun postSyncHeader() {
+        view?.post { if (_binding != null) syncHeaderWithList() }
     }
 
     fun songs(songs: List<Song>) {
-        binding.progressIndicator.hide()
-        if (songs.isNotEmpty()) {
+        allSongs = songs
+        if (songs.isEmpty()) {
+            appliedSongsSignature = null
+            songsFullyBound = true
+            playlistSongAdapter.swapDataSet(emptyList())
+            checkIsEmpty()
+            return
+        }
+        // نفس القايمة جت تاني (مثلًا بعد الحفظ): منعيدش ربط كل الصفوف
+        val signature = songs.fold(songs.size) { acc, s -> 31 * (31 * acc + s.id.hashCode()) + s.title.hashCode() }
+        if (signature == appliedSongsSignature) return
+        appliedSongsSignature = signature
+
+        val immediate = minOf(VISIBLE_SONGS_IMMEDIATE, songs.size)
+        if (enterSettled || songs.size <= immediate) {
+            songsFullyBound = true
             playlistSongAdapter.swapDataSet(songs)
+            restoreListPosition()
         } else {
-            showEmptyView()
+            // أول دفعة بس وقت الأنيميشن، والباقي بعد ما الأنيميشن يخلص.
+            // لحد ما الباقي يتربط، مبنحفظش ترتيب الأغاني عشان منكتبش قايمة ناقصة.
+            songsFullyBound = false
+            playlistSongAdapter.swapDataSet(ArrayList(songs.subList(0, immediate)))
+            runWhenEnterSettled {
+                if (allSongs === songs && appliedSongsSignature == signature) {
+                    playlistSongAdapter.swapDataSet(songs)
+                    songsFullyBound = true
+                    restoreListPosition()
+                }
+            }
         }
     }
 
+    private fun restoreListPosition() {
+        val position = savedFirstPosition
+        if (position <= 0) return
+        val offset = savedFirstOffset
+        savedFirstPosition = 0
+        savedFirstOffset = 0
+        binding.recyclerView.post {
+            if (_binding == null) return@post
+            (binding.recyclerView.layoutManager as? LinearLayoutManager)
+                ?.scrollToPositionWithOffset(position, offset)
+        }
+    }
+
+    private fun checkIsEmpty() {
+        if (_binding == null) return
+        val empty = playlistSongAdapter.itemCount == 0 && songsFullyBound
+        binding.empty.isVisible = empty
+        binding.emptyText.isVisible = empty
+    }
+
+    // ---------- الهيدر: بيتحرك مع القايمة ----------
+
+    private fun onHeaderLaidOut() {
+        if (_binding == null) return
+        val header = binding.headerContainer
+        val height = header.height
+        if (height <= 0) return
+        if (binding.recyclerView.paddingTop != height) {
+            binding.recyclerView.updatePadding(top = height)
+        }
+        updateGradientHeight()
+        syncHeaderWithList()
+        if (!transitionStarted) {
+            view?.post { releaseEnterTransition() }
+        }
+    }
+
+    // مقدار ما القايمة اتسكرولت بالنسبة للأعلى = مقدار ما الهيدر لازم يتحرك لفوق
+    private fun headerScrollOffset(): Int {
+        val rv = binding.recyclerView
+        if (playlistSongAdapter.itemCount == 0) return 0
+        val first = (rv.layoutManager as? LinearLayoutManager)?.findViewByPosition(0)
+            ?: return binding.headerContainer.height
+        return (rv.paddingTop - first.top).coerceAtLeast(0)
+    }
+
+    private fun syncHeaderWithList() {
+        if (_binding == null) return
+        val offset = headerScrollOffset()
+        binding.headerContainer.translationY = -offset.toFloat()
+
+        // الـ toolbar بياخد لون الصفحة تدريجيًا لما العنوان يطلع تحته (زي صفحة الألبوم)
+        val toolbar = binding.toolbar
+        val titleBottom = binding.playlistTitle.bottom - binding.appBarLayout.height
+        if (titleBottom > 0) {
+            val fadeWindowPx = (32 * resources.displayMetrics.density).toInt()
+            val startFade = titleBottom - fadeWindowPx / 2
+            val endFade = titleBottom + fadeWindowPx / 2
+            val progress = when {
+                offset <= startFade -> 0f
+                offset >= endFade -> 1f
+                else -> (offset - startFade).toFloat() / (endFade - startFade)
+            }
+            binding.appBarLayout.setBackgroundColor(
+                ColorUtils.setAlphaComponent(surfaceColor, (progress * 255).toInt())
+            )
+            if (progress >= 0.9f) {
+                if (toolbar.title.isNullOrEmpty()) toolbar.title = binding.playlistTitle.text
+            } else {
+                toolbar.title = null
+            }
+        }
+    }
+
+    private fun updateGradientHeight() {
+        if (_binding == null) return
+        val frame = binding.imageFrame
+        if (frame.height <= 0) return
+        val title = binding.playlistTitle
+        val target = if (title.height > 0 && title.top > 0) {
+            val fromTitleTop = (frame.height - title.top).coerceAtLeast(0)
+            (fromTitleTop * (1f + GRADIENT_EXTRA)).toInt().coerceAtMost(frame.height)
+        } else (frame.height * GRADIENT_FALLBACK_FRACTION).toInt()
+        val lp = binding.imageGradient.layoutParams ?: return
+        if (target > 0 && lp.height != target) {
+            lp.height = target
+            binding.imageGradient.layoutParams = lp
+        }
+    }
+
+    // ---------- الألوان (من الثيم، مش من الصورة) ----------
+
+    private fun resolveSurfaceColor(): Int {
+        val typedValue = TypedValue()
+        val resolved = requireContext().theme.resolveAttribute(
+            com.google.android.material.R.attr.colorSurface, typedValue, true
+        )
+        return if (resolved) typedValue.data else Color.BLACK
+    }
+
+    // منحنى تغميق ناعم (smootherstep) من شفاف للون الصفحة، نفس صفحة الألبوم
+    private fun smoothFade(color: Int): IntArray {
+        val steps = 14
+        return IntArray(steps + 1) { i ->
+            val pos = i / steps.toFloat()
+            val x = (pos / 0.92f).coerceIn(0f, 1f)
+            val eased = x * x * x * (x * (x * 6f - 15f) + 10f)
+            ColorUtils.setAlphaComponent(color, (eased * 255f).toInt().coerceIn(0, 255))
+        }
+    }
+
+    private fun applyColors() {
+        if (_binding == null) return
+        val bg = surfaceColor
+        val isLight = ColorUtils.calculateLuminance(bg) > 0.45f
+        val fg = if (isLight) Color.BLACK else Color.WHITE
+        val secondaryFg = ColorUtils.setAlphaComponent(fg, 0xCC)
+        foregroundColor = fg
+
+        binding.rootLayout.setBackgroundColor(bg)
+        binding.playlistTitle.setTextColor(fg)
+        binding.playlistInfo.setTextColor(secondaryFg)
+        binding.imageGradient.background =
+            GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, smoothFade(bg))
+
+        val toolbar = binding.toolbar
+        val iconColor = ColorUtils.setAlphaComponent(fg, TOOLBAR_ICON_ALPHA)
+        if (toolbar is TintableToolbar) {
+            toolbar.navigationIcon?.let { DrawableCompat.setTint(it, iconColor) }
+            customOverflowIcon?.drawable?.let { DrawableCompat.setTint(it.mutate(), iconColor) }
+            toolbar.setTitleTextColor(fg)
+        }
+
+        binding.shuffleActionGlass.setBackdropColor(bg)
+        binding.addActionGlass.setBackdropColor(bg)
+        binding.shuffleAction.iconTint = ColorStateList.valueOf(fg)
+        binding.addAction.iconTint = ColorStateList.valueOf(fg)
+
+        val playBg = if (isLight) Color.BLACK else Color.WHITE
+        val playFg = if (isLight) Color.WHITE else Color.BLACK
+        binding.playAction.apply {
+            backgroundTintList = ColorStateList.valueOf(playBg)
+            setTextColor(playFg)
+            iconTint = ColorStateList.valueOf(playFg)
+        }
+    }
+
+    // ---------- بدء الانتقال + تأجيل الشغل التقيل ----------
+
+    private fun releaseEnterTransition() {
+        if (transitionStarted || _binding == null) return
+        transitionStarted = true
+        startPostponedEnterTransition()
+        // شبكة أمان: لو أنيميشن الدخول مبلّغش إنه خلص، نعتبر الصفحة استقرت
+        view?.postDelayed({ markEnterSettled() }, ENTER_SETTLE_FALLBACK_MS)
+    }
+
+    private fun runWhenEnterSettled(block: () -> Unit) {
+        if (_binding == null) return
+        if (enterSettled) block() else settledCallbacks.add(block)
+    }
+
+    // بينفّذ الشغل المؤجل، كل حاجة على فريم لوحدها
+    private fun markEnterSettled() {
+        if (enterSettled || _binding == null) return
+        enterSettled = true
+        val pending = settledCallbacks.toList()
+        settledCallbacks.clear()
+        fun runNext(index: Int) {
+            val root = view ?: return
+            if (_binding == null || index >= pending.size) return
+            pending[index]()
+            root.postOnAnimation { runNext(index + 1) }
+        }
+        view?.postOnAnimation { runNext(0) }
+    }
+
+    // ---------- الأنيميشن (نفس صفحة الألبوم) ----------
+
+    // true = الصفحة دي بتتقفل (رجوع) ورايحة لشاشة تانية غير صفحة playlist.
+    private fun isPoppedAway(): Boolean {
+        val entry = navEntry ?: return false
+        val nav = runCatching { findNavController() }.getOrNull() ?: return false
+        val stillInStack = entry == nav.currentBackStackEntry || entry == nav.previousBackStackEntry
+        if (stillInStack) return false
+        return nav.currentDestination?.id != R.id.playlistDetailsFragment
+    }
+
+    override fun onCreateAnimation(transit: Int, enter: Boolean, nextAnim: Int): Animation? {
+        if (!enter && isPoppedAway()) {
+            // رجوع لقايمة الـ playlists: انيميشن خروج خاص بالرجوع
+            return AnimationUtils.loadAnimation(requireContext(), R.anim.nav_slide_out_right)
+        }
+        val anim = super.onCreateAnimation(transit, enter, nextAnim)
+            ?: if (enter && nextAnim != 0 &&
+                runCatching { resources.getResourceTypeName(nextAnim) == "anim" }.getOrDefault(false)
+            ) {
+                runCatching { AnimationUtils.loadAnimation(requireContext(), nextAnim) }.getOrNull()
+            } else null
+        if (enter && anim != null) {
+            anim.setAnimationListener(object : Animation.AnimationListener {
+                override fun onAnimationStart(animation: Animation?) {}
+                override fun onAnimationRepeat(animation: Animation?) {}
+                override fun onAnimationEnd(animation: Animation?) {
+                    markEnterSettled()
+                }
+            })
+        }
+        return anim
+    }
+
+    // ---------- أيقونة الثلاث نقط (نفس صفحة الألبوم) ----------
+
+    private fun setUpCustomOverflowIcon(toolbar: TintableToolbar) {
+        val icon = toolbar.overflowIcon?.mutate() ?: return
+        toolbar.overflowIcon = ColorDrawable(Color.TRANSPARENT)
+
+        val sizePx = (48 * resources.displayMetrics.density).toInt()
+        val iconPaddingPx = (12 * resources.displayMetrics.density).toInt()
+        val backgroundTypedValue = TypedValue()
+        requireContext().theme.resolveAttribute(
+            android.R.attr.selectableItemBackgroundBorderless, backgroundTypedValue, true
+        )
+
+        val imageView = ImageView(requireContext()).apply {
+            setImageDrawable(icon)
+            setPadding(iconPaddingPx, iconPaddingPx, iconPaddingPx, iconPaddingPx)
+            isClickable = true
+            isFocusable = true
+            if (backgroundTypedValue.resourceId != 0) {
+                background = ContextCompat.getDrawable(requireContext(), backgroundTypedValue.resourceId)
+            }
+            setOnClickListener { toolbar.showOverflowMenu() }
+        }
+
+        val rootLayout = binding.rootLayout as ViewGroup
+        rootLayout.addView(imageView, sizePx, sizePx)
+        imageView.bringToFront()
+        customOverflowIcon = imageView
+
+        fun repositionOverImageView() {
+            val toolbarLoc = IntArray(2)
+            toolbar.getLocationInWindow(toolbarLoc)
+            val rootLoc = IntArray(2)
+            rootLayout.getLocationInWindow(rootLoc)
+            imageView.translationX = (toolbarLoc[0] - rootLoc[0] + toolbar.width - sizePx).toFloat()
+            imageView.translationY = (toolbarLoc[1] - rootLoc[1] + (toolbar.height - sizePx) / 2).toFloat()
+        }
+        toolbar.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> repositionOverImageView() }
+        toolbar.post { repositionOverImageView() }
+    }
+
+    override fun onCreateMenu(menu: Menu, inflater: MenuInflater) {}
+
+    override fun onMenuItemSelected(item: MenuItem): Boolean = false
+
+    override fun onPause() {
+        // بنحفظ الترتيب بس لو كل الأغاني اتربطت (مش أول دفعة بس)
+        val current = playlist
+        if (current != null && songsFullyBound && ::playlistSongAdapter.isInitialized) {
+            playlistSongAdapter.saveSongs(current.playlistEntity)
+        }
+        super.onPause()
+    }
+
     override fun onDestroyView() {
+        _binding?.let { b ->
+            val first = (b.recyclerView.layoutManager as? LinearLayoutManager)
+            val pos = first?.findFirstVisibleItemPosition() ?: 0
+            savedFirstPosition = pos
+            savedFirstOffset = first?.findViewByPosition(pos)?.top?.minus(b.recyclerView.paddingTop) ?: 0
+        }
         super.onDestroyView()
+        dragDropManager?.release()
+        dragDropManager = null
+        settledCallbacks.clear()
+        enterSettled = false
+        transitionStarted = false
+        customOverflowIcon = null
+        navEntry = null
         _binding = null
     }
 }
