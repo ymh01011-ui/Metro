@@ -18,7 +18,7 @@ class PlaylistPreviewLoader(val context: Context) : ModelLoader<PlaylistPreview,
     ): LoadData<Bitmap> {
         return LoadData(
             ObjectKey(model),
-            PlaylistPreviewFetcher(context, model)
+            PlaylistPreviewFetcher(context, model, width, height)
         )
     }
 
