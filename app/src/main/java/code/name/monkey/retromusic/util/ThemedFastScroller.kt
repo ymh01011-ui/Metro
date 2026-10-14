@@ -53,11 +53,14 @@ object ThemedFastScroller {
             context, com.google.android.material.R.attr.colorSurface, background
         )
         val isJustBlack = ColorUtils.calculateLuminance(surface) < 0.002
-        val bodyColor = if (isJustBlack) {
+        val blended = if (isJustBlack) {
             ColorUtils.blendARGB(Color.BLACK, color, 0.09f)
         } else {
             ColorUtils.blendARGB(background, color, 0.18f)
         }
+        // لازم يبقى معتم تمامًا: لو الـ accent فيه شفافية بسيطة الخلطة بتطلع شفافة شوية،
+        // و ColorUtils.calculateContrast بترمي استثناء مع أي خلفية شفافة (ده كان سبب الكراش).
+        val bodyColor = ColorUtils.setAlphaComponent(blended, 255)
         val arrowColor = ensureContrast(color, bodyColor)
 
         val fastScrollerBuilder = FastScrollerBuilder(view)
