@@ -46,7 +46,18 @@ object ThemedFastScroller {
         val background = ColorUtils.setAlphaComponent(
             resolveThemeColor(context, android.R.attr.colorBackground, Color.BLACK), 255
         )
-        val bodyColor = ColorUtils.blendARGB(background, color, 0.18f)
+        // وضع Just Black (الخلفية سودا تمامًا): الشكل بياخد لون سطح الثيم الغامق (نفس لون البار
+        // اللي فوق) بدل الخلطة الأفتح من الـ accent. باقي الثيمات زي ما هي.
+        val isJustBlack = ColorUtils.calculateLuminance(background) < 0.01
+        val bodyColor = if (isJustBlack) {
+            val surface = resolveThemeColor(
+                context, com.google.android.material.R.attr.colorSurface, Color.TRANSPARENT
+            )
+            if (surface != Color.TRANSPARENT) ColorUtils.setAlphaComponent(surface, 255)
+            else ColorUtils.blendARGB(background, color, 0.06f)
+        } else {
+            ColorUtils.blendARGB(background, color, 0.18f)
+        }
         val arrowColor = ensureContrast(color, bodyColor)
 
         val fastScrollerBuilder = FastScrollerBuilder(view)
