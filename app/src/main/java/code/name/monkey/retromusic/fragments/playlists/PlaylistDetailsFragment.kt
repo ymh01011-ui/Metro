@@ -3,6 +3,7 @@ package code.name.monkey.retromusic.fragments.playlists
 import android.content.res.ColorStateList
 import android.graphics.Color
 import android.graphics.drawable.ColorDrawable
+import android.graphics.drawable.Drawable
 import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
 import android.util.TypedValue
@@ -45,7 +46,10 @@ import code.name.monkey.retromusic.util.MusicUtil
 import code.name.monkey.retromusic.util.ThemedFastScroller
 import code.name.monkey.retromusic.views.TintableToolbar
 import com.bumptech.glide.Glide
-import com.bumptech.glide.load.resource.drawable.DrawableTransitionOptions
+import com.bumptech.glide.load.DataSource
+import com.bumptech.glide.load.engine.GlideException
+import com.bumptech.glide.request.RequestListener
+import com.bumptech.glide.request.target.Target
 import com.h6ah4i.android.widget.advrecyclerview.animator.DraggableItemAnimator
 import com.h6ah4i.android.widget.advrecyclerview.draggable.RecyclerViewDragDropManager
 import kotlinx.coroutines.Dispatchers
@@ -57,7 +61,8 @@ import org.koin.core.parameter.parametersOf
 
 // نفس قيم صفحة الألبوم بالظبط
 private const val TOOLBAR_ICON_ALPHA = 0xCC
-private const val GRADIENT_EXTRA = 0.7f
+// التدرج أطول وأنعم من صفحة الألبوم علشان مفيش حد حاد واضح فوق الصورة
+private const val GRADIENT_EXTRA = 1.6f
 private const val GRADIENT_FALLBACK_FRACTION = 0.5f
 private const val VISIBLE_SONGS_IMMEDIATE = 14
 private const val ENTER_SETTLE_FALLBACK_MS = 700L
@@ -114,7 +119,9 @@ class PlaylistDetailsFragment : AbsMainActivityFragment(R.layout.fragment_playli
         // لون الصفحة من الثيم (مش من الصورة)
         surfaceColor = resolveSurfaceColor()
         binding.rootLayout.setBackgroundColor(surfaceColor)
-        binding.image.setImageResource(R.drawable.default_album_art)
+        // الصورة مخفية لحد ما تتحمل (من غير صورة افتراضية تبان من ورا الفراغات الشفافة)
+        binding.image.setImageDrawable(null)
+        binding.image.alpha = 0f
 
         WindowCompat.setDecorFitsSystemWindows(requireActivity().window, false)
 
@@ -188,9 +195,31 @@ class PlaylistDetailsFragment : AbsMainActivityFragment(R.layout.fragment_playli
                 .load(PlaylistPreview(playlistWithSongs))
                 .playlistOptions()
                 .override(COLLAGE_SIZE_PX)
-                .transition(DrawableTransitionOptions.withCrossFade(200))
+                // من غير صورة مؤقتة: الصورة الافتراضية كانت بتبان (دايرة رمادي) من ورا الفراغات الشفافة
+                .placeholder(ColorDrawable(Color.TRANSPARENT))
+                .listener(object : RequestListener<Drawable> {
+                    override fun onLoadFailed(
+                        e: GlideException?, model: Any?, target: Target<Drawable>?,
+                        isFirstResource: Boolean
+                    ): Boolean {
+                        fadeInImage()
+                        return false
+                    }
+
+                    override fun onResourceReady(
+                        resource: Drawable?, model: Any?, target: Target<Drawable>?,
+                        dataSource: DataSource?, isFirstResource: Boolean
+                    ): Boolean {
+                        fadeInImage()
+                        return false
+                    }
+                })
                 .into(binding.image)
         }
+    }
+
+    private fun fadeInImage() {
+        _binding?.image?.animate()?.alpha(1f)?.setDuration(220L)?.start()
     }
 
     // ---------- الأزرار ----------
@@ -403,10 +432,10 @@ class PlaylistDetailsFragment : AbsMainActivityFragment(R.layout.fragment_playli
 
     // منحنى تغميق ناعم (smootherstep) من شفاف للون الصفحة، نفس صفحة الألبوم
     private fun smoothFade(color: Int): IntArray {
-        val steps = 14
+        val steps = 28
         return IntArray(steps + 1) { i ->
             val pos = i / steps.toFloat()
-            val x = (pos / 0.92f).coerceIn(0f, 1f)
+            val x = (pos / 0.97f).coerceIn(0f, 1f)
             val eased = x * x * x * (x * (x * 6f - 15f) + 10f)
             ColorUtils.setAlphaComponent(color, (eased * 255f).toInt().coerceIn(0, 255))
         }
