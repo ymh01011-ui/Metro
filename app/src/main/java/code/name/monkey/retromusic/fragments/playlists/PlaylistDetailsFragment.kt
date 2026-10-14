@@ -51,6 +51,7 @@ import com.bumptech.glide.load.engine.GlideException
 import com.bumptech.glide.request.RequestListener
 import com.bumptech.glide.request.target.Target
 import com.h6ah4i.android.widget.advrecyclerview.animator.DraggableItemAnimator
+import me.zhanghai.android.fastscroll.FastScroller
 import com.h6ah4i.android.widget.advrecyclerview.draggable.RecyclerViewDragDropManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -84,6 +85,8 @@ class PlaylistDetailsFragment : AbsMainActivityFragment(R.layout.fragment_playli
     private var allSongs: List<Song> = emptyList()
     private lateinit var playlistSongAdapter: OrderablePlaylistSongAdapter
     private var dragDropManager: RecyclerViewDragDropManager? = null
+    private var fastScroller: FastScroller? = null
+    private var fastScrollerTop = -1
 
     // الأغاني اتربطت كلها في الـ adapter؟ (قبل كده بيبقى فيه أول دفعة بس). مهم عشان الحفظ.
     private var songsFullyBound = false
@@ -144,6 +147,10 @@ class PlaylistDetailsFragment : AbsMainActivityFragment(R.layout.fragment_playli
             applyColors()
         }
 
+        // الاسكرولير بيبدأ من تحت الـ toolbar (مش من أول الشاشة ولا من وسط الهيدر)
+        binding.appBarLayout.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
+            updateFastScrollerPadding()
+        }
         binding.appBarLayout.let { appBar ->
             ViewCompat.setOnApplyWindowInsetsListener(appBar) { v, insets ->
                 val statusBarInsets = insets.getInsets(WindowInsetsCompat.Type.statusBars())
@@ -271,7 +278,7 @@ class PlaylistDetailsFragment : AbsMainActivityFragment(R.layout.fragment_playli
             itemAnimator = DraggableItemAnimator()
             updatePadding(bottom = bottomPadding)
             manager.attachRecyclerView(this)
-            ThemedFastScroller.create(this)
+            fastScroller = ThemedFastScroller.create(this)
             addOnScrollListener(object : RecyclerView.OnScrollListener() {
                 override fun onScrolled(recyclerView: RecyclerView, dx: Int, dy: Int) {
                     syncHeaderWithList()
@@ -290,6 +297,14 @@ class PlaylistDetailsFragment : AbsMainActivityFragment(R.layout.fragment_playli
             override fun onItemRangeMoved(fromPosition: Int, toPosition: Int, itemCount: Int) =
                 postSyncHeader()
         })
+    }
+
+    private fun updateFastScrollerPadding() {
+        if (_binding == null) return
+        val top = binding.appBarLayout.height
+        if (top <= 0 || top == fastScrollerTop) return
+        fastScrollerTop = top
+        fastScroller?.setPadding(0, top, 0, binding.recyclerView.paddingBottom)
     }
 
     private fun postSyncHeader() {
@@ -605,6 +620,8 @@ class PlaylistDetailsFragment : AbsMainActivityFragment(R.layout.fragment_playli
         super.onDestroyView()
         dragDropManager?.release()
         dragDropManager = null
+        fastScroller = null
+        fastScrollerTop = -1
         settledCallbacks.clear()
         enterSettled = false
         transitionStarted = false
