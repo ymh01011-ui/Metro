@@ -299,10 +299,16 @@ class PlaylistDetailsFragment : AbsMainActivityFragment(R.layout.fragment_playli
         })
     }
 
-    private fun updateFastScrollerPadding() {
+    // الاسكرولير بيبدأ من أول القايمة فعلًا (تحت الهيدر)، ولما الهيدر يطلع لفوق بينزل معاه
+    // لحد ما يوصل لتحت الـ toolbar ويقف هناك. كده مبيظهرش فوق الصورة ولا الأزرار.
+    private fun updateFastScrollerPadding(headerOffset: Int = -1) {
         if (_binding == null) return
-        val top = binding.appBarLayout.height
-        if (top <= 0 || top == fastScrollerTop) return
+        val appBarHeight = binding.appBarLayout.height
+        val headerHeight = binding.headerContainer.height
+        if (appBarHeight <= 0 || headerHeight <= 0) return
+        val offset = if (headerOffset >= 0) headerOffset else headerScrollOffset()
+        val top = maxOf(appBarHeight, headerHeight - offset)
+        if (top == fastScrollerTop) return
         fastScrollerTop = top
         fastScroller?.setPadding(0, top, 0, binding.recyclerView.paddingBottom)
     }
@@ -395,6 +401,7 @@ class PlaylistDetailsFragment : AbsMainActivityFragment(R.layout.fragment_playli
         if (_binding == null) return
         val offset = headerScrollOffset()
         binding.headerContainer.translationY = -offset.toFloat()
+        updateFastScrollerPadding(offset)
 
         // الـ toolbar بياخد لون الصفحة تدريجيًا لما العنوان يطلع تحته (زي صفحة الألبوم)
         val toolbar = binding.toolbar
