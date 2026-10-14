@@ -1,84 +1,79 @@
 package code.name.monkey.retromusic.util
 
 import android.graphics.Bitmap
+import android.graphics.BitmapShader
 import android.graphics.Canvas
+import android.graphics.Matrix
 import android.graphics.Paint
 import android.graphics.RectF
+import android.graphics.Shader
 import com.bumptech.glide.util.Util.assertBackgroundThread
-
 
 internal object MergedImageUtils {
 
-    // حجم الصورة الناتجة (مربعة، والـ ImageView بيقصها لشكل الهيدر)
-    private const val OUTPUT_SIZE = 1200
-    private const val PARTS = 3
+    const val DEFAULT_SIZE = 1200
+
+    // شبكة 5x5 بتتحط مايلة 45° وبتغطي الصورة بالكامل (من غير أركان فاضية)
+    private const val GRID = 5
     private const val DEGREES = 45f
 
-    // الفراغ بين الصور كنسبة من حجم الصورة الواحدة (زي الأصل: 50 على 533)
-    private const val GAP_RATIO = 50f / 533f
+    // حجم الصورة الواحدة كنسبة من عرض الصورة النهائية
+    private const val TILE_FRACTION = 0.30f
 
-    fun joinImages(list: List<Bitmap>): Bitmap {
+    // الفراغ بين الصور، ونصف قطر الحواف الدائرية، كنسبة من حجم الصورة الواحدة
+    private const val GAP_RATIO = 0.12f
+    private const val CORNER_RATIO = 0.15f
+
+    // حجم الصورة الواحدة بالبكسل لحجم نهائي معين (بيستخدمه اللي بيجيب الأغلفة)
+    fun tileSizeFor(outputSize: Int): Int =
+        (outputSize.coerceIn(128, 1600) * TILE_FRACTION).toInt().coerceAtLeast(64)
+
+    fun joinImages(list: List<Bitmap>, outputSize: Int = DEFAULT_SIZE): Bitmap {
         assertBackgroundThread()
 
-        val arranged = arrangeBitmaps(list)
+        val size = outputSize.coerceIn(128, 1600)
+        val result = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+        if (list.isEmpty()) return result
 
-        // الشبكة 3x3 (بنفس الفراغات اللي بين الصور) بتتحط مايلة 45° ومتكبّرة بحيث الصورة
-        // النهائية تتملي بالكامل (من غير أركان فاضية بعد الميل)
-        val gridSize = OUTPUT_SIZE * Math.sqrt(2.0).toFloat()
-        val tile = gridSize / (PARTS + GAP_RATIO * (PARTS - 1))
-        val step = tile * (1f + GAP_RATIO)
-
-        val result = Bitmap.createBitmap(OUTPUT_SIZE, OUTPUT_SIZE, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(result)
-        val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
+        val tile = size * TILE_FRACTION
+        val gap = tile * GAP_RATIO
+        val step = tile + gap
+        val gridExtent = GRID * tile + (GRID - 1) * gap
+        val radius = tile * CORNER_RATIO
 
-        canvas.translate(OUTPUT_SIZE / 2f, OUTPUT_SIZE / 2f)
+        canvas.translate(size / 2f, size / 2f)
         canvas.rotate(DEGREES)
-        canvas.translate(-gridSize / 2f, -gridSize / 2f)
+        canvas.translate(-gridExtent / 2f, -gridExtent / 2f)
+
+        // الصور المتجاورة (أفقيًا ورأسيًا) لازم تبقى مختلفة قدر الإمكان
+        val n = list.size
+        val rowShift = when {
+            n <= 2 -> 1
+            n < 5 -> 2
+            else -> 3
+        }
 
         val dst = RectF()
-        arranged.forEachIndexed { i, bitmap ->
-            val left = step * (i % PARTS)
-            val top = step * (i / PARTS)
-            dst.set(left, top, left + tile, top + tile)
-            canvas.drawBitmap(bitmap, null, dst, paint)
+        val matrix = Matrix()
+        for (row in 0 until GRID) {
+            for (col in 0 until GRID) {
+                val bitmap = list[(col + rowShift * row) % n]
+                val left = step * col
+                val top = step * row
+                dst.set(left, top, left + tile, top + tile)
+
+                // رسم بـ BitmapShader علشان الحواف الدائرية تطلع ناعمة (anti-aliased)
+                val shader = BitmapShader(bitmap, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP)
+                matrix.reset()
+                matrix.setScale(tile / bitmap.width, tile / bitmap.height)
+                matrix.postTranslate(left, top)
+                shader.setLocalMatrix(matrix)
+                val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
+                paint.shader = shader
+                canvas.drawRoundRect(dst, radius, radius, paint)
+            }
         }
         return result
-    }
-
-    private fun arrangeBitmaps(list: List<Bitmap>): List<Bitmap> {
-        return when {
-            list.size == 1 -> {
-                val item = list[0]
-                listOf(item, item, item, item, item, item, item, item, item)
-            }
-            list.size == 2 -> {
-                val item1 = list[0]
-                val item2 = list[1]
-                listOf(item1, item2, item1, item2, item1, item2, item1, item2, item1)
-            }
-            list.size == 3 -> {
-                val item1 = list[0]
-                val item2 = list[1]
-                val item3 = list[2]
-                listOf(item1, item2, item3, item3, item1, item2, item2, item3, item1)
-            }
-            list.size == 4 -> {
-                val item1 = list[0]
-                val item2 = list[1]
-                val item3 = list[2]
-                val item4 = list[3]
-                listOf(item1, item2, item3, item4, item1, item2, item3, item4, item1)
-            }
-            list.size < 9 -> { // 5 to 8
-                val item1 = list[0]
-                val item2 = list[1]
-                val item3 = list[2]
-                val item4 = list[3]
-                val item5 = list[4]
-                listOf(item1, item2, item3, item4, item5, item2, item3, item4, item1)
-            }
-            else -> list // case 9
-        }
     }
 }
