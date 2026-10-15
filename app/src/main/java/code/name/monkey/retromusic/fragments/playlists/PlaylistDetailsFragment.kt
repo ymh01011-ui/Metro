@@ -1,7 +1,9 @@
 package code.name.monkey.retromusic.fragments.playlists
 
 import android.content.res.ColorStateList
+import android.graphics.Bitmap
 import android.graphics.Color
+import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.Drawable
 import android.graphics.drawable.GradientDrawable
@@ -107,6 +109,16 @@ class PlaylistDetailsFragment : AbsMainActivityFragment(R.layout.fragment_playli
     private var savedFirstPosition = 0
     private var savedFirstOffset = 0
 
+    companion object {
+        // آخر playlist اتفتحت (خانة واحدة)، زي صفحة الألبوم: لو رجعت لنفس الـ playlist تتفتح فورًا
+        private var lastPlaylistId = -1L
+        private var lastPlaylist: PlaylistWithSongs? = null
+        private var lastSongs: List<Song> = emptyList()
+        private var lastSongsPlaylistId = -1L
+        private var lastCollageKey: Int? = null
+        private var lastCollageBitmap: Bitmap? = null
+    }
+
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
 
@@ -168,15 +180,23 @@ class PlaylistDetailsFragment : AbsMainActivityFragment(R.layout.fragment_playli
         }
         applyColors()
 
+        // آخر playlist اتفتحت: لو فتحتها تاني بنعرض بياناتها فورًا من الذاكرة (الأغاني والعنوان
+        // والصورة) من غير ما نستنى قاعدة البيانات، وبعدين أي تغيير حقيقي بيتحدّث لوحده.
+        if (lastPlaylistId == arguments.extraPlaylistId) {
+            lastPlaylist?.let { applyPlaylist(it) }
+            if (lastSongsPlaylistId == arguments.extraPlaylistId && lastSongs.isNotEmpty()) songs(lastSongs)
+        }
+
         viewModel.getPlaylist().observe(viewLifecycleOwner) { playlistWithSongs ->
-            playlist = playlistWithSongs
-            binding.playlistTitle.text = playlistWithSongs.playlistEntity.playlistName
-            binding.playlistInfo.text =
-                MusicUtil.getPlaylistInfoString(requireContext(), playlistWithSongs.songs.toSongs())
-            loadCollage(playlistWithSongs)
+            lastPlaylistId = arguments.extraPlaylistId
+            lastPlaylist = playlistWithSongs
+            applyPlaylist(playlistWithSongs)
         }
         viewModel.getSongs().observe(viewLifecycleOwner) {
-            songs(it.toSongs())
+            val list = it.toSongs()
+            lastSongsPlaylistId = arguments.extraPlaylistId
+            lastSongs = list
+            songs(list)
         }
         viewModel.playlistExists().observe(viewLifecycleOwner) {
             if (!it) {
@@ -188,6 +208,14 @@ class PlaylistDetailsFragment : AbsMainActivityFragment(R.layout.fragment_playli
         view.postDelayed({ releaseEnterTransition() }, 400L)
     }
 
+    private fun applyPlaylist(playlistWithSongs: PlaylistWithSongs) {
+        playlist = playlistWithSongs
+        binding.playlistTitle.text = playlistWithSongs.playlistEntity.playlistName
+        binding.playlistInfo.text =
+            MusicUtil.getPlaylistInfoString(requireContext(), playlistWithSongs.songs.toSongs())
+        loadCollage(playlistWithSongs)
+    }
+
     // ---------- الصورة التلقائية (من صور الأغاني) ----------
 
     private fun loadCollage(playlistWithSongs: PlaylistWithSongs) {
@@ -195,6 +223,13 @@ class PlaylistDetailsFragment : AbsMainActivityFragment(R.layout.fragment_playli
             playlistWithSongs.songs.size
         if (key == appliedCollageKey) return
         appliedCollageKey = key
+        // نفس الصورة اللي اتعرضت آخر مرة: بنحطها فورًا من الذاكرة من غير ما نولّدها تاني
+        val cached = lastCollageBitmap
+        if (cached != null && !cached.isRecycled && lastCollageKey == key) {
+            binding.image.setImageBitmap(cached)
+            binding.image.alpha = 1f
+            return
+        }
         // توليد الصورة (تحميل أغلفة + رسم) بيتأجل لحد ما أنيميشن الدخول يخلص
         runWhenEnterSettled {
             if (_binding == null) return@runWhenEnterSettled
@@ -218,6 +253,16 @@ class PlaylistDetailsFragment : AbsMainActivityFragment(R.layout.fragment_playli
                         dataSource: DataSource?, isFirstResource: Boolean
                     ): Boolean {
                         fadeInImage()
+                        // نسخة في الذاكرة للفتح الجاي (نسخة مش نفس bitmap بتاع Glide عشان ميتعاد استخدامه)
+                        val source = (resource as? BitmapDrawable)?.bitmap
+                        if (source != null && !source.isRecycled) {
+                            view?.post {
+                                runCatching {
+                                    lastCollageBitmap = source.copy(Bitmap.Config.ARGB_8888, false)
+                                    lastCollageKey = key
+                                }
+                            }
+                        }
                         return false
                     }
                 })
