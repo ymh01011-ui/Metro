@@ -24,6 +24,7 @@ import androidx.appcompat.widget.PopupMenu
 import androidx.core.view.isGone
 import androidx.core.view.setPadding
 import androidx.fragment.app.FragmentActivity
+import androidx.recyclerview.widget.RecyclerView
 import code.name.monkey.appthemehelper.util.ATHUtil
 import code.name.monkey.appthemehelper.util.TintHelper
 import code.name.monkey.retromusic.R
@@ -34,11 +35,13 @@ import code.name.monkey.retromusic.db.toSongs
 import code.name.monkey.retromusic.extensions.dipToPix
 import code.name.monkey.retromusic.glide.RetroGlideExtension.playlistOptions
 import code.name.monkey.retromusic.glide.playlistPreview.PlaylistPreview
+import code.name.monkey.retromusic.helper.MusicPlayerRemote
 import code.name.monkey.retromusic.helper.SortOrder.PlaylistSortOrder
 import code.name.monkey.retromusic.helper.menu.PlaylistMenuHelper
 import code.name.monkey.retromusic.helper.menu.SongsMenuHelper
 import code.name.monkey.retromusic.interfaces.IPlaylistClickListener
 import code.name.monkey.retromusic.model.Song
+import code.name.monkey.retromusic.service.MusicService
 import code.name.monkey.retromusic.util.MusicUtil
 import code.name.monkey.retromusic.util.PreferenceUtil
 import com.bumptech.glide.Glide
@@ -80,8 +83,19 @@ class PlaylistAdapter(
         return playlist.playlistName.ifEmpty { "-" }
     }
 
+    // عدد الأغاني بس (من غير المدة). بيتحسب مرة واحدة لكل playlist ويتخزن، لأن حساب النص
+    // بيحوّل كل الأغاني، وده تقيل لو اتعمل مع كل ربط للكارد أثناء السكرول.
+    private val countTextCache = HashMap<Long, Pair<Int, String>>()
+
     private fun getPlaylistText(playlist: PlaylistWithSongs): String {
-        return MusicUtil.getPlaylistInfoString(activity, playlist.songs.toSongs())
+        val id = playlist.playlistEntity.playListId
+        val size = playlist.songs.size
+        countTextCache[id]?.let { if (it.first == size) return it.second }
+        val text = MusicUtil.getPlaylistInfoString(activity, playlist.songs.toSongs())
+            .substringBefore("•")
+            .trim()
+        countTextCache[id] = size to text
+        return text
     }
 
     override fun getPopupText(position: Int): String {
@@ -148,15 +162,37 @@ class PlaylistAdapter(
         return songs
     }
 
+    private fun playPlaylist(position: Int) {
+        if (position == RecyclerView.NO_POSITION) return
+        MusicPlayerRemote.setShuffleMode(MusicService.SHUFFLE_MODE_NONE)
+        MusicPlayerRemote.openQueue(dataSet[position].songs.toSongs(), 0, true)
+    }
+
     inner class ViewHolder(itemView: View) : code.name.monkey.retromusic.adapter.base.MediaEntryViewHolder(itemView) {
+
+        // زرار التشغيل موجود بس في الكارد الجديد (item_grid_playlist.xml) زي كارد الألبوم
+        private val playButton: View? = itemView.findViewById(R.id.playlistPlayButton)
+
         init {
             menu?.setOnClickListener { view ->
+                if (layoutPosition == RecyclerView.NO_POSITION) return@setOnClickListener
+                if (isInQuickSelectMode) {
+                    toggleChecked(layoutPosition)
+                    return@setOnClickListener
+                }
                 val popupMenu = PopupMenu(activity, view)
                 popupMenu.inflate(R.menu.menu_item_playlist)
                 popupMenu.setOnMenuItemClickListener { item ->
                     PlaylistMenuHelper.handleMenuClick(activity, dataSet[layoutPosition], item)
                 }
                 popupMenu.show()
+            }
+            playButton?.setOnClickListener {
+                if (isInQuickSelectMode) {
+                    toggleChecked(layoutPosition)
+                } else {
+                    playPlaylist(layoutPosition)
+                }
             }
 
             imageTextContainer?.apply {
