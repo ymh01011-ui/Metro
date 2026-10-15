@@ -19,6 +19,7 @@ import android.view.*
 import android.view.animation.Animation
 import android.view.animation.AnimationUtils
 import androidx.core.os.bundleOf
+import androidx.core.view.updatePadding
 import androidx.core.view.MenuCompat
 import androidx.navigation.NavOptions
 import androidx.navigation.fragment.findNavController
@@ -63,6 +64,12 @@ class PlaylistsFragment :
         if (openedPlaylistDetails) {
             reenterTransition = null
         }
+        // نفس padding جانبي 8dp بتاع شبكة الألبومات (كارد الـ playlist بنفس مقاسات كارد الألبوم)
+        recyclerView.clipToPadding = false
+        recyclerView.updatePadding(
+            left = (8 * resources.displayMetrics.density).toInt(),
+            right = (8 * resources.displayMetrics.density).toInt()
+        )
         libraryViewModel.getPlaylists().observe(viewLifecycleOwner) {
             if (it.isNotEmpty())
                 adapter?.swapDataSet(it)
@@ -89,9 +96,15 @@ class PlaylistsFragment :
         return PlaylistAdapter(
             requireActivity(),
             dataSet,
-            itemLayoutRes(),
+            playlistItemLayoutRes(itemLayoutRes()),
             this
         )
+    }
+
+    // ستايل الـ Grid العادي (item_grid) بيتعرض هنا بكارد مخصوص شكله زي كارد الألبوم
+    // (item_grid_playlist.xml). item_grid نفسه ماتغيرش لأنه مشترك مع شاشات تانية.
+    private fun playlistItemLayoutRes(layoutRes: Int): Int {
+        return if (layoutRes == R.layout.item_grid) R.layout.item_grid_playlist else layoutRes
     }
 
     override fun onCreateMenu(menu: Menu, inflater: MenuInflater) {
