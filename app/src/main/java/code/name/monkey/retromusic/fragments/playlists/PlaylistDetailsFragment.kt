@@ -328,6 +328,13 @@ class PlaylistDetailsFragment : AbsMainActivityFragment(R.layout.fragment_playli
                 override fun onScrolled(recyclerView: RecyclerView, dx: Int, dy: Int) {
                     syncHeaderWithList()
                 }
+
+                override fun onScrollStateChanged(recyclerView: RecyclerView, newState: Int) {
+                    if (newState == RecyclerView.SCROLL_STATE_IDLE) {
+                        syncHeaderWithList()
+                        updateFastScrollerPadding()
+                    }
+                }
             })
         }
         playlistSongAdapter.registerAdapterDataObserver(object :
@@ -351,6 +358,9 @@ class PlaylistDetailsFragment : AbsMainActivityFragment(R.layout.fragment_playli
         val appBarHeight = binding.appBarLayout.height
         val headerHeight = binding.headerContainer.height
         if (appBarHeight <= 0 || headerHeight <= 0) return
+        // أثناء سحب الاسكرولير نفسه (القايمة بتتحرك بالكود، مش باللمس) منغيّرش مساره، وإلا الشكل
+        // بيتهز وبيحصل تعليق. بنحدّثه مرة واحدة لما الحركة تقف.
+        if (binding.recyclerView.scrollState == RecyclerView.SCROLL_STATE_IDLE && headerOffset >= 0) return
         val offset = if (headerOffset >= 0) headerOffset else headerScrollOffset()
         val top = maxOf(appBarHeight, headerHeight - offset)
         if (top == fastScrollerTop) return
@@ -386,14 +396,16 @@ class PlaylistDetailsFragment : AbsMainActivityFragment(R.layout.fragment_playli
             // لحد ما الباقي يتربط، مبنحفظش ترتيب الأغاني عشان منكتبش قايمة ناقصة.
             songsFullyBound = false
             playlistSongAdapter.swapDataSet(ArrayList(songs.subList(0, immediate)))
-            runWhenEnterSettled {
-                if (allSongs === songs && appliedSongsSignature == signature) {
-                    playlistSongAdapter.swapDataSet(songs)
-                    songsFullyBound = true
-                    restoreListPosition()
-                }
-            }
+            runWhenEnterSettled { bindAllSongsIfNeeded() }
         }
+    }
+
+    // بيربط كل الأغاني (بعد أول دفعة). بيستخدم آخر قايمة وصلت، مش القايمة القديمة، وآمن لو اتنادى أكتر من مرة.
+    private fun bindAllSongsIfNeeded() {
+        if (_binding == null || songsFullyBound || allSongs.isEmpty()) return
+        playlistSongAdapter.swapDataSet(allSongs)
+        songsFullyBound = true
+        restoreListPosition()
     }
 
     private fun restoreListPosition() {
@@ -437,9 +449,12 @@ class PlaylistDetailsFragment : AbsMainActivityFragment(R.layout.fragment_playli
     private fun headerScrollOffset(): Int {
         val rv = binding.recyclerView
         if (playlistSongAdapter.itemCount == 0) return 0
-        val first = (rv.layoutManager as? LinearLayoutManager)?.findViewByPosition(0)
-            ?: return binding.headerContainer.height
-        return (rv.paddingTop - first.top).coerceAtLeast(0)
+        val lm = rv.layoutManager as? LinearLayoutManager ?: return 0
+        val first = lm.findViewByPosition(0)
+        if (first != null) return (rv.paddingTop - first.top).coerceAtLeast(0)
+        // لسه مفيش layout (أول فريم بعد ما الأغاني اتربطت): الهيدر يفضل ظاهر.
+        // لو فيه صفوف ظاهرة وأول واحدة مش رقم 0: يبقى اتسكرولنا بعيد عن الهيدر.
+        return if (lm.findFirstVisibleItemPosition() > 0) binding.headerContainer.height else 0
     }
 
     private fun syncHeaderWithList() {
