@@ -14,6 +14,7 @@ import android.view.MenuInflater
 import android.view.MenuItem
 import android.view.View
 import android.view.ViewGroup
+import android.view.ViewTreeObserver
 import android.view.animation.Animation
 import android.view.animation.AnimationUtils
 import android.widget.ImageView
@@ -89,6 +90,9 @@ class PlaylistDetailsFragment : AbsMainActivityFragment(R.layout.fragment_playli
     private var dragDropManager: RecyclerViewDragDropManager? = null
     private var fastScroller: FastScroller? = null
     private var fastScrollerTop = -1
+    private var preDrawListener: ViewTreeObserver.OnPreDrawListener? = null
+    private val applyScrollerPaddingRunnable = Runnable { applyScrollerPaddingNow() }
+    private var lastToolbarAlpha = -1
 
     // الأغاني اتربطت كلها في الـ adapter؟ (قبل كده بيبقى فيه أول دفعة بس). مهم عشان الحفظ.
     private var songsFullyBound = false
@@ -324,6 +328,14 @@ class PlaylistDetailsFragment : AbsMainActivityFragment(R.layout.fragment_playli
             updatePadding(bottom = bottomPadding)
             manager.attachRecyclerView(this)
             fastScroller = ThemedFastScroller.create(this)
+            // الهيدر لازم يمشي مع القايمة في كل فريم بيترسم، مهما كان سبب الحركة (لمس، fling، أو
+            // قفزة من الاسكرولير اللي مش دايمًا بتبعت حدث سكرول). كده الاتنين مستحيل يفترقوا.
+            val listener = ViewTreeObserver.OnPreDrawListener {
+                if (_binding != null) syncHeaderWithList()
+                true
+            }
+            preDrawListener = listener
+            viewTreeObserver.addOnPreDrawListener(listener)
             addOnScrollListener(object : RecyclerView.OnScrollListener() {
                 override fun onScrolled(recyclerView: RecyclerView, dx: Int, dy: Int) {
                     syncHeaderWithList()
@@ -358,11 +370,32 @@ class PlaylistDetailsFragment : AbsMainActivityFragment(R.layout.fragment_playli
         val appBarHeight = binding.appBarLayout.height
         val headerHeight = binding.headerContainer.height
         if (appBarHeight <= 0 || headerHeight <= 0) return
-        // أثناء سحب الاسكرولير نفسه (القايمة بتتحرك بالكود، مش باللمس) منغيّرش مساره، وإلا الشكل
-        // بيتهز وبيحصل تعليق. بنحدّثه مرة واحدة لما الحركة تقف.
-        if (binding.recyclerView.scrollState == RecyclerView.SCROLL_STATE_IDLE && headerOffset >= 0) return
         val offset = if (headerOffset >= 0) headerOffset else headerScrollOffset()
         val top = maxOf(appBarHeight, headerHeight - offset)
+        if (top == fastScrollerTop) {
+            view?.removeCallbacks(applyScrollerPaddingRunnable)
+            return
+        }
+        // أول مرة، أو أثناء لمس/fling القايمة: نحدّث فورًا. أما لو القايمة واقفة (يعني بتتحرك
+        // بسحب الاسكرولير نفسه) منغيّرش مساره تحت صباعك، وإلا الشكل بيتهز: بنستنى لحد ما الحركة تهدى.
+        if (fastScrollerTop < 0 || binding.recyclerView.scrollState != RecyclerView.SCROLL_STATE_IDLE) {
+            view?.removeCallbacks(applyScrollerPaddingRunnable)
+            applyScrollerTop(top)
+        } else {
+            view?.removeCallbacks(applyScrollerPaddingRunnable)
+            view?.postDelayed(applyScrollerPaddingRunnable, 150L)
+        }
+    }
+
+    private fun applyScrollerPaddingNow() {
+        if (_binding == null) return
+        val appBarHeight = binding.appBarLayout.height
+        val headerHeight = binding.headerContainer.height
+        if (appBarHeight <= 0 || headerHeight <= 0) return
+        applyScrollerTop(maxOf(appBarHeight, headerHeight - headerScrollOffset()))
+    }
+
+    private fun applyScrollerTop(top: Int) {
         if (top == fastScrollerTop) return
         fastScrollerTop = top
         fastScroller?.setPadding(0, top, 0, binding.recyclerView.paddingBottom)
@@ -435,8 +468,16 @@ class PlaylistDetailsFragment : AbsMainActivityFragment(R.layout.fragment_playli
         val header = binding.headerContainer
         val height = header.height
         if (height <= 0) return
-        if (binding.recyclerView.paddingTop != height) {
-            binding.recyclerView.updatePadding(top = height)
+        val rv = binding.recyclerView
+        if (rv.paddingTop != height) {
+            val oldPadding = rv.paddingTop
+            val lm = rv.layoutManager as? LinearLayoutManager
+            // القايمة كانت في أولها؟ (الصفوف اتربطت قبل ما الهيدر يتقاس، فكانت لازقة فوق)
+            val wasAtTop = lm != null && lm.findFirstVisibleItemPosition() <= 0 &&
+                (lm.findViewByPosition(0)?.top ?: oldPadding) >= oldPadding
+            rv.updatePadding(top = height)
+            // بعد ما المسافة العلوية تكبر، نرجّع أول صف تحت الهيدر بدل ما يفضل مكانه ويبان متسكرول
+            if (wasAtTop) lm?.scrollToPositionWithOffset(0, 0)
         }
         updateGradientHeight()
         syncHeaderWithList()
@@ -460,7 +501,8 @@ class PlaylistDetailsFragment : AbsMainActivityFragment(R.layout.fragment_playli
     private fun syncHeaderWithList() {
         if (_binding == null) return
         val offset = headerScrollOffset()
-        binding.headerContainer.translationY = -offset.toFloat()
+        val ty = -offset.toFloat()
+        if (binding.headerContainer.translationY != ty) binding.headerContainer.translationY = ty
         updateFastScrollerPadding(offset)
 
         // الـ toolbar بياخد لون الصفحة تدريجيًا لما العنوان يطلع تحته (زي صفحة الألبوم)
@@ -475,12 +517,16 @@ class PlaylistDetailsFragment : AbsMainActivityFragment(R.layout.fragment_playli
                 offset >= endFade -> 1f
                 else -> (offset - startFade).toFloat() / (endFade - startFade)
             }
-            binding.appBarLayout.setBackgroundColor(
-                ColorUtils.setAlphaComponent(surfaceColor, (progress * 255).toInt())
-            )
+            val alpha = (progress * 255).toInt()
+            if (alpha != lastToolbarAlpha) {
+                lastToolbarAlpha = alpha
+                binding.appBarLayout.setBackgroundColor(
+                    ColorUtils.setAlphaComponent(surfaceColor, alpha)
+                )
+            }
             if (progress >= 0.9f) {
                 if (toolbar.title.isNullOrEmpty()) toolbar.title = binding.playlistTitle.text
-            } else {
+            } else if (!toolbar.title.isNullOrEmpty()) {
                 toolbar.title = null
             }
         }
@@ -684,6 +730,15 @@ class PlaylistDetailsFragment : AbsMainActivityFragment(R.layout.fragment_playli
             savedFirstPosition = pos
             savedFirstOffset = first?.findViewByPosition(pos)?.top?.minus(b.recyclerView.paddingTop) ?: 0
         }
+        _binding?.recyclerView?.let { rv ->
+            preDrawListener?.let { l ->
+                val vto = rv.viewTreeObserver
+                if (vto.isAlive) vto.removeOnPreDrawListener(l)
+            }
+        }
+        preDrawListener = null
+        view?.removeCallbacks(applyScrollerPaddingRunnable)
+        lastToolbarAlpha = -1
         super.onDestroyView()
         dragDropManager?.release()
         dragDropManager = null
