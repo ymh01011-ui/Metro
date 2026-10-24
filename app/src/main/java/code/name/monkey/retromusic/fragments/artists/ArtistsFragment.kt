@@ -16,6 +16,8 @@ package code.name.monkey.retromusic.fragments.artists
 
 import android.os.Bundle
 import android.view.*
+import android.view.animation.Animation
+import android.view.animation.AnimationUtils
 import androidx.core.os.bundleOf
 import androidx.core.view.updatePadding
 import androidx.navigation.NavOptions
@@ -58,22 +60,35 @@ class ArtistsFragment : AbsRecyclerViewCustomGridSizeFragment<ArtistAdapter, Gri
         get() = pendingSuppressNextReload
         set(value) { pendingSuppressNextReload = value }
 
+    // true من ساعة ما بنفتح صفحة تفاصيل فنان لحد ما نرجع لهنا. بنستعمله عشان نفرّق بين
+    // "رجوع من تفاصيل الفنان" (لازم انيميشن الرجوع) وبين فتح صفحة الفنانين عادي (بتاخد
+    // انيميشن الفتح الأساسي بتاعها من غير ما نلمسه) - نفس باترن AlbumsFragment.
+    private var openedArtistDetails = false
+
+    // الأنيميشن بيتحدد هنا بشكل صريح لكل حالة، فمبيحصلش تعارض مع أي أنيميشن أساسي للصفحة
+    override fun onCreateAnimation(transit: Int, enter: Boolean, nextAnim: Int): Animation? {
+        if (openedArtistDetails) {
+            if (enter) {
+                // رجعنا من تفاصيل الفنان: انيميشن الرجوع
+                openedArtistDetails = false
+                return AnimationUtils.loadAnimation(requireContext(), R.anim.nav_slide_in_left)
+            } else {
+                // بنفتح تفاصيل الفنان: الصفحة دي بتطلع لليسار
+                return AnimationUtils.loadAnimation(requireContext(), R.anim.nav_slide_out_left)
+            }
+        }
+        return super.onCreateAnimation(transit, enter, nextAnim)
+    }
+
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
 
-        // الكلاس الأب (AbsRecyclerViewFragment) بيحط enterTransition/
-        // reenterTransition = MaterialFadeThrough() من غير شرط في كل مرة
-        // الـ view بتتبني - وده بيخلي FragmentManager يعتبر الصفحة دي
-        // "شغالة بـ Transition Framework" ويتجاهل الـ View Animation بتاعة
-        // NavOptions (nav_slide_in_right/out_left/...) خالص، حتى لو صفرنا
-        // exitTransition/reenterTransition بعدين في onArtist(). لازم
-        // نصفرهم هنا كمان - بعد الـ super مباشرة وفي كل مرة الـ view
-        // بتتبني (يعني كمان لما نرجع من صفحة تفاصيل الفنان) - عشان
-        // الأنيميشن بتاعنا يشتغل صح في الاتجاهين.
-        enterTransition = null
-        exitTransition = null
-        reenterTransition = null
-        returnTransition = null
+        // الـ base fragment بيحط transition (Fade Through) على الصفحة في كل مرة الـ view بيتبني من جديد،
+        // وده بيتنفذ بدل أنيميشن الرجوع. فلو راجعين من تفاصيل فنان بنشيله هنا، بعد ما الـ base يحطه.
+        // فتح الصفحة عادي بيفضل بالأنيميشن الأساسي لأن الشرط ده مش بيتحقق وقتها.
+        if (openedArtistDetails) {
+            reenterTransition = null
+        }
 
         applyCircleGridPadding(itemLayoutRes())
 
@@ -203,8 +218,7 @@ class ArtistsFragment : AbsRecyclerViewCustomGridSizeFragment<ArtistAdapter, Gri
         // الـ navigate()، وإلا هتتعارض مع الـ View Animation بتاعة NavOptions
         // وتمنعها تبان خالص - نفس الباترن المستخدم في AbsArtistDetailsFragment
         // قبل ما ينادي على artistAllSongsFragment.
-        exitTransition = null
-        reenterTransition = null
+        openedArtistDetails = true
         suppressNextReload = true
 
         // نفس الـ anim resources بتاعة صفحة "See All Songs" - أنيميشن سلايد
@@ -234,8 +248,7 @@ class ArtistsFragment : AbsRecyclerViewCustomGridSizeFragment<ArtistAdapter, Gri
         // الوجهة (AlbumArtistDetailsFragment) بترث من AbsArtistDetailsFragment
         // اللي already متظبطة بالكامل للأنيميشن ده (postponeEnterTransition
         // وغيرها).
-        exitTransition = null
-        reenterTransition = null
+        openedArtistDetails = true
         suppressNextReload = true
 
         val navOptions = NavOptions.Builder()
@@ -257,8 +270,7 @@ class ArtistsFragment : AbsRecyclerViewCustomGridSizeFragment<ArtistAdapter, Gri
             it.name.equals(artistName, ignoreCase = true)
         }
         // نفس السبب بالظبط بتاع onAlbumArtist() فوق.
-        exitTransition = null
-        reenterTransition = null
+        openedArtistDetails = true
         suppressNextReload = true
 
         val navOptions = NavOptions.Builder()
