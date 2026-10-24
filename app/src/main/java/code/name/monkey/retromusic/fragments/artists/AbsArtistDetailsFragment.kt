@@ -10,8 +10,6 @@ import android.util.LruCache
 import android.util.TypedValue
 import android.view.Menu
 import android.view.MenuItem
-import android.view.animation.Animation
-import android.view.animation.AnimationUtils
 import android.view.animation.PathInterpolator
 import android.view.View
 import android.widget.ImageView
@@ -69,15 +67,12 @@ private const val SEE_ALL_ALPHA = 0x99 // ~60%
 private const val TOOLBAR_ICON_ALPHA = 0xCC // ~80% - شفافية أقل من قبل للسهم ونقط المنيو
 private const val BIOGRAPHY_GLASS_CORNER_DP = 12f
 private const val SONGS_PREVIEW_COUNT = 6
-private const val VISIBLE_SONGS_IMMEDIATE = 4
 
-// لو أنيميشن الدخول مبلّغش إنه خلص (أو مفيش أنيميشن) نعتبر الصفحة استقرت بعد
-// المدة دي من بداية الانتقال - نفس منطق صفحة الألبوم.
-private const val ENTER_SETTLE_FALLBACK_MS = 700L
-
-// أقصى مدة نستنى فيها الصورة + اللون قبل ما الأنيميشن يبدأ (كانت 400ms).
-// لو اتأخرت عنها الصفحة بتتحرك بلونها المعروف من الكاش والصورة بتظهر بـ fade.
-private const val RELEASE_DEADLINE_MS = 250L
+// أقصى مدة نستنى فيها الصورة + اللون + المحتوى قبل ما الأنيميشن يبدأ.
+// الصفحة بتتبني كلها وهي متأجلة (مش ظاهرة)، وبعدين الحركة تبدأ على صفحة كاملة،
+// فمفيش عنصر بيظهر متأخر. لو اتأخر حاجة عن المهلة دي الحركة بتبدأ برضه
+// (الصورة بتظهر بـ fade).
+private const val RELEASE_DEADLINE_MS = 350L
 
 // مدة ظهور الصورة المتأخرة / تحول اللون.
 private const val HEADER_FADE_MS = 160L
@@ -141,10 +136,10 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
     // ما الهيدر (الصورة واللون) يبقوا جاهزين بس.
     private var transitionStarted: Boolean = false
 
-    // الصفحة "استقرت" لما أنيميشن الدخول يخلص. الشغل التقيل (باقي الأغاني، قوائم
-    // الألبومات) بيتأجل لحد كده عشان مايزاحمش الحركة - نفس صفحة تفاصيل الألبوم.
-    private var enterSettled: Boolean = false
-    private val settledCallbacks = mutableListOf<() -> Unit>()
+    // الأنيميشن بيبدأ لما الاتنين يجهزوا: الهيدر (الصورة + اللون) والمحتوى (الأغاني
+    // وقوائم الألبومات). كل ده بيتبني والصفحة لسه متأجلة، يعني قبل أول فريم من الحركة.
+    private var headerReady: Boolean = false
+    private var contentReady: Boolean = false
     private var backgroundAnimator: ValueAnimator? = null
     // موضع أسفل اسم الفنان بالنسبة لأعلى الـ NestedScrollView كله (مش بالنسبة
     // لأبوه المباشر بس)، محسوب مرة واحدة ومتخزن هنا. ده اللي كان ناقص: كنا
@@ -210,8 +205,8 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
         // والـ Main Thread بيكون مشغول وقت ما الـ View Animation المفروض تشتغل،
         // فالحركة كانت بتتقطع أو تختفي خالص.
         postponeEnterTransition()
-        enterSettled = false
-        settledCallbacks.clear()
+        headerReady = false
+        contentReady = false
 
         _binding = FragmentArtistDetailsBinding.bind(view)
 
@@ -460,55 +455,34 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
                 applyStatusBarAppearance(ColorUtils.calculateLuminance(dominantBackgroundColor) > 0.45f)
             }
         }
-        // شبكة أمان: لو أنيميشن الدخول مبلّغش إنه خلص (مفيش أنيميشن مثلًا)،
-        // نعتبر الصفحة استقرت.
-        view?.postDelayed({ markEnterSettled() }, ENTER_SETTLE_FALLBACK_MS)
     }
 
-    // ينفّذ الشغل التقيل بعد ما أنيميشن الدخول يخلص (أو فورًا لو خلص بالفعل).
-    private fun runWhenEnterSettled(block: () -> Unit) {
-        if (_binding == null) return
-        if (enterSettled) block() else settledCallbacks.add(block)
+    // الهيدر (الصورة + اللون) جاهز.
+    private fun markHeaderReady() {
+        headerReady = true
+        tryRelease()
     }
 
-    // بينفّذ الشغل المؤجل، كل حاجة على فريم لوحدها عشان مفيش فريم واحد تقيل يوقف الحركة.
-    private fun markEnterSettled() {
-        if (enterSettled || _binding == null) return
-        enterSettled = true
-        val pending = settledCallbacks.toList()
-        settledCallbacks.clear()
-        runStaggered(pending)
+    // المحتوى (الأغاني + القوائم) اتبنى.
+    private fun markContentReady() {
+        contentReady = true
+        tryRelease()
     }
 
+    // الأنيميشن بيبدأ أول ما الاتنين يجهزوا (أو لما المهلة تخلص).
+    private fun tryRelease() {
+        if (headerReady && contentReady) releaseEnterTransition()
+    }
+
+    // بينفّذ الخطوات واحدة واحدة، كل خطوة على فريم لوحدها عشان مفيش فريم واحد تقيل.
     private fun runStaggered(steps: List<() -> Unit>) {
         fun next(index: Int) {
             val root = view ?: return
             if (_binding == null || index >= steps.size) return
             steps[index]()
-            root.postOnAnimation { next(index + 1) }
+            root.post { next(index + 1) }
         }
-        view?.postOnAnimation { next(0) }
-    }
-
-    // نمسك لحظة انتهاء أنيميشن الدخول الحقيقية (مش مؤقت ثابت) - نفس اللي بتعمله
-    // صفحة الألبوم بالظبط.
-    override fun onCreateAnimation(transit: Int, enter: Boolean, nextAnim: Int): Animation? {
-        val anim = super.onCreateAnimation(transit, enter, nextAnim)
-            ?: if (enter && nextAnim != 0 &&
-                runCatching { resources.getResourceTypeName(nextAnim) == "anim" }.getOrDefault(false)
-            ) {
-                runCatching { AnimationUtils.loadAnimation(requireContext(), nextAnim) }.getOrNull()
-            } else null
-        if (enter && anim != null) {
-            anim.setAnimationListener(object : Animation.AnimationListener {
-                override fun onAnimationStart(animation: Animation?) {}
-                override fun onAnimationRepeat(animation: Animation?) {}
-                override fun onAnimationEnd(animation: Animation?) {
-                    markEnterSettled()
-                }
-            })
-        }
-        return anim
+        view?.post { next(0) }
     }
 
     // الصورة + اللون. لو الأنيميشن لسه مابدأش (الصفحة متأجلة) بتتطبق فورًا وتظهر
@@ -697,6 +671,7 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
         content.appearsOnRecyclerView.isVisible = data.appearsOn.isNotEmpty()
         content.appearsOnRecyclerView.itemAnimator = DefaultItemAnimator()
         content.recyclerView.itemAnimator = DefaultItemAnimator()
+        markContentReady()
     }
 
     // بايندنج مقسّم على فريمات: الأغاني المعروضة (لحد 6) خفيفة فبتتبند فورًا
@@ -710,7 +685,7 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
 
         applySongsPreview(data.songs)
 
-        // كل قسم على فريم لوحده وبعد نهاية الحركة (queue بتتنفذ في markEnterSettled).
+        // كل قسم على فريم لوحده، والأنيميشن لسه متأجل فمفيش حاجة بتتحرك وقتها.
         val steps = listOf<() -> Unit>(
             {
                 if (_binding != null) {
@@ -740,9 +715,10 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
                     content.appearsOnRecyclerView.itemAnimator = DefaultItemAnimator()
                     content.recyclerView.itemAnimator = DefaultItemAnimator()
                 }
-            }
+            },
+            { markContentReady() }
         )
-        if (enterSettled) runStaggered(steps) else steps.forEach { runWhenEnterSettled(it) }
+        runStaggered(steps)
     }
 
     private fun applySongsPreview(sortedSongs: List<Song>) {
@@ -750,25 +726,16 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
         val previewList = if (hasMoreSongs) sortedSongs.take(SONGS_PREVIEW_COUNT) else sortedSongs
         binding.fragmentArtistContent.seeAllSongs.isVisible = hasMoreSongs
 
-        // بس الصفوف اللي فعليًا ظاهرة قبل أي سكرول (زي ما بان في السكرين شوت)
-        // بتتبند فورًا. الباقي (صف 5 و6، تحت حافة الشاشة) بيتأجل فريم واحد -
-        // المستخدم مش هيلاحظ فرق لأنهم أصلاً مش في مجال رؤيته وقت الفتح، لكن
-        // ده بيقلل عدد صور الأغاني اللي بتتحمّل بالتوازي وقت حركة الترانزيشن.
-        val immediateCount = minOf(VISIBLE_SONGS_IMMEDIATE, previewList.size)
-        songAdapter.swapDataSet(previewList.subList(0, immediateCount))
-
-        if (previewList.size > immediateCount) {
-            runWhenEnterSettled {
-                if (_binding != null) songAdapter.swapDataSet(previewList)
-            }
-        }
+        // كل صفوف المعاينة (لحد 6) بتتبند فورًا والصفحة لسه متأجلة، فبتبقى كلها
+        // موجودة من أول فريم في الحركة. كنا بنأجل الصف 5 و6 وكانوا بيظهروا متأخر.
+        songAdapter.swapDataSet(previewList)
     }
 
     private fun loadArtistImage(artist: Artist) {
         if (cachedBitmap != null && hasExtractedColors && cachedGradientStops != null) {
             binding.image.setImageBitmap(cachedBitmap)
             setColors(dominantBackgroundColor, cachedGradientStops!!)
-            view?.post { releaseEnterTransition() }
+            view?.post { markHeaderReady() }
             return
         }
 
@@ -784,7 +751,7 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
             hasExtractedColors = true
             binding.image.setImageBitmap(cachedBitmap)
             setColors(dominantBackgroundColor, cachedGradientStops!!)
-            view?.post { releaseEnterTransition() }
+            view?.post { markHeaderReady() }
             return
         }
 
@@ -817,7 +784,7 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
                     if (_binding != null && errorDrawable != null) {
                         binding.image.setImageDrawable(errorDrawable)
                     }
-                    releaseEnterTransition()
+                    markHeaderReady()
                 }
 
                 override fun onLoadCleared(placeholder: Drawable?) {
@@ -860,7 +827,7 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
                 if (_binding != null) {
                     applyHeader(bitmap, dominantColor, gradientStops)
                 }
-                releaseEnterTransition()
+                markHeaderReady()
             }
         }
     }
@@ -1202,8 +1169,8 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
         customOverflowIcon = null
         currentToolbarIconColor = null
         transitionStarted = false
-        settledCallbacks.clear()
-        enterSettled = false
+        headerReady = false
+        contentReady = false
         backgroundAnimator?.cancel()
         backgroundAnimator = null
         _binding?.image?.animate()?.cancel()
