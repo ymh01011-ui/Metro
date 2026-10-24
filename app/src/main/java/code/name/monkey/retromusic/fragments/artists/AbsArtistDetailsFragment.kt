@@ -1,15 +1,17 @@
 package code.name.monkey.retromusic.fragments.artists
 
+import android.animation.ValueAnimator
 import android.graphics.Bitmap
 import android.graphics.Color
 import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.Drawable
-import android.animation.ValueAnimator
 import android.os.Bundle
-import android.os.SystemClock
+import android.util.LruCache
 import android.util.TypedValue
 import android.view.Menu
 import android.view.MenuItem
+import android.view.animation.Animation
+import android.view.animation.AnimationUtils
 import android.view.animation.PathInterpolator
 import android.view.View
 import android.widget.ImageView
@@ -69,16 +71,20 @@ private const val BIOGRAPHY_GLASS_CORNER_DP = 12f
 private const val SONGS_PREVIEW_COUNT = 6
 private const val VISIBLE_SONGS_IMMEDIATE = 4
 
-// نافذة أنيميشن الدخول: أطول حركة (nav_slide_in_right = 200ms) + هامش فريمات.
-// نفس فكرة NavTransitionFreeze في Square (نافذة زمنية ثابتة 330ms): كل شغل تقيل
-// على الـ Main Thread بيستنى لحد ما النافذة دي تخلص، فالحركة تمشي على صفحة خفيفة.
-private const val ENTER_SETTLE_MS = 220L
+// لو أنيميشن الدخول مبلّغش إنه خلص (أو مفيش أنيميشن) نعتبر الصفحة استقرت بعد
+// المدة دي من بداية الانتقال - نفس منطق صفحة الألبوم.
+private const val ENTER_SETTLE_FALLBACK_MS = 700L
 
-// مدة ظهور المحتوى بعد الحركة (fadeIn(tween(200..220)) عندهم).
-private const val CONTENT_FADE_MS = 160L
+// أقصى مدة نستنى فيها الصورة + اللون قبل ما الأنيميشن يبدأ (كانت 400ms).
+// لو اتأخرت عنها الصفحة بتتحرك بلونها المعروف من الكاش والصورة بتظهر بـ fade.
+private const val RELEASE_DEADLINE_MS = 250L
 
-// شبكة أمان: لو لأي سبب المحتوى ماظهرش، نظهره بعد المدة دي.
-private const val REVEAL_FAILSAFE_MS = 1500L
+// مدة ظهور الصورة المتأخرة / تحول اللون.
+private const val HEADER_FADE_MS = 160L
+
+// أقصى ضلع للصورة بالبكسل (كان 2048). الصورة بتتعرض بعرض الشاشة بس، فأكتر من
+// كده فك وذاكرة وtexture زيادة من غير فرق في الشكل، وبيقلل استخراج الألوان.
+private const val MAX_IMAGE_SIDE_PX = 1200
 
 // FastOutSlowIn - نفس الـ easing الافتراضي بتاع tween() في Compose.
 private val ENTER_EASING = PathInterpolator(0.4f, 0f, 0.2f, 1f)
@@ -135,10 +141,10 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
     // ما الهيدر (الصورة واللون) يبقوا جاهزين بس.
     private var transitionStarted: Boolean = false
 
-    // true = الصفحة بتتفتح لأول مرة لفنان جديد (مفيش كاش): الأنيميشن بيبدأ فورًا
-    // والشغل التقيل بيتأجل لبعد الحركة. false = جاية من الكاش: بتتبني قبل أول فريم.
-    private var gateContent: Boolean = false
-    private var enterSettledAtUptimeMs: Long = 0L
+    // الصفحة "استقرت" لما أنيميشن الدخول يخلص. الشغل التقيل (باقي الأغاني، قوائم
+    // الألبومات) بيتأجل لحد كده عشان مايزاحمش الحركة - نفس صفحة تفاصيل الألبوم.
+    private var enterSettled: Boolean = false
+    private val settledCallbacks = mutableListOf<() -> Unit>()
     private var backgroundAnimator: ValueAnimator? = null
     // موضع أسفل اسم الفنان بالنسبة لأعلى الـ NestedScrollView كله (مش بالنسبة
     // لأبوه المباشر بس)، محسوب مرة واحدة ومتخزن هنا. ده اللي كان ناقص: كنا
@@ -173,6 +179,11 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
         private var lastVisitedGradientStops: IntArray? = null
         private var lastVisitedDominantColor: Int = Color.BLACK
         private var lastVisitedDisplayData: ArtistDisplayData? = null
+
+        // لون كل فنان اتفتح قبل كده (مش بس آخر واحد) - زي AlbumDetailsCache في
+        // صفحة الألبوم. بيخلي الصفحة تفتح بلونها الصح من أول فريم حتى لو الصورة
+        // لسه بتتحمل، فمفيش قفزة لون ولا انتظار.
+        private val colorCache = LruCache<String, Int>(32)
     }
 
     private val savedSongSortOrder: String
@@ -198,7 +209,9 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
         // عشان الصفحة دي تقيلة (تحميل صورة + استخراج لون + بناء 4 قوائم)
         // والـ Main Thread بيكون مشغول وقت ما الـ View Animation المفروض تشتغل،
         // فالحركة كانت بتتقطع أو تختفي خالص.
-        // ملحوظة: postponeEnterTransition() بقى مشروط - شوف تحت بعد فحص الكاش.
+        postponeEnterTransition()
+        enterSettled = false
+        settledCallbacks.clear()
 
         _binding = FragmentArtistDetailsBinding.bind(view)
 
@@ -211,23 +224,11 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
             dominantBackgroundColor = lastVisitedDominantColor
             hasExtractedColors = true
         }
-        // نفس منطق Square: الأنيميشن بيبدأ فورًا على صفحة خفيفة (خلفية + اسم الفنان)،
-        // والشغل التقيل (الصورة، استخراج الألوان، القوائم) بيتأجل لحد ما الحركة
-        // تخلص وبعدين بيظهر بـ fade. قبل كده postponeEnterTransition كان بيأخر بداية
-        // الأنيميشن نفسه لحد ما الصورة واللون يجهزوا، وده سبب الإحساس بالبطء.
-        // الاستثناء: لو الصفحة جاهزة من الكاش (رجوع لنفس الفنان) مفيش تحميل،
-        // فبنفضل على الطريقة القديمة: الصفحة بتتبني كلها قبل أول فريم.
-        enterSettledAtUptimeMs = SystemClock.uptimeMillis() + ENTER_SETTLE_MS
-        gateContent = !hasExtractedColors
-        if (gateContent) {
-            transitionStarted = true
-            binding.fragmentArtistContent.root.alpha = 0f
-            view.postDelayed({ revealContent() }, REVEAL_FAILSAFE_MS)
-        } else {
-            postponeEnterTransition()
-        }
-
-        val initialColor = if (hasExtractedColors) dominantBackgroundColor else neutralFallbackColor()
+        // فنان اتفتح قبل كده (غير آخر واحد): لونه معروف حتى لو صورته مش في الكاش.
+        val knownColor: Int? = if (!hasExtractedColors) colorCache.get(detailsViewModel.cacheKey) else null
+        if (knownColor != null) dominantBackgroundColor = knownColor
+        val initialColor =
+            if (hasExtractedColors || knownColor != null) dominantBackgroundColor else neutralFallbackColor()
         binding.rootLayout.setBackgroundColor(initialColor)
 
         mainActivity.addMusicServiceEventListener(detailsViewModel)
@@ -348,6 +349,18 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
 
         setupRecyclerView()
 
+        // الـ adapters جاهزة دلوقتي: نطبق اللون المعروف (ألوان النص + الجراديانت)
+        // قبل ما الصورة توصل، عشان الصفحة تتحرك بلونها الصح.
+        if (knownColor != null) {
+            setColors(
+                knownColor,
+                ArtistPaletteEngine.buildSeamlessGradient(
+                    blendColor = knownColor,
+                    fadeStart = FADE_START_FRACTION
+                )
+            )
+        }
+
         detailsViewModel.getArtist().observe(viewLifecycleOwner) {
             showArtist(it)
         }
@@ -432,7 +445,7 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
         // أول ما الهيدر (الصورة + اللون) يبقوا جاهزين (شوف extractColorsAndApplyGradient
         // والمسار المخزن في الكاش تحت). السطر ده مجرد شبكة أمان لو لأي سبب
         // الصورة معملتش load خالص.
-        view.postDelayed({ releaseEnterTransition() }, 400L)
+        view.postDelayed({ releaseEnterTransition() }, RELEASE_DEADLINE_MS)
     }
 
     // بتترنّد مرة واحدة بس (أول ما تتنادي بتسجل نفسها وتمنع أي نداء تاني).
@@ -440,59 +453,78 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
         if (transitionStarted) return
         transitionStarted = true
         startPostponedEnterTransition()
+        // بعد ما الانتقال يبدأ، ساعات الـ Activity بيرجّع لون الستاتس بار بتاعه،
+        // فنثبّت لون الصفحة (زي صفحة الألبوم).
+        view?.post {
+            if (_binding != null && hasExtractedColors) {
+                applyStatusBarAppearance(ColorUtils.calculateLuminance(dominantBackgroundColor) > 0.45f)
+            }
+        }
+        // شبكة أمان: لو أنيميشن الدخول مبلّغش إنه خلص (مفيش أنيميشن مثلًا)،
+        // نعتبر الصفحة استقرت.
+        view?.postDelayed({ markEnterSettled() }, ENTER_SETTLE_FALLBACK_MS)
     }
 
-    // بيشغّل [block] بعد ما أنيميشن الدخول يخلص. لو الصفحة جاية من الكاش
-    // (gateContent = false) بينفّذ فورًا زي الأول. لو النافذة خلصت بالفعل
-    // بينفّذ فورًا برضه.
-    private fun runAfterEnterAnimation(block: () -> Unit) {
-        if (!gateContent) {
-            block()
-            return
-        }
-        val v = view ?: return
-        val remaining = enterSettledAtUptimeMs - SystemClock.uptimeMillis()
-        if (remaining <= 0L) {
-            block()
-        } else {
-            v.postDelayed({ if (_binding != null) block() }, remaining)
-        }
-    }
-
-    // ظهور المحتوى (الأزرار + القوائم) بـ fade قصير بدل ما يظهر فجأة.
-    private fun revealContent() {
+    // ينفّذ الشغل التقيل بعد ما أنيميشن الدخول يخلص (أو فورًا لو خلص بالفعل).
+    private fun runWhenEnterSettled(block: () -> Unit) {
         if (_binding == null) return
-        val root = binding.fragmentArtistContent.root
-        if (root.alpha >= 1f) return
-        root.animate()
-            .alpha(1f)
-            .setDuration(CONTENT_FADE_MS)
-            .setInterpolator(ENTER_EASING)
-            .start()
+        if (enterSettled) block() else settledCallbacks.add(block)
     }
 
-    // الصورة + الخلفية + الجراديانت: بتظهر بـ fade واللون بيتحرك من اللون
-    // المحايد للون الفنان بدل ما يقفز.
+    // بينفّذ الشغل المؤجل، كل حاجة على فريم لوحدها عشان مفيش فريم واحد تقيل يوقف الحركة.
+    private fun markEnterSettled() {
+        if (enterSettled || _binding == null) return
+        enterSettled = true
+        val pending = settledCallbacks.toList()
+        settledCallbacks.clear()
+        runStaggered(pending)
+    }
+
+    private fun runStaggered(steps: List<() -> Unit>) {
+        fun next(index: Int) {
+            val root = view ?: return
+            if (_binding == null || index >= steps.size) return
+            steps[index]()
+            root.postOnAnimation { next(index + 1) }
+        }
+        view?.postOnAnimation { next(0) }
+    }
+
+    // نمسك لحظة انتهاء أنيميشن الدخول الحقيقية (مش مؤقت ثابت) - نفس اللي بتعمله
+    // صفحة الألبوم بالظبط.
+    override fun onCreateAnimation(transit: Int, enter: Boolean, nextAnim: Int): Animation? {
+        val anim = super.onCreateAnimation(transit, enter, nextAnim)
+            ?: if (enter && nextAnim != 0 &&
+                runCatching { resources.getResourceTypeName(nextAnim) == "anim" }.getOrDefault(false)
+            ) {
+                runCatching { AnimationUtils.loadAnimation(requireContext(), nextAnim) }.getOrNull()
+            } else null
+        if (enter && anim != null) {
+            anim.setAnimationListener(object : Animation.AnimationListener {
+                override fun onAnimationStart(animation: Animation?) {}
+                override fun onAnimationRepeat(animation: Animation?) {}
+                override fun onAnimationEnd(animation: Animation?) {
+                    markEnterSettled()
+                }
+            })
+        }
+        return anim
+    }
+
+    // الصورة + اللون. لو الأنيميشن لسه مابدأش (الصفحة متأجلة) بتتطبق فورًا وتظهر
+    // من أول فريم. لو اتأخرت عن المهلة بتظهر بـ fade فوق الحركة.
     private fun applyHeader(bitmap: Bitmap, dominantColor: Int, gradientStops: IntArray) {
         if (_binding == null) return
-        val animate = gateContent
-        if (animate) {
-            binding.image.alpha = 0f
-            binding.headerGradient?.alpha = 0f
-        }
+        val late = transitionStarted
+        if (late) binding.image.alpha = 0f
         binding.image.setImageBitmap(bitmap)
-        setColors(dominantColor, gradientStops, animateBackground = animate)
-        if (animate) {
+        setColors(dominantColor, gradientStops, animateBackground = late)
+        if (late) {
             binding.image.animate()
                 .alpha(1f)
-                .setDuration(CONTENT_FADE_MS)
+                .setDuration(HEADER_FADE_MS)
                 .setInterpolator(ENTER_EASING)
                 .start()
-            binding.headerGradient?.animate()
-                ?.alpha(1f)
-                ?.setDuration(CONTENT_FADE_MS)
-                ?.setInterpolator(ENTER_EASING)
-                ?.start()
         }
     }
 
@@ -504,7 +536,7 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
             return
         }
         backgroundAnimator = ValueAnimator.ofArgb(from, target).apply {
-            duration = CONTENT_FADE_MS
+            duration = HEADER_FADE_MS
             interpolator = ENTER_EASING
             addUpdateListener {
                 if (_binding != null) {
@@ -618,10 +650,7 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
             lastVisitedDataKey == dataKey && lastVisitedDataSignature == dataSignature
         }
         if (cachedData != null) {
-            runAfterEnterAnimation {
-                bindContentInstant(cachedData)
-                revealContent()
-            }
+            bindContentInstant(cachedData)
             return
         }
 
@@ -635,12 +664,7 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
                 lastVisitedDataKey = dataKey
                 lastVisitedDataSignature = dataSignature
                 lastVisitedDisplayData = data
-                // الحساب (تصنيف الألبومات) خلص على Default Thread؛ ربط الـ adapters
-                // بيستنى نهاية الحركة، وبعدها المحتوى بيظهر بـ fade.
-                runAfterEnterAnimation {
-                    bindContentStaggered(data)
-                    revealContent()
-                }
+                bindContentStaggered(data)
             }
         }
     }
@@ -686,26 +710,30 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
 
         applySongsPreview(data.songs)
 
-        content.root.post {
-            if (_binding == null) return@post
-            val albumText = resources.getQuantityString(
-                R.plurals.albums, data.albums.size, data.albums.size
-            )
-            content.albumTitle.text = albumText
-            albumAdapter.swapDataSet(data.albums)
-            content.albumTitle.isVisible = data.albums.isNotEmpty()
-            content.albumRecyclerView.isVisible = data.albums.isNotEmpty()
-            content.albumRecyclerView.itemAnimator = DefaultItemAnimator()
-
-            content.root.post {
-                if (_binding == null) return@post
-                singlesAdapter.swapDataSet(data.singles)
-                content.singlesTitle.isVisible = data.singles.isNotEmpty()
-                content.singlesRecyclerView.isVisible = data.singles.isNotEmpty()
-                content.singlesRecyclerView.itemAnimator = DefaultItemAnimator()
-
-                content.root.post {
-                    if (_binding == null) return@post
+        // كل قسم على فريم لوحده وبعد نهاية الحركة (queue بتتنفذ في markEnterSettled).
+        val steps = listOf<() -> Unit>(
+            {
+                if (_binding != null) {
+                    val albumText = resources.getQuantityString(
+                        R.plurals.albums, data.albums.size, data.albums.size
+                    )
+                    content.albumTitle.text = albumText
+                    albumAdapter.swapDataSet(data.albums)
+                    content.albumTitle.isVisible = data.albums.isNotEmpty()
+                    content.albumRecyclerView.isVisible = data.albums.isNotEmpty()
+                    content.albumRecyclerView.itemAnimator = DefaultItemAnimator()
+                }
+            },
+            {
+                if (_binding != null) {
+                    singlesAdapter.swapDataSet(data.singles)
+                    content.singlesTitle.isVisible = data.singles.isNotEmpty()
+                    content.singlesRecyclerView.isVisible = data.singles.isNotEmpty()
+                    content.singlesRecyclerView.itemAnimator = DefaultItemAnimator()
+                }
+            },
+            {
+                if (_binding != null) {
                     appearsOnAdapter.swapDataSet(data.appearsOn)
                     content.appearsOnTitle.isVisible = data.appearsOn.isNotEmpty()
                     content.appearsOnRecyclerView.isVisible = data.appearsOn.isNotEmpty()
@@ -713,7 +741,8 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
                     content.recyclerView.itemAnimator = DefaultItemAnimator()
                 }
             }
-        }
+        )
+        if (enterSettled) runStaggered(steps) else steps.forEach { runWhenEnterSettled(it) }
     }
 
     private fun applySongsPreview(sortedSongs: List<Song>) {
@@ -729,9 +758,8 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
         songAdapter.swapDataSet(previewList.subList(0, immediateCount))
 
         if (previewList.size > immediateCount) {
-            binding.fragmentArtistContent.root.post {
-                if (_binding == null) return@post
-                songAdapter.swapDataSet(previewList)
+            runWhenEnterSettled {
+                if (_binding != null) songAdapter.swapDataSet(previewList)
             }
         }
     }
@@ -763,9 +791,9 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
         // كان Glide بيفك الصورة بحجمها الأصلي (ممكن 3000px+ = عشرات الميجا في
         // الذاكرة، وبتتحول لـ texture ضخمة وقت الأنيميشن، وكمان استخراج
         // الألوان بيشتغل على بيكسلات أكتر بكتير من اللازم). بنحدد سقف للحجم
-        // (1.5× عرض الشاشة، بحد أقصى 2048) من غير قص ولا تغيير في النسبة، فالصورة
+        // (1.5× عرض الشاشة، بحد أقصى MAX_IMAGE_SIDE_PX) من غير قص ولا تغيير في النسبة، فالصورة
         // والألوان المستخرجة شكلهم ما بيتغيرش، والفك أسرع بكتير.
-        val maxImageSide = minOf((resources.displayMetrics.widthPixels * 3) / 2, 2048)
+        val maxImageSide = minOf((resources.displayMetrics.widthPixels * 3) / 2, MAX_IMAGE_SIDE_PX)
         val cacheKey = detailsViewModel.cacheKey
         Glide.with(requireContext())
             .asBitmap()
@@ -825,9 +853,10 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
                 lastVisitedGradientStops = gradientStops
                 lastVisitedDominantColor = dominantColor
 
-                // الصورة واللون بيتطبقوا أول ما يجهزوا، مع الأنيميشن مش بعده:
-                // بيظهروا بـ fade فوق الحركة نفسها. (القوائم هي بس اللي بتستنى
-                // نهاية الحركة، لأنها الأتقل.)
+                colorCache.put(key, dominantColor)
+
+                // الصورة واللون بيتطبقوا أول ما يجهزوا، وبعدها الأنيميشن يبدأ
+                // (أو بيظهروا بـ fade لو الأنيميشن بدأ بالفعل).
                 if (_binding != null) {
                     applyHeader(bitmap, dominantColor, gradientStops)
                 }
@@ -1088,6 +1117,7 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
         cachedBitmap = null
         cachedGradientStops = null
         hasExtractedColors = false
+        colorCache.remove(detailsViewModel.cacheKey)
     }
 
     private fun setSaveSortOrder(sortOrder: String) {
@@ -1172,14 +1202,11 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
         customOverflowIcon = null
         currentToolbarIconColor = null
         transitionStarted = false
-        gateContent = false
+        settledCallbacks.clear()
+        enterSettled = false
         backgroundAnimator?.cancel()
         backgroundAnimator = null
-        _binding?.let {
-            it.image.animate().cancel()
-            it.headerGradient?.animate()?.cancel()
-            it.fragmentArtistContent.root.animate().cancel()
-        }
+        _binding?.image?.animate()?.cancel()
         _binding = null
     }
 }
