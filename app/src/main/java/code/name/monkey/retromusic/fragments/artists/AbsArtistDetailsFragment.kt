@@ -4,10 +4,13 @@ import android.graphics.Bitmap
 import android.graphics.Color
 import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.Drawable
+import android.animation.ValueAnimator
 import android.os.Bundle
+import android.os.SystemClock
 import android.util.TypedValue
 import android.view.Menu
 import android.view.MenuItem
+import android.view.animation.PathInterpolator
 import android.view.View
 import android.widget.ImageView
 import androidx.activity.result.PickVisualMediaRequest
@@ -66,6 +69,20 @@ private const val BIOGRAPHY_GLASS_CORNER_DP = 12f
 private const val SONGS_PREVIEW_COUNT = 6
 private const val VISIBLE_SONGS_IMMEDIATE = 4
 
+// نافذة أنيميشن الدخول: أطول حركة (nav_slide_in_right = 280ms) + هامش فريمات.
+// نفس فكرة NavTransitionFreeze في Square (نافذة زمنية ثابتة 330ms): كل شغل تقيل
+// على الـ Main Thread بيستنى لحد ما النافذة دي تخلص، فالحركة تمشي على صفحة خفيفة.
+private const val ENTER_SETTLE_MS = 300L
+
+// مدة ظهور المحتوى بعد الحركة (fadeIn(tween(200..220)) عندهم).
+private const val CONTENT_FADE_MS = 220L
+
+// شبكة أمان: لو لأي سبب المحتوى ماظهرش، نظهره بعد المدة دي.
+private const val REVEAL_FAILSAFE_MS = 1500L
+
+// FastOutSlowIn - نفس الـ easing الافتراضي بتاع tween() في Compose.
+private val ENTER_EASING = PathInterpolator(0.4f, 0f, 0.2f, 1f)
+
 abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragment_artist_details),
     IAlbumClickListener {
     private var _binding: FragmentArtistDetailsBinding? = null
@@ -117,6 +134,12 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
     // startPostponedEnterTransition() مش استخراج اللون. بنبدأ الأنيميشن أول
     // ما الهيدر (الصورة واللون) يبقوا جاهزين بس.
     private var transitionStarted: Boolean = false
+
+    // true = الصفحة بتتفتح لأول مرة لفنان جديد (مفيش كاش): الأنيميشن بيبدأ فورًا
+    // والشغل التقيل بيتأجل لبعد الحركة. false = جاية من الكاش: بتتبني قبل أول فريم.
+    private var gateContent: Boolean = false
+    private var enterSettledAtUptimeMs: Long = 0L
+    private var backgroundAnimator: ValueAnimator? = null
     // موضع أسفل اسم الفنان بالنسبة لأعلى الـ NestedScrollView كله (مش بالنسبة
     // لأبوه المباشر بس)، محسوب مرة واحدة ومتخزن هنا. ده اللي كان ناقص: كنا
     // بنستخدم artistTitle.bottom اللي بيرجع قيمة بالنسبة لأبوه المباشر (اللي هو
@@ -175,7 +198,7 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
         // عشان الصفحة دي تقيلة (تحميل صورة + استخراج لون + بناء 4 قوائم)
         // والـ Main Thread بيكون مشغول وقت ما الـ View Animation المفروض تشتغل،
         // فالحركة كانت بتتقطع أو تختفي خالص.
-        postponeEnterTransition()
+        // ملحوظة: postponeEnterTransition() بقى مشروط - شوف تحت بعد فحص الكاش.
 
         _binding = FragmentArtistDetailsBinding.bind(view)
 
@@ -188,6 +211,22 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
             dominantBackgroundColor = lastVisitedDominantColor
             hasExtractedColors = true
         }
+        // نفس منطق Square: الأنيميشن بيبدأ فورًا على صفحة خفيفة (خلفية + اسم الفنان)،
+        // والشغل التقيل (الصورة، استخراج الألوان، القوائم) بيتأجل لحد ما الحركة
+        // تخلص وبعدين بيظهر بـ fade. قبل كده postponeEnterTransition كان بيأخر بداية
+        // الأنيميشن نفسه لحد ما الصورة واللون يجهزوا، وده سبب الإحساس بالبطء.
+        // الاستثناء: لو الصفحة جاهزة من الكاش (رجوع لنفس الفنان) مفيش تحميل،
+        // فبنفضل على الطريقة القديمة: الصفحة بتتبني كلها قبل أول فريم.
+        enterSettledAtUptimeMs = SystemClock.uptimeMillis() + ENTER_SETTLE_MS
+        gateContent = !hasExtractedColors
+        if (gateContent) {
+            transitionStarted = true
+            binding.fragmentArtistContent.root.alpha = 0f
+            view.postDelayed({ revealContent() }, REVEAL_FAILSAFE_MS)
+        } else {
+            postponeEnterTransition()
+        }
+
         val initialColor = if (hasExtractedColors) dominantBackgroundColor else neutralFallbackColor()
         binding.rootLayout.setBackgroundColor(initialColor)
 
@@ -403,6 +442,79 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
         startPostponedEnterTransition()
     }
 
+    // بيشغّل [block] بعد ما أنيميشن الدخول يخلص. لو الصفحة جاية من الكاش
+    // (gateContent = false) بينفّذ فورًا زي الأول. لو النافذة خلصت بالفعل
+    // بينفّذ فورًا برضه.
+    private fun runAfterEnterAnimation(block: () -> Unit) {
+        if (!gateContent) {
+            block()
+            return
+        }
+        val v = view ?: return
+        val remaining = enterSettledAtUptimeMs - SystemClock.uptimeMillis()
+        if (remaining <= 0L) {
+            block()
+        } else {
+            v.postDelayed({ if (_binding != null) block() }, remaining)
+        }
+    }
+
+    // ظهور المحتوى (الأزرار + القوائم) بـ fade قصير بدل ما يظهر فجأة.
+    private fun revealContent() {
+        if (_binding == null) return
+        val root = binding.fragmentArtistContent.root
+        if (root.alpha >= 1f) return
+        root.animate()
+            .alpha(1f)
+            .setDuration(CONTENT_FADE_MS)
+            .setInterpolator(ENTER_EASING)
+            .start()
+    }
+
+    // الصورة + الخلفية + الجراديانت: بتظهر بـ fade واللون بيتحرك من اللون
+    // المحايد للون الفنان بدل ما يقفز.
+    private fun applyHeader(bitmap: Bitmap, dominantColor: Int, gradientStops: IntArray) {
+        if (_binding == null) return
+        val animate = gateContent
+        if (animate) {
+            binding.image.alpha = 0f
+            binding.headerGradient?.alpha = 0f
+        }
+        binding.image.setImageBitmap(bitmap)
+        setColors(dominantColor, gradientStops, animateBackground = animate)
+        if (animate) {
+            binding.image.animate()
+                .alpha(1f)
+                .setDuration(CONTENT_FADE_MS)
+                .setInterpolator(ENTER_EASING)
+                .start()
+            binding.headerGradient?.animate()
+                ?.alpha(1f)
+                ?.setDuration(CONTENT_FADE_MS)
+                ?.setInterpolator(ENTER_EASING)
+                ?.start()
+        }
+    }
+
+    private fun animateRootBackground(target: Int) {
+        val from = (binding.rootLayout.background as? ColorDrawable)?.color
+        backgroundAnimator?.cancel()
+        if (from == null || from == target) {
+            binding.rootLayout.setBackgroundColor(target)
+            return
+        }
+        backgroundAnimator = ValueAnimator.ofArgb(from, target).apply {
+            duration = CONTENT_FADE_MS
+            interpolator = ENTER_EASING
+            addUpdateListener {
+                if (_binding != null) {
+                    binding.rootLayout.setBackgroundColor(it.animatedValue as Int)
+                }
+            }
+            start()
+        }
+    }
+
     private fun addArtistSongsToPlaylist() {
         lifecycleScope.launch(Dispatchers.IO) {
             val playlists = get<RealRepository>().fetchPlaylists()
@@ -506,7 +618,10 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
             lastVisitedDataKey == dataKey && lastVisitedDataSignature == dataSignature
         }
         if (cachedData != null) {
-            bindContentInstant(cachedData)
+            runAfterEnterAnimation {
+                bindContentInstant(cachedData)
+                revealContent()
+            }
             return
         }
 
@@ -520,7 +635,12 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
                 lastVisitedDataKey = dataKey
                 lastVisitedDataSignature = dataSignature
                 lastVisitedDisplayData = data
-                bindContentStaggered(data)
+                // الحساب (تصنيف الألبومات) خلص على Default Thread؛ ربط الـ adapters
+                // بيستنى نهاية الحركة، وبعدها المحتوى بيظهر بـ fade.
+                runAfterEnterAnimation {
+                    bindContentStaggered(data)
+                    revealContent()
+                }
             }
         }
     }
@@ -705,19 +825,31 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
                 lastVisitedGradientStops = gradientStops
                 lastVisitedDominantColor = dominantColor
 
+                // حفظ الحالة فوق حصل فورًا؛ تحديث الـ UI بس هو اللي بيستنى نهاية
+                // الحركة (رفع صورة كبيرة كـ texture وقت الأنيميشن كان بيقطّعه).
                 if (_binding != null) {
-                    binding.image.setImageBitmap(bitmap)
-                    setColors(dominantColor, gradientStops)
+                    runAfterEnterAnimation {
+                        applyHeader(bitmap, dominantColor, gradientStops)
+                    }
                 }
                 releaseEnterTransition()
             }
         }
     }
 
-    private fun setColors(backgroundColor: Int, gradientStops: IntArray) {
+    private fun setColors(
+        backgroundColor: Int,
+        gradientStops: IntArray,
+        animateBackground: Boolean = false
+    ) {
         if (_binding == null) return
 
-        binding.rootLayout.setBackgroundColor(backgroundColor)
+        if (animateBackground) {
+            animateRootBackground(backgroundColor)
+        } else {
+            backgroundAnimator?.cancel()
+            binding.rootLayout.setBackgroundColor(backgroundColor)
+        }
         
         binding.appBarLayout?.setBackgroundColor(ColorUtils.setAlphaComponent(backgroundColor, 0))
 
@@ -1041,6 +1173,14 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
         customOverflowIcon = null
         currentToolbarIconColor = null
         transitionStarted = false
+        gateContent = false
+        backgroundAnimator?.cancel()
+        backgroundAnimator = null
+        _binding?.let {
+            it.image.animate().cancel()
+            it.headerGradient?.animate()?.cancel()
+            it.fragmentArtistContent.root.animate().cancel()
+        }
         _binding = null
     }
 }
