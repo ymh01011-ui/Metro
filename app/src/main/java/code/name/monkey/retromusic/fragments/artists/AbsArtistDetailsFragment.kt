@@ -69,13 +69,13 @@ private const val BIOGRAPHY_GLASS_CORNER_DP = 12f
 private const val SONGS_PREVIEW_COUNT = 6
 private const val VISIBLE_SONGS_IMMEDIATE = 4
 
-// نافذة أنيميشن الدخول: أطول حركة (nav_slide_in_right = 280ms) + هامش فريمات.
+// نافذة أنيميشن الدخول: أطول حركة (nav_slide_in_right = 200ms) + هامش فريمات.
 // نفس فكرة NavTransitionFreeze في Square (نافذة زمنية ثابتة 330ms): كل شغل تقيل
 // على الـ Main Thread بيستنى لحد ما النافذة دي تخلص، فالحركة تمشي على صفحة خفيفة.
-private const val ENTER_SETTLE_MS = 300L
+private const val ENTER_SETTLE_MS = 220L
 
 // مدة ظهور المحتوى بعد الحركة (fadeIn(tween(200..220)) عندهم).
-private const val CONTENT_FADE_MS = 220L
+private const val CONTENT_FADE_MS = 160L
 
 // شبكة أمان: لو لأي سبب المحتوى ماظهرش، نظهره بعد المدة دي.
 private const val REVEAL_FAILSAFE_MS = 1500L
@@ -825,12 +825,11 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
                 lastVisitedGradientStops = gradientStops
                 lastVisitedDominantColor = dominantColor
 
-                // حفظ الحالة فوق حصل فورًا؛ تحديث الـ UI بس هو اللي بيستنى نهاية
-                // الحركة (رفع صورة كبيرة كـ texture وقت الأنيميشن كان بيقطّعه).
+                // الصورة واللون بيتطبقوا أول ما يجهزوا، مع الأنيميشن مش بعده:
+                // بيظهروا بـ fade فوق الحركة نفسها. (القوائم هي بس اللي بتستنى
+                // نهاية الحركة، لأنها الأتقل.)
                 if (_binding != null) {
-                    runAfterEnterAnimation {
-                        applyHeader(bitmap, dominantColor, gradientStops)
-                    }
+                    applyHeader(bitmap, dominantColor, gradientStops)
                 }
                 releaseEnterTransition()
             }
