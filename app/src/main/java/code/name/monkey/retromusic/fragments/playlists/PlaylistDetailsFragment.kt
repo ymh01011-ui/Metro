@@ -8,6 +8,7 @@ import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.Drawable
 import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
+import android.util.LruCache
 import android.util.TypedValue
 import android.view.Menu
 import android.view.MenuInflater
@@ -70,6 +71,11 @@ private const val GRADIENT_EXTRA = 1.6f
 private const val GRADIENT_FALLBACK_FRACTION = 0.5f
 private const val VISIBLE_SONGS_IMMEDIATE = 14
 private const val ENTER_SETTLE_FALLBACK_MS = 700L
+
+// أقصى مدة نستنى فيها (الهيدر + الصورة + أول دفعة أغاني) قبل ما الأنيميشن يبدأ.
+// الصفحة بتتبني كلها وهي متأجلة، فالحركة تبدأ على صفحة كاملة. لو حاجة اتأخرت
+// عن المهلة دي الحركة بتبدأ برضه والصورة بتظهر بـ fade.
+private const val RELEASE_DEADLINE_MS = 350L
 private const val COLLAGE_SIZE_PX = 1200
 
 class PlaylistDetailsFragment : AbsMainActivityFragment(R.layout.fragment_playlist_detail_new) {
@@ -91,7 +97,6 @@ class PlaylistDetailsFragment : AbsMainActivityFragment(R.layout.fragment_playli
     private var fastScroller: FastScroller? = null
     private var fastScrollerTop = -1
     private var preDrawListener: ViewTreeObserver.OnPreDrawListener? = null
-    private val applyScrollerPaddingRunnable = Runnable { applyScrollerPaddingNow() }
     private var lastToolbarAlpha = -1
 
     // الأغاني اتربطت كلها في الـ adapter؟ (قبل كده بيبقى فيه أول دفعة بس). مهم عشان الحفظ.
@@ -104,6 +109,11 @@ class PlaylistDetailsFragment : AbsMainActivityFragment(R.layout.fragment_playli
     private var foregroundColor: Int = Color.WHITE
     private var navEntry: NavBackStackEntry? = null
     private var transitionStarted = false
+
+    // الأنيميشن بيبدأ لما التلاتة يجهزوا: الهيدر اتقاس، الصورة اتولدت، وأول دفعة أغاني اتربطت.
+    private var headerReady = false
+    private var imageReady = false
+    private var contentReady = false
 
     // الصفحة "استقرت" لما أنيميشن الدخول يخلص: الشغل التقيل بيتأجل لحد كده
     private var enterSettled = false
@@ -119,8 +129,8 @@ class PlaylistDetailsFragment : AbsMainActivityFragment(R.layout.fragment_playli
         private var lastPlaylist: PlaylistWithSongs? = null
         private var lastSongs: List<Song> = emptyList()
         private var lastSongsPlaylistId = -1L
-        private var lastCollageKey: Int? = null
-        private var lastCollageBitmap: Bitmap? = null
+        // آخر صورتين اتولّدوا (مش واحدة بس): الفتح التاني لأي playlist منهم فوري.
+        private val collageCache = LruCache<Int, Bitmap>(2)
     }
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
@@ -129,6 +139,9 @@ class PlaylistDetailsFragment : AbsMainActivityFragment(R.layout.fragment_playli
         postponeEnterTransition()
         enterSettled = false
         settledCallbacks.clear()
+        headerReady = false
+        imageReady = false
+        contentReady = false
         songsFullyBound = false
         appliedSongsSignature = null
         appliedCollageKey = null
@@ -209,7 +222,7 @@ class PlaylistDetailsFragment : AbsMainActivityFragment(R.layout.fragment_playli
         }
 
         // شبكة أمان: لو الهيدر اتأخر في القياس، الصفحة تفتح برضه
-        view.postDelayed({ releaseEnterTransition() }, 400L)
+        view.postDelayed({ releaseEnterTransition() }, RELEASE_DEADLINE_MS)
     }
 
     private fun applyPlaylist(playlistWithSongs: PlaylistWithSongs) {
@@ -227,55 +240,69 @@ class PlaylistDetailsFragment : AbsMainActivityFragment(R.layout.fragment_playli
             playlistWithSongs.songs.size
         if (key == appliedCollageKey) return
         appliedCollageKey = key
-        // نفس الصورة اللي اتعرضت آخر مرة: بنحطها فورًا من الذاكرة من غير ما نولّدها تاني
-        val cached = lastCollageBitmap
-        if (cached != null && !cached.isRecycled && lastCollageKey == key) {
+        // نفس الصورة اتعرضت قبل كده: بنحطها فورًا من الذاكرة من غير ما نولّدها تاني
+        val cached = collageCache.get(key)
+        if (cached != null && !cached.isRecycled) {
             binding.image.setImageBitmap(cached)
             binding.image.alpha = 1f
+            imageReady = true
+            tryRelease()
             return
         }
-        // توليد الصورة (تحميل أغلفة + رسم) بيتأجل لحد ما أنيميشن الدخول يخلص
-        runWhenEnterSettled {
-            if (_binding == null) return@runWhenEnterSettled
-            Glide.with(this)
-                .load(PlaylistPreview(playlistWithSongs))
-                .playlistOptions()
-                .override(COLLAGE_SIZE_PX)
-                // من غير صورة مؤقتة: الصورة الافتراضية كانت بتبان (دايرة رمادي) من ورا الفراغات الشفافة
-                .placeholder(ColorDrawable(Color.TRANSPARENT))
-                .listener(object : RequestListener<Drawable> {
-                    override fun onLoadFailed(
-                        e: GlideException?, model: Any?, target: Target<Drawable>?,
-                        isFirstResource: Boolean
-                    ): Boolean {
-                        fadeInImage()
-                        return false
-                    }
+        // التوليد (تحميل أغلفة + رسم) بيبدأ فورًا مش بعد الأنيميشن، والصفحة متأجلة
+        // لحد ما الصورة تجهز، فبتظهر من أول فريم في الحركة. لو اتأخرت عن المهلة
+        // بتظهر بـ fade فوق الحركة.
+        Glide.with(this)
+            .load(PlaylistPreview(playlistWithSongs))
+            .playlistOptions()
+            .override(COLLAGE_SIZE_PX)
+            // من غير صورة مؤقتة: الصورة الافتراضية كانت بتبان (دايرة رمادي) من ورا الفراغات الشفافة
+            .placeholder(ColorDrawable(Color.TRANSPARENT))
+            .listener(object : RequestListener<Drawable> {
+                override fun onLoadFailed(
+                    e: GlideException?, model: Any?, target: Target<Drawable>?,
+                    isFirstResource: Boolean
+                ): Boolean {
+                    showImage()
+                    return false
+                }
 
-                    override fun onResourceReady(
-                        resource: Drawable?, model: Any?, target: Target<Drawable>?,
-                        dataSource: DataSource?, isFirstResource: Boolean
-                    ): Boolean {
-                        fadeInImage()
-                        // نسخة في الذاكرة للفتح الجاي (نسخة مش نفس bitmap بتاع Glide عشان ميتعاد استخدامه)
-                        val source = (resource as? BitmapDrawable)?.bitmap
-                        if (source != null && !source.isRecycled) {
-                            view?.post {
-                                runCatching {
-                                    lastCollageBitmap = source.copy(Bitmap.Config.ARGB_8888, false)
-                                    lastCollageKey = key
-                                }
+                override fun onResourceReady(
+                    resource: Drawable?, model: Any?, target: Target<Drawable>?,
+                    dataSource: DataSource?, isFirstResource: Boolean
+                ): Boolean {
+                    showImage()
+                    // نسخة في الذاكرة للفتح الجاي (نسخة مش نفس bitmap بتاع Glide عشان ميتعاد استخدامه)
+                    val source = (resource as? BitmapDrawable)?.bitmap
+                    if (source != null && !source.isRecycled) {
+                        view?.post {
+                            runCatching {
+                                source.copy(Bitmap.Config.ARGB_8888, false)
+                                    ?.let { collageCache.put(key, it) }
                             }
                         }
-                        return false
                     }
-                })
-                .into(binding.image)
+                    return false
+                }
+            })
+            .into(binding.image)
+    }
+
+    // الصورة جاهزة: لو الأنيميشن لسه مابدأش بتظهر فورًا (والصفحة متأجلة)،
+    // وإلا بتظهر بـ fade. الإبلاغ بيتأجل فريم عشان Glide يكون حطها في الـ ImageView.
+    private fun showImage() {
+        val b = _binding ?: return
+        if (transitionStarted) fadeInImage() else b.image.alpha = 1f
+        view?.post {
+            if (_binding != null) {
+                imageReady = true
+                tryRelease()
+            }
         }
     }
 
     private fun fadeInImage() {
-        _binding?.image?.animate()?.alpha(1f)?.setDuration(220L)?.start()
+        _binding?.image?.animate()?.alpha(1f)?.setDuration(160L)?.start()
     }
 
     // ---------- الأزرار ----------
@@ -327,7 +354,9 @@ class PlaylistDetailsFragment : AbsMainActivityFragment(R.layout.fragment_playli
             itemAnimator = DraggableItemAnimator()
             updatePadding(bottom = bottomPadding)
             manager.attachRecyclerView(this)
-            fastScroller = ThemedFastScroller.create(this)
+            // الاسكرولير مش بيتعمل هنا: كان بيظهر لوحده أول ما الصفحة تتفتح (مكتبة الـ
+            // FastScroller بتظهره عند أي حدث سكرول، وRecyclerView بيبعت حدث لما الصفوف
+            // الأولى تتربط). بنعمله أول ما المستخدم يبدأ يسحب القايمة فعلًا (ensureFastScroller).
             // الهيدر لازم يمشي مع القايمة في كل فريم بيترسم، مهما كان سبب الحركة (لمس، fling، أو
             // قفزة من الاسكرولير اللي مش دايمًا بتبعت حدث سكرول). كده الاتنين مستحيل يفترقوا.
             val listener = ViewTreeObserver.OnPreDrawListener {
@@ -342,6 +371,7 @@ class PlaylistDetailsFragment : AbsMainActivityFragment(R.layout.fragment_playli
                 }
 
                 override fun onScrollStateChanged(recyclerView: RecyclerView, newState: Int) {
+                    if (newState == RecyclerView.SCROLL_STATE_DRAGGING) ensureFastScroller()
                     if (newState == RecyclerView.SCROLL_STATE_IDLE) {
                         syncHeaderWithList()
                         updateFastScrollerPadding()
@@ -363,36 +393,25 @@ class PlaylistDetailsFragment : AbsMainActivityFragment(R.layout.fragment_playli
         })
     }
 
-    // الاسكرولير بيبدأ من أول القايمة فعلًا (تحت الهيدر)، ولما الهيدر يطلع لفوق بينزل معاه
-    // لحد ما يوصل لتحت الـ toolbar ويقف هناك. كده مبيظهرش فوق الصورة ولا الأزرار.
+    // بيتعمل أول مرة المستخدم يسحب القايمة بصباعه، مش وقت فتح الصفحة.
+    private fun ensureFastScroller() {
+        if (fastScroller != null || _binding == null) return
+        fastScroller = ThemedFastScroller.create(binding.recyclerView)
+        fastScrollerTop = -1
+        updateFastScrollerPadding()
+    }
+
+    // بداية مسار الاسكرولير = أسفل الهيدر وهو ظاهر، ولما الهيدر يطلع لفوق بينزل معاه
+    // لحد ما يقف تحت الـ toolbar. بيتحدّث في كل فريم فورًا، حتى وانت بتسحب الاسكرولير
+    // نفسه: قبل كده كان بيتأجل 150ms وقت سحبه، فلما تسحبه لفوق كان يفضل مساره قديم
+    // ويطلع فوق الصورة وبعدين يقفز لمكانه لما تسيبه.
     private fun updateFastScrollerPadding(headerOffset: Int = -1) {
         if (_binding == null) return
         val appBarHeight = binding.appBarLayout.height
         val headerHeight = binding.headerContainer.height
         if (appBarHeight <= 0 || headerHeight <= 0) return
         val offset = if (headerOffset >= 0) headerOffset else headerScrollOffset()
-        val top = maxOf(appBarHeight, headerHeight - offset)
-        if (top == fastScrollerTop) {
-            view?.removeCallbacks(applyScrollerPaddingRunnable)
-            return
-        }
-        // أول مرة، أو أثناء لمس/fling القايمة: نحدّث فورًا. أما لو القايمة واقفة (يعني بتتحرك
-        // بسحب الاسكرولير نفسه) منغيّرش مساره تحت صباعك، وإلا الشكل بيتهز: بنستنى لحد ما الحركة تهدى.
-        if (fastScrollerTop < 0 || binding.recyclerView.scrollState != RecyclerView.SCROLL_STATE_IDLE) {
-            view?.removeCallbacks(applyScrollerPaddingRunnable)
-            applyScrollerTop(top)
-        } else {
-            view?.removeCallbacks(applyScrollerPaddingRunnable)
-            view?.postDelayed(applyScrollerPaddingRunnable, 150L)
-        }
-    }
-
-    private fun applyScrollerPaddingNow() {
-        if (_binding == null) return
-        val appBarHeight = binding.appBarLayout.height
-        val headerHeight = binding.headerContainer.height
-        if (appBarHeight <= 0 || headerHeight <= 0) return
-        applyScrollerTop(maxOf(appBarHeight, headerHeight - headerScrollOffset()))
+        applyScrollerTop(maxOf(appBarHeight, headerHeight - offset))
     }
 
     private fun applyScrollerTop(top: Int) {
@@ -431,6 +450,9 @@ class PlaylistDetailsFragment : AbsMainActivityFragment(R.layout.fragment_playli
             playlistSongAdapter.swapDataSet(ArrayList(songs.subList(0, immediate)))
             runWhenEnterSettled { bindAllSongsIfNeeded() }
         }
+        // أول دفعة اتربطت (قايمة فاضية مش بتعتبر جاهزة: ممكن تكون لسه البيانات مجتش،
+        // ولو فاضية فعلًا المهلة بتفتح الصفحة).
+        markContentReady()
     }
 
     // بيربط كل الأغاني (بعد أول دفعة). بيستخدم آخر قايمة وصلت، مش القايمة القديمة، وآمن لو اتنادى أكتر من مرة.
@@ -481,8 +503,8 @@ class PlaylistDetailsFragment : AbsMainActivityFragment(R.layout.fragment_playli
         }
         updateGradientHeight()
         syncHeaderWithList()
-        if (!transitionStarted) {
-            view?.post { releaseEnterTransition() }
+        if (!headerReady) {
+            view?.post { markHeaderReady() }
         }
     }
 
@@ -606,6 +628,21 @@ class PlaylistDetailsFragment : AbsMainActivityFragment(R.layout.fragment_playli
     }
 
     // ---------- بدء الانتقال + تأجيل الشغل التقيل ----------
+
+    private fun markHeaderReady() {
+        if (_binding == null) return
+        headerReady = true
+        tryRelease()
+    }
+
+    private fun markContentReady() {
+        contentReady = true
+        tryRelease()
+    }
+
+    private fun tryRelease() {
+        if (headerReady && imageReady && contentReady) releaseEnterTransition()
+    }
 
     private fun releaseEnterTransition() {
         if (transitionStarted || _binding == null) return
@@ -737,7 +774,6 @@ class PlaylistDetailsFragment : AbsMainActivityFragment(R.layout.fragment_playli
             }
         }
         preDrawListener = null
-        view?.removeCallbacks(applyScrollerPaddingRunnable)
         lastToolbarAlpha = -1
         super.onDestroyView()
         dragDropManager?.release()
@@ -747,6 +783,9 @@ class PlaylistDetailsFragment : AbsMainActivityFragment(R.layout.fragment_playli
         settledCallbacks.clear()
         enterSettled = false
         transitionStarted = false
+        headerReady = false
+        imageReady = false
+        contentReady = false
         customOverflowIcon = null
         navEntry = null
         _binding = null
