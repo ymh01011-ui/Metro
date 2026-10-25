@@ -412,11 +412,12 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
                 exitTransition = null
                 reenterTransition = null
 
+                // "See all" = تفاصيل فوق تفاصيل (زي Square): الصفحتين بيتحركوا 25% (nav_detail_*)
                 val navOptions = NavOptions.Builder()
-                    .setEnterAnim(R.anim.nav_slide_in_right)
-                    .setExitAnim(R.anim.nav_slide_out_left)
-                    .setPopEnterAnim(R.anim.nav_slide_in_left)
-                    .setPopExitAnim(R.anim.nav_slide_out_right)
+                    .setEnterAnim(R.anim.nav_detail_in_right)
+                    .setExitAnim(R.anim.nav_detail_out_left)
+                    .setPopEnterAnim(R.anim.nav_detail_in_left)
+                    .setPopExitAnim(R.anim.nav_detail_out_right)
                     .build()
 
                 findNavController().navigate(
@@ -915,15 +916,15 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
         appearsOnAdapter.setDynamicTextColors(foregroundColor, secondaryForegroundColor)
     }
 
-    // نفس أنيميشن الدخول/الخروج بتاع "See all" بالظبط (nav_slide_*)، بدل
-    // الـ Hold()/Shared Element القديمة اللي مبقتش منطقية بعد ما بقى هيدر
-    // صفحة الألبوم edge-to-edge زي هنا بالظبط (مفيش كارت تربيعي نقل منه/له).
+    // صفحة تفاصيل فوق صفحة تفاصيل: نفس حركة Square بالظبط (AnimatedContent):
+    // الصفحة الجديدة بتدخل بمسافة 25% والقديمة بتخرج في الاتجاه المعاكس مع fade
+    // (nav_detail_*)، زي "See all" بالظبط.
     override fun onAlbumClick(albumId: Long, view: View) {
         val navOptions = NavOptions.Builder()
-            .setEnterAnim(R.anim.nav_slide_in_right)
-            .setExitAnim(R.anim.nav_slide_out_left)
-            .setPopEnterAnim(R.anim.nav_slide_in_left)
-            .setPopExitAnim(R.anim.nav_slide_out_right)
+            .setEnterAnim(R.anim.nav_detail_in_right)
+            .setExitAnim(R.anim.nav_detail_out_left)
+            .setPopEnterAnim(R.anim.nav_detail_in_left)
+            .setPopExitAnim(R.anim.nav_detail_out_right)
             .build()
 
         findNavController().navigate(
