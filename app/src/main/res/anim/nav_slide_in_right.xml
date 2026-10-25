@@ -1,14 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- enterTransition: slideInHorizontally(tween(280)) { it / 5 } + fadeIn(tween(220)) -->
 <set xmlns:android="http://schemas.android.com/apk/res/android"
     android:shareInterpolator="false">
     <translate
         android:fromXDelta="20%p"
         android:toXDelta="0%p"
-        android:duration="200"
+        android:duration="280"
         android:interpolator="@android:interpolator/fast_out_slow_in" />
     <alpha
         android:fromAlpha="0.0"
         android:toAlpha="1.0"
-        android:duration="160"
+        android:duration="220"
         android:interpolator="@android:interpolator/fast_out_slow_in" />
 </set>
