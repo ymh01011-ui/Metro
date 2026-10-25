@@ -34,6 +34,7 @@ import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.LinearLayoutManager
 import code.name.monkey.retromusic.EXTRA_ALBUM_ID
 import code.name.monkey.retromusic.R
+import code.name.monkey.retromusic.util.ensureSharedPageGround
 import code.name.monkey.retromusic.adapter.album.HorizontalAlbumAdapter
 import code.name.monkey.retromusic.adapter.song.SimpleSongAdapter
 import code.name.monkey.retromusic.databinding.FragmentArtistDetailsBinding
@@ -209,6 +210,8 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
         contentReady = false
 
         _binding = FragmentArtistDetailsBinding.bind(view)
+        // أرضية Square المشتركة ورا كل الصفحات (شوف PageGround.kt)
+        ensureSharedPageGround()
 
         // لو راجعين لنفس آخر فنان اتفتحت صفحته، لونه جاهز في الكاش - بنطبقه
         // قبل أول رسم عشان الخلفية ماتبانش رمادي/محايدة لحظة وبعدين تتغير.
