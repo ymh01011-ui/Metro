@@ -1482,10 +1482,10 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
     // فتح صفحة الفنان بنفس أنيميشن الدخول والخروج (والرجوع) اللي بنستخدمها لفتح ألبوم تاني
     private fun navigateToArtistPage(destinationId: Int, args: Bundle) {
         val navOptions = NavOptions.Builder()
-            .setEnterAnim(R.anim.nav_slide_in_right)
-            .setExitAnim(R.anim.nav_slide_out_left)
-            .setPopEnterAnim(R.anim.nav_slide_in_left)
-            .setPopExitAnim(R.anim.nav_slide_out_right)
+            .setEnterAnim(R.anim.nav_detail_in_right)
+            .setExitAnim(R.anim.nav_detail_out_left)
+            .setPopEnterAnim(R.anim.nav_detail_in_left)
+            .setPopExitAnim(R.anim.nav_detail_out_right)
             .build()
         findActivityNavController(R.id.fragment_container).navigate(destinationId, args, navOptions)
     }
@@ -1910,12 +1910,25 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
         return nav.currentDestination?.id != R.id.albumDetailsFragment
     }
 
+    // true = الرجوع رايح لصفحة تفاصيل تانية (ألبوم/فنان/playlist). في Square ده بيحصل
+    // بحركة "تفاصيل فوق تفاصيل" (25% والصفحتين بيتحركوا)، مش حركة التنقل العادي (20%).
+    private fun poppedToDetailPage(): Boolean {
+        val dest = runCatching { findNavController().currentDestination?.id }.getOrNull()
+        return dest == R.id.albumDetailsFragment ||
+            dest == R.id.playlistDetailsFragment ||
+            dest == R.id.artistDetailsFragment ||
+            dest == R.id.albumArtistDetailsFragment ||
+            dest == R.id.artistAllSongsFragment ||
+            dest == R.id.multiArtistDetailsFragment
+    }
+
     override fun onCreateAnimation(transit: Int, enter: Boolean, nextAnim: Int): Animation? {
         if (!enter && isPoppedToNonAlbumPage()) {
             // رجوع لقايمة الألبومات: ستاتس بار يرجع فورًا + انيميشن خروج خاص بالرجوع
             // (مبقاش بيستعمل انيميشن الفتح). الدخول لأي صفحة تانية مبيتغيرش.
             releaseStatusBar()
-            return AnimationUtils.loadAnimation(requireContext(), R.anim.nav_slide_out_right)
+            val exitAnim = if (poppedToDetailPage()) R.anim.nav_detail_out_right else R.anim.nav_slide_out_right
+            return AnimationUtils.loadAnimation(requireContext(), exitAnim)
         }
         val anim = super.onCreateAnimation(transit, enter, nextAnim)
             ?: if (enter && nextAnim != 0 &&
@@ -1993,10 +2006,10 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
 
     override fun onAlbumClick(albumId: Long, view: View) {
         val navOptions = NavOptions.Builder()
-            .setEnterAnim(R.anim.nav_slide_in_right)
-            .setExitAnim(R.anim.nav_slide_out_left)
-            .setPopEnterAnim(R.anim.nav_slide_in_left)
-            .setPopExitAnim(R.anim.nav_slide_out_right)
+            .setEnterAnim(R.anim.nav_detail_in_right)
+            .setExitAnim(R.anim.nav_detail_out_left)
+            .setPopEnterAnim(R.anim.nav_detail_in_left)
+            .setPopExitAnim(R.anim.nav_detail_out_right)
             .build()
         findNavController().navigate(R.id.albumDetailsFragment, bundleOf(EXTRA_ALBUM_ID to albumId), navOptions)
     }
