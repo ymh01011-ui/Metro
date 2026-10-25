@@ -58,6 +58,7 @@ import code.name.monkey.retromusic.EXTRA_ALBUM_ID
 import code.name.monkey.retromusic.EXTRA_ARTIST_ID
 import code.name.monkey.retromusic.EXTRA_ARTIST_NAME
 import code.name.monkey.retromusic.R
+import code.name.monkey.retromusic.util.ensureSharedPageGround
 import code.name.monkey.retromusic.activities.tageditor.AbsTagEditorActivity
 import code.name.monkey.retromusic.activities.tageditor.AlbumTagEditorActivity
 import code.name.monkey.retromusic.adapter.ArtistPickerAdapter
@@ -561,6 +562,8 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
         moreAlbumsRequested = false
         aboutRequested = false
         _binding = FragmentAlbumDetailsBinding.bind(view)
+        // أرضية Square المشتركة ورا كل الصفحات (شوف PageGround.kt)
+        ensureSharedPageGround()
         mainActivity.addMusicServiceEventListener(detailsViewModel)
 
         binding.imageShadow?.apply {
