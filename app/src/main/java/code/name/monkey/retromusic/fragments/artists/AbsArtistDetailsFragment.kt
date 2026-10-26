@@ -28,6 +28,7 @@ import androidx.core.view.doOnPreDraw
 import androidx.core.view.isVisible
 import androidx.core.view.updatePadding
 import androidx.lifecycle.lifecycleScope
+import androidx.navigation.NavBackStackEntry
 import androidx.navigation.NavController
 import androidx.navigation.NavOptions
 import androidx.navigation.fragment.findNavController
@@ -122,16 +123,15 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
     // (شوف الشرح في AbsMainActivityFragment.registersMenuProvider).
     override val registersMenuProvider: Boolean = false
 
-    // بتتحط true لحظة ما زرار الرجوع في التولبار يتدوس، عشان نمنع
-    // navDestinationListener (تحت في onResume) من إنه يفرض
-    // applyStatusBarAppearance(false) وإحنا لسه في نص أنيميشن الخروج بتاعنا
-    // إحنا - كان بيحصل فورًا لحظة ما الـ destination يتغير للصفحة اللي
-    // راجعين لها، قبل ما الأنيميشن حتى يبدأ، فيبان كإن لون التولبار "بيرجع"
-    // فجأة قبل ما نخرج خالص.
+    // بتتحط true لحظة ما زرار الرجوع في التولبار يتدوس. مبقاش فيه listener بيقرأها (الستاتس بار
+    // بقى بيتدار بـ registerStatusBar/releaseStatusBar زي صفحة الألبوم)، وسايبينها للتتبع بس.
     private var isExitingViaBack: Boolean = false
     
     private var dominantBackgroundColor: Int = Color.BLACK
-    private var navDestinationListener: NavController.OnDestinationChangedListener? = null
+    // حالة الستاتس بار (نفس منطق صفحة تفاصيل الألبوم): الصفحة بتسجّل نفسها لما الـ view يتبني،
+    // ومبتلوّنش الستاتس بار إلا وهي مسجّلة، وبترجّع اللون الأصلي فورًا أول ما الخروج يبدأ.
+    private var statusBarRegistered = false
+    private var navEntry: NavBackStackEntry? = null
     private var cachedBitmap: Bitmap? = null
     private var cachedGradientStops: IntArray? = null
     private var hasExtractedColors: Boolean = false
@@ -199,6 +199,13 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
         // صفحة الألبوم. بيخلي الصفحة تفتح بلونها الصح من أول فريم حتى لو الصورة
         // لسه بتتحمل، فمفيش قفزة لون ولا انتظار.
         private val colorCache = LruCache<String, Int>(32)
+
+        // حالة الستاتس بار الأصلية (قبل ما أي صفحة تفاصيل تلوّنه)، مشتركة بين كل نسخ الصفحة دي.
+        // بتتحفظ مرة واحدة ومبتترجّعش غير لما آخر صفحة تفاصيل تتقفل ونخرج لشاشة عادية (زي قايمة الفنانين).
+        // baseStatusBarAssumed = true لو القيمة دي مفترضة (جايين من صفحة تفاصيل تانية) مش مقروءة فعلًا.
+        private var baseStatusBarLight: Boolean? = null
+        private var baseStatusBarAssumed = false
+        private var detailPagesAlive = 0
     }
 
     private val savedSongSortOrder: String
@@ -231,6 +238,8 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
         settledCallbacks.clear()
 
         _binding = FragmentArtistDetailsBinding.bind(view)
+        registerStatusBar()
+        navEntry = runCatching { findNavController().currentBackStackEntry }.getOrNull()
         // أرضية Square المشتركة ورا كل الصفحات (شوف PageGround.kt)
         ensureSharedPageGround()
 
@@ -508,6 +517,9 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
     // بنمسك لحظة انتهاء أنيميشن الدخول (اللي جاي من NavOptions) من غير ما نغيّره - نفس اللي
     // الـ framework كان هيعمله بالظبط، بس بنربط عليه listener.
     override fun onCreateAnimation(transit: Int, enter: Boolean, nextAnim: Int): Animation? {
+        // الصفحة بتتقفل (رجوع): الستاتس بار يرجع لوضعه الأصلي فورًا مع بداية أنيميشن الخروج،
+        // مش بعد ما ينتهي. لو رايحين لصفحة تفاصيل تانية، releaseStatusBar() بتسيبه لها.
+        if (!enter && isPoppingOut()) releaseStatusBar()
         val anim = super.onCreateAnimation(transit, enter, nextAnim)
             ?: if (enter && nextAnim != 0 &&
                 runCatching { resources.getResourceTypeName(nextAnim) == "anim" }.getOrDefault(false)
@@ -760,13 +772,18 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
 
         applySongsPreview(data.songs, staggered = true)
 
-        // كل قسم (ألبومات، سنجلز، يظهر في) بيتسجل ليتنفذ بعد ما أنيميشن الدخول يخلص، وكل واحد على
-        // فريم لوحده (markEnterSettled). الأغاني (أول 5) هي الوحيدة اللي بتظهر مع الدخول.
+        // التأجيل مبيحصلش غير لو الفنان عنده أكتر من 5 أغاني. لو 5 أو أقل، كل حاجة بتظهر مع الدخول.
+        // لما يتأجل: كل قسم (ألبومات، سنجلز، يظهر في) بيتسجل ليتنفذ بعد ما أنيميشن الدخول يخلص،
+        // وكل واحد على فريم لوحده (markEnterSettled).
         // الترتيب مهم: باقي الأغاني اتسجل الأول (في applySongsPreview)، وitemAnimator بتاع قايمة
         // الأغاني بيتفعّل في آخر خطوة، فالصف السادس مبيتحركش وهو بيظهر.
+        val defer = data.songs.size > SONGS_IMMEDIATE
+        fun whenReady(block: () -> Unit) {
+            if (defer) runWhenEnterSettled(block) else block()
+        }
         val steps = listOf<() -> Unit>(
             {
-                runWhenEnterSettled {
+                whenReady {
                     val albumText = resources.getQuantityString(
                         R.plurals.albums, data.albums.size, data.albums.size
                     )
@@ -778,7 +795,7 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
                 }
             },
             {
-                runWhenEnterSettled {
+                whenReady {
                     singlesAdapter.swapDataSet(data.singles)
                     content.singlesTitle.isVisible = data.singles.isNotEmpty()
                     content.singlesRecyclerView.isVisible = data.singles.isNotEmpty()
@@ -786,7 +803,7 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
                 }
             },
             {
-                runWhenEnterSettled {
+                whenReady {
                     appearsOnAdapter.swapDataSet(data.appearsOn)
                     content.appearsOnTitle.isVisible = data.appearsOn.isNotEmpty()
                     content.appearsOnRecyclerView.isVisible = data.appearsOn.isNotEmpty()
@@ -1226,34 +1243,90 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
         }
 
     private fun applyStatusBarAppearance(isLightBackground: Boolean) {
+        if (!statusBarRegistered) return // الصفحة بدأت تتقفل: مننفضش على الستاتس بار تاني
         activity?.window?.let { window ->
             androidx.core.view.WindowInsetsControllerCompat(window, window.decorView)
                 .isAppearanceLightStatusBars = isLightBackground
         }
     }
 
+    // ---------- ستاتس بار: حفظ الحالة الأصلية مرة واحدة وإرجاعها لما آخر صفحة تفاصيل تتقفل ----------
+
+    private fun readStatusBarLight(): Boolean? {
+        val window = activity?.window ?: return null
+        return androidx.core.view.WindowInsetsControllerCompat(window, window.decorView).isAppearanceLightStatusBars
+    }
+
+    // الصفحات اللي بتتحكم في لون الستاتس بار بنفسها. لو رايحين لواحدة منها (أو جايين منها)
+    // مبنلمسش الستاتس بار عشان منكتبش فوق لونها.
+    private fun isSelfManagedStatusBarDestination(id: Int?): Boolean = id != null && (
+        id == R.id.albumDetailsFragment ||
+            id == R.id.artistDetailsFragment ||
+            id == R.id.albumArtistDetailsFragment ||
+            id == R.id.multiArtistDetailsFragment ||
+            id == R.id.artistAllSongsFragment
+        )
+
+    private fun registerStatusBar() {
+        if (statusBarRegistered) return
+        if (baseStatusBarLight == null) {
+            val cameFromSelfManaged = runCatching {
+                isSelfManagedStatusBarDestination(findNavController().previousBackStackEntry?.destination?.id)
+            }.getOrDefault(false)
+            // جايين من صفحة تفاصيل: الستاتس بار الحالي لونها هي مش الأصلي، فبنفترض الافتراضي (أيقونات فاتحة)
+            baseStatusBarLight = if (cameFromSelfManaged) false else readStatusBarLight()
+            baseStatusBarAssumed = cameFromSelfManaged
+        }
+        detailPagesAlive++
+        statusBarRegistered = true
+    }
+
+    private fun releaseStatusBar() {
+        if (!statusBarRegistered) return
+        statusBarRegistered = false
+        detailPagesAlive--
+        if (detailPagesAlive > 0) return
+        detailPagesAlive = 0
+
+        // رايحين لصفحة تفاصيل تانية: هي بتلوّن الستاتس بار بنفسها، فمنرجّعش اللون الأصلي فوقها.
+        // لو القيمة المحفوظة كانت مجرد افتراض بنمسحها عشان متفضلش معلقة لحد فتحة جاية من شاشة عادية.
+        val destinationId = runCatching { findNavController().currentDestination?.id }.getOrNull()
+        if (isSelfManagedStatusBarDestination(destinationId)) {
+            if (baseStatusBarAssumed) {
+                baseStatusBarLight = null
+                baseStatusBarAssumed = false
+            }
+            return
+        }
+
+        val base = baseStatusBarLight
+        baseStatusBarLight = null
+        baseStatusBarAssumed = false
+        if (base != null) {
+            activity?.window?.let { window ->
+                androidx.core.view.WindowInsetsControllerCompat(window, window.decorView)
+                    .isAppearanceLightStatusBars = base
+            }
+        }
+    }
+
+    // true = الصفحة دي بتتقفل (رجوع). في الفتح (push) الصفحة بتفضل في الـ back stack،
+    // وفي الرجوع (pop) بتتشال منه.
+    private fun isPoppingOut(): Boolean {
+        val entry = navEntry ?: return false
+        val nav = runCatching { findNavController() }.getOrNull() ?: return false
+        return entry != nav.currentBackStackEntry && entry != nav.previousBackStackEntry
+    }
+
     override fun onResume() {
         super.onResume()
         applyStatusBarAppearance(ColorUtils.calculateLuminance(dominantBackgroundColor) > 0.45f)
-
-        val ownDestinationId = findNavController().currentDestination?.id
-        val listener = NavController.OnDestinationChangedListener { _, destination, _ ->
-            if (!isExitingViaBack && destination.id != ownDestinationId && destination.id != R.id.artistAllSongsFragment) {
-                applyStatusBarAppearance(false)
-            }
-        }
-        navDestinationListener = listener
-        findNavController().addOnDestinationChangedListener(listener)
-    }
-
-    override fun onPause() {
-        navDestinationListener?.let { findNavController().removeOnDestinationChangedListener(it) }
-        navDestinationListener = null
-        super.onPause()
     }
 
     override fun onDestroyView() {
         super.onDestroyView()
+        releaseStatusBar()
+        navEntry = null
         // الـ ViewModel كان بيتسجل كـ listener في onViewCreated ومبيتشالش أبدًا،
         // فكل فنان بتفتحه كان بيفضل شغال في الخلفية ويعمل استعلام MediaStore
         // + طلب سيرة ذاتية مع كل تغيير في المكتبة (وبيزيد مع كل صفحة تفتحها).
