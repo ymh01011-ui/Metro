@@ -14,6 +14,9 @@
  */
 package code.name.monkey.retromusic.fragments.albums
 
+import android.content.res.ColorStateList
+import android.graphics.Color
+import android.graphics.drawable.RippleDrawable
 import android.os.Bundle
 import android.view.*
 import android.view.animation.Animation
@@ -23,6 +26,7 @@ import androidx.core.view.updatePadding
 import androidx.navigation.NavOptions
 import androidx.navigation.fragment.findNavController
 import androidx.recyclerview.widget.GridLayoutManager
+import androidx.recyclerview.widget.RecyclerView
 import code.name.monkey.retromusic.EXTRA_ALBUM_ID
 import code.name.monkey.retromusic.R
 import code.name.monkey.retromusic.adapter.album.AlbumAdapter
@@ -35,6 +39,7 @@ import code.name.monkey.retromusic.interfaces.IAlbumClickListener
 import code.name.monkey.retromusic.service.MusicService
 import code.name.monkey.retromusic.util.PreferenceUtil
 import code.name.monkey.retromusic.util.RetroUtil
+import com.google.android.material.card.MaterialCardView
 
 class AlbumsFragment : AbsRecyclerViewCustomGridSizeFragment<AlbumAdapter, GridLayoutManager>(),
     IAlbumClickListener {
@@ -82,6 +87,7 @@ class AlbumsFragment : AbsRecyclerViewCustomGridSizeFragment<AlbumAdapter, GridL
             reenterTransition = null
         }
         applyAlbumGridPadding(itemLayoutRes())
+        disableItemRipple()
         appliedAlbumsSignature = null
         libraryViewModel.getAlbums().observe(viewLifecycleOwner) {
             val signature = albumsSignature(it)
@@ -91,6 +97,33 @@ class AlbumsFragment : AbsRecyclerViewCustomGridSizeFragment<AlbumAdapter, GridL
                 adapter?.swapDataSet(it)
             else
                 adapter?.swapDataSet(listOf())
+        }
+    }
+
+    // شيل الهالة (الـ ripple) اللي بتظهر لما تدوس على أي عنصر. بنصفّر لون أي RippleDrawable
+    // (foreground أو background) على العنصر وكل اللي جواه - mutate() الأول عشان الـ drawable
+    // بتاع الـ layout مشترك مع باقي الصفحات ومنأثرش عليهم. لون الـ ripple بس هو اللي بيتصفّر،
+    // فحالة التحديد المتعدد (activated) وباقي الـ layers بتفضل زي ما هي.
+    private fun disableItemRipple() {
+        val rv = recyclerView
+        rv.addOnChildAttachStateChangeListener(object : RecyclerView.OnChildAttachStateChangeListener {
+            override fun onChildViewAttachedToWindow(view: View) = stripRipple(view)
+            override fun onChildViewDetachedFromWindow(view: View) {}
+        })
+        for (i in 0 until rv.childCount) stripRipple(rv.getChildAt(i))
+    }
+
+    private fun stripRipple(view: View) {
+        val transparent = ColorStateList.valueOf(Color.TRANSPARENT)
+        (view as? MaterialCardView)?.rippleColor = transparent
+        (view.foreground as? RippleDrawable)?.let {
+            (it.mutate() as RippleDrawable).setColor(transparent)
+        }
+        (view.background as? RippleDrawable)?.let {
+            (it.mutate() as RippleDrawable).setColor(transparent)
+        }
+        if (view is ViewGroup) {
+            for (i in 0 until view.childCount) stripRipple(view.getChildAt(i))
         }
     }
 
