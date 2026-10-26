@@ -10,6 +10,8 @@ import android.util.LruCache
 import android.util.TypedValue
 import android.view.Menu
 import android.view.MenuItem
+import android.view.animation.Animation
+import android.view.animation.AnimationUtils
 import android.view.animation.PathInterpolator
 import android.view.View
 import android.widget.ImageView
@@ -68,6 +70,9 @@ private const val SEE_ALL_ALPHA = 0x99 // ~60%
 private const val TOOLBAR_ICON_ALPHA = 0xCC // ~80% - شفافية أقل من قبل للسهم ونقط المنيو
 private const val BIOGRAPHY_GLASS_CORNER_DP = 12f
 private const val SONGS_PREVIEW_COUNT = 6
+// أول كام أغنية بتتبند فورًا مع بداية الدخول، والباقي بعد ما الأنيميشن يخلص (زي VISIBLE_SONGS_IMMEDIATE في صفحة الألبوم)
+private const val SONGS_IMMEDIATE = 5
+private const val ENTER_SETTLE_FALLBACK_MS = 700L
 
 // أقصى مدة نستنى فيها الصورة + اللون + المحتوى قبل ما الأنيميشن يبدأ.
 // الصفحة بتتبني كلها وهي متأجلة (مش ظاهرة)، وبعدين الحركة تبدأ على صفحة كاملة،
@@ -141,6 +146,20 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
     // وقوائم الألبومات). كل ده بيتبني والصفحة لسه متأجلة، يعني قبل أول فريم من الحركة.
     private var headerReady: Boolean = false
     private var contentReady: Boolean = false
+
+    // true لما أنيميشن الدخول يخلص. الشغل التقيل (باقي صفوف الأغاني) بيتأجل لحد كده - نفس باترن صفحة الألبوم.
+    private var enterSettled: Boolean = false
+    private val settledCallbacks = mutableListOf<() -> Unit>()
+
+    // بيزيد مع كل applySongsPreview، فالتحميل المتأخر لباقي الصفوف مبيكتبش فوق قايمة أحدث (ترتيب اتغير مثلًا).
+    private var songsPreviewVersion: Int = 0
+
+    // آخر بيانات اتحسبت للصفحة دي، محفوظة على الـ Fragment instance نفسه (مش الـ view). لما الـ view بتتبني
+    // من جديد وإحنا راجعين من ألبوم/صفحة تانية، بنعرض البيانات دي فورًا كاملة من غير تحميل مقسّم -
+    // من غير الكاش ده كان بيظهر أول كام أغنية وبعدين الباقي (نفس مشكلة صفحة الألبوم عند الرجوع).
+    private var instanceDisplayData: ArtistDisplayData? = null
+    private var instanceDataKey: String? = null
+    private var instanceDataSignature: Int = 0
     private var backgroundAnimator: ValueAnimator? = null
     // موضع أسفل اسم الفنان بالنسبة لأعلى الـ NestedScrollView كله (مش بالنسبة
     // لأبوه المباشر بس)، محسوب مرة واحدة ومتخزن هنا. ده اللي كان ناقص: كنا
@@ -208,6 +227,8 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
         postponeEnterTransition()
         headerReady = false
         contentReady = false
+        enterSettled = false
+        settledCallbacks.clear()
 
         _binding = FragmentArtistDetailsBinding.bind(view)
         // أرضية Square المشتركة ورا كل الصفحات (شوف PageGround.kt)
@@ -459,6 +480,50 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
                 applyStatusBarAppearance(ColorUtils.calculateLuminance(dominantBackgroundColor) > 0.45f)
             }
         }
+        // شبكة أمان: لو أنيميشن الدخول مبلّغش إنه خلص، نعتبر الصفحة استقرت.
+        view?.postDelayed({ markEnterSettled() }, ENTER_SETTLE_FALLBACK_MS)
+    }
+
+    // ينفّذ الشغل التقيل بعد ما أنيميشن الدخول يخلص (أو فورًا لو خلص بالفعل).
+    private fun runWhenEnterSettled(block: () -> Unit) {
+        if (_binding == null) return
+        if (enterSettled) block() else settledCallbacks.add(block)
+    }
+
+    // بينفّذ الشغل المؤجل، كل حاجة على فريم لوحدها عشان مفيش فريم واحد تقيل يوقف الحركة.
+    private fun markEnterSettled() {
+        if (enterSettled || _binding == null) return
+        enterSettled = true
+        val pending = settledCallbacks.toList()
+        settledCallbacks.clear()
+        fun runNext(index: Int) {
+            val root = view ?: return
+            if (_binding == null || index >= pending.size) return
+            pending[index]()
+            root.postOnAnimation { runNext(index + 1) }
+        }
+        view?.postOnAnimation { runNext(0) }
+    }
+
+    // بنمسك لحظة انتهاء أنيميشن الدخول (اللي جاي من NavOptions) من غير ما نغيّره - نفس اللي
+    // الـ framework كان هيعمله بالظبط، بس بنربط عليه listener.
+    override fun onCreateAnimation(transit: Int, enter: Boolean, nextAnim: Int): Animation? {
+        val anim = super.onCreateAnimation(transit, enter, nextAnim)
+            ?: if (enter && nextAnim != 0 &&
+                runCatching { resources.getResourceTypeName(nextAnim) == "anim" }.getOrDefault(false)
+            ) {
+                runCatching { AnimationUtils.loadAnimation(requireContext(), nextAnim) }.getOrNull()
+            } else null
+        if (enter && anim != null) {
+            anim.setAnimationListener(object : Animation.AnimationListener {
+                override fun onAnimationStart(animation: Animation?) {}
+                override fun onAnimationRepeat(animation: Animation?) {}
+                override fun onAnimationEnd(animation: Animation?) {
+                    markEnterSettled()
+                }
+            })
+        }
+        return anim
     }
 
     // الهيدر (الصورة + اللون) جاهز.
@@ -626,8 +691,13 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
         val dataSignature = artist.contentSignature()
         val cachedData = lastVisitedDisplayData.takeIf {
             lastVisitedDataKey == dataKey && lastVisitedDataSignature == dataSignature
+        } ?: instanceDisplayData.takeIf {
+            instanceDataKey == dataKey && instanceDataSignature == dataSignature
         }
         if (cachedData != null) {
+            instanceDisplayData = cachedData
+            instanceDataKey = dataKey
+            instanceDataSignature = dataSignature
             bindContentInstant(cachedData)
             return
         }
@@ -642,6 +712,9 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
                 lastVisitedDataKey = dataKey
                 lastVisitedDataSignature = dataSignature
                 lastVisitedDisplayData = data
+                instanceDisplayData = data
+                instanceDataKey = dataKey
+                instanceDataSignature = dataSignature
                 bindContentStaggered(data)
             }
         }
@@ -678,21 +751,22 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
         markContentReady()
     }
 
-    // بايندنج مقسّم على فريمات: الأغاني المعروضة (لحد 6) خفيفة فبتتبند فورًا
-    // زي الأول، لكن الـ 3 RecyclerViews الأفقية - اللي أصلاً تحت الشاشة ومش
-    // ظاهرة إلا بعد سكرول - كل واحدة بتتبند على فريم لوحدها (root.post) عشان
-    // محدش منهم ياخد فريم واحد تقيل يوقف حركة الترانزيشن. المستخدم مش هيحس
-    // بفرق لأن العناصر دي أصلاً مش في مجال رؤيته وقت فتح الصفحة.
+    // بايندنج مقسّم: أول 5 أغاني بس بتتبند مع الدخول، وكل الباقي (الأغنية السادسة والـ 3
+    // RecyclerViews الأفقية) بيتأجل لحد ما أنيميشن الدخول يخلص، وكل قسم على فريم لوحده
+    // عشان محدش ياخد فريم تقيل. العناصر دي أصلاً تحت الشاشة وقت فتح الصفحة.
     private fun bindContentStaggered(data: ArtistDisplayData) {
         if (_binding == null) return
         val content = binding.fragmentArtistContent
 
-        applySongsPreview(data.songs)
+        applySongsPreview(data.songs, staggered = true)
 
-        // كل قسم على فريم لوحده، والأنيميشن لسه متأجل فمفيش حاجة بتتحرك وقتها.
+        // كل قسم (ألبومات، سنجلز، يظهر في) بيتسجل ليتنفذ بعد ما أنيميشن الدخول يخلص، وكل واحد على
+        // فريم لوحده (markEnterSettled). الأغاني (أول 5) هي الوحيدة اللي بتظهر مع الدخول.
+        // الترتيب مهم: باقي الأغاني اتسجل الأول (في applySongsPreview)، وitemAnimator بتاع قايمة
+        // الأغاني بيتفعّل في آخر خطوة، فالصف السادس مبيتحركش وهو بيظهر.
         val steps = listOf<() -> Unit>(
             {
-                if (_binding != null) {
+                runWhenEnterSettled {
                     val albumText = resources.getQuantityString(
                         R.plurals.albums, data.albums.size, data.albums.size
                     )
@@ -704,7 +778,7 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
                 }
             },
             {
-                if (_binding != null) {
+                runWhenEnterSettled {
                     singlesAdapter.swapDataSet(data.singles)
                     content.singlesTitle.isVisible = data.singles.isNotEmpty()
                     content.singlesRecyclerView.isVisible = data.singles.isNotEmpty()
@@ -712,7 +786,7 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
                 }
             },
             {
-                if (_binding != null) {
+                runWhenEnterSettled {
                     appearsOnAdapter.swapDataSet(data.appearsOn)
                     content.appearsOnTitle.isVisible = data.appearsOn.isNotEmpty()
                     content.appearsOnRecyclerView.isVisible = data.appearsOn.isNotEmpty()
@@ -725,14 +799,23 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
         runStaggered(steps)
     }
 
-    private fun applySongsPreview(sortedSongs: List<Song>) {
+    // staggered = true بس في أول فتح لفنان (بيانات لسه متحسبة): أول SONGS_IMMEDIATE أغاني فورًا
+    // والباقي بعد ما الأنيميشن يخلص. أي مسار تاني (رجوع، كاش، تغيير الترتيب) بيعرض الكل فورًا
+    // عشان الصفحة ترجع زي ما كانت من غير "أول كام أغنية وبعدين الباقي".
+    private fun applySongsPreview(sortedSongs: List<Song>, staggered: Boolean = false) {
         val hasMoreSongs = sortedSongs.size > SONGS_PREVIEW_COUNT
         val previewList = if (hasMoreSongs) sortedSongs.take(SONGS_PREVIEW_COUNT) else sortedSongs
         binding.fragmentArtistContent.seeAllSongs.isVisible = hasMoreSongs
 
-        // كل صفوف المعاينة (لحد 6) بتتبند فورًا والصفحة لسه متأجلة، فبتبقى كلها
-        // موجودة من أول فريم في الحركة. كنا بنأجل الصف 5 و6 وكانوا بيظهروا متأخر.
-        songAdapter.swapDataSet(previewList)
+        val version = ++songsPreviewVersion
+        if (!staggered || enterSettled || previewList.size <= SONGS_IMMEDIATE) {
+            songAdapter.swapDataSet(previewList)
+            return
+        }
+        songAdapter.swapDataSet(previewList.subList(0, SONGS_IMMEDIATE))
+        runWhenEnterSettled {
+            if (version == songsPreviewVersion) songAdapter.swapDataSet(previewList)
+        }
     }
 
     private fun loadArtistImage(artist: Artist) {
@@ -1098,6 +1181,11 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
             withContext(Dispatchers.Main) {
                 if (_binding != null) {
                     applySongsPreview(sortedSongsList)
+                    // نحدّث الكاشات بالترتيب الجديد عشان الرجوع للصفحة مايرجّعش الترتيب القديم
+                    instanceDisplayData = instanceDisplayData?.copy(songs = sortedSongsList)
+                    if (lastVisitedDataKey == detailsViewModel.cacheKey) {
+                        lastVisitedDisplayData = lastVisitedDisplayData?.copy(songs = sortedSongsList)
+                    }
                 }
             }
         }
@@ -1175,6 +1263,8 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
         transitionStarted = false
         headerReady = false
         contentReady = false
+        enterSettled = false
+        settledCallbacks.clear()
         backgroundAnimator?.cancel()
         backgroundAnimator = null
         _binding?.image?.animate()?.cancel()
