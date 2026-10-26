@@ -253,6 +253,11 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
     // مكان السكرول اللي كنت واقف عليه قبل ما تفتح ألبوم تاني (بيتحفظ في onDestroyView)
     private var savedScrollY = 0
 
+    // true بعد أول مرة الأغاني اتعرضت على الـ Fragment instance ده. الـ instance بيفضل عايش في الـ back stack
+    // حتى لو الـ view اتدمرت، فلما نرجع من ألبوم/صفحة تانية بنعرض كل الأغاني فورًا بدل
+    // "أول 4 وبعدين الباقي". (التقسيم ده مفيد بس وقت أنيميشن أول فتح.)
+    private var songsBoundOnce = false
+
     // true = الصفحة اتفتحت بأول فريم محفوظ من الفيديو (من غير تحميل الغلاف الأصلي خالص)
     private var posterShown = false
 
@@ -1583,10 +1588,12 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
     // القايمة جوه NestedScrollView فبتتقاس كلها مرة واحدة، فكل صف زيادة بيتقل على الأنيميشن.
     private fun bindSongsStaggered(songs: List<Song>) {
         val immediate = minOf(VISIBLE_SONGS_IMMEDIATE, songs.size)
-        if (enterSettled || songs.size <= immediate) {
+        if (songsBoundOnce || enterSettled || songs.size <= immediate) {
+            songsBoundOnce = true
             simpleSongAdapter.swapDataSet(songs)
             return
         }
+        songsBoundOnce = true
         simpleSongAdapter.swapDataSet(songs.subList(0, immediate))
         runWhenEnterSettled {
             if (::simpleSongAdapter.isInitialized) simpleSongAdapter.swapDataSet(songs)
@@ -2083,16 +2090,4 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
         customOverflowIcon = null
         transitionStarted = false
         posterShown = false
-        currentFrameRatio = null
-        albumTitleBottomInScrollContent = -1
-        releaseStatusBar()
-        navEntry = null
-        lastStatusBarLight = null
-        _binding = null
-    }
-
-    override fun onDestroy() {
-        super.onDestroy()
-        serviceActivity?.removeMusicServiceEventListener(detailsViewModel)
-    }
-}
+        currentFrame
