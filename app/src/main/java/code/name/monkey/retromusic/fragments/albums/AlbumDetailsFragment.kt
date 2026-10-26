@@ -2090,4 +2090,16 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
         customOverflowIcon = null
         transitionStarted = false
         posterShown = false
-        currentFrame
+        currentFrameRatio = null
+        albumTitleBottomInScrollContent = -1
+        releaseStatusBar()
+        navEntry = null
+        lastStatusBarLight = null
+        _binding = null
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        serviceActivity?.removeMusicServiceEventListener(detailsViewModel)
+    }
+}
