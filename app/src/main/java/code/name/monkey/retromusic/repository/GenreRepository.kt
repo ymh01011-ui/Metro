@@ -41,43 +41,120 @@ class RealGenreRepository(
     private val songRepository: RealSongRepository
 ) : GenreRepository {
 
+    // Genre id -> MediaStore genre ids that hold its songs (rebuilt on every genres() call)
+    @Volatile
+    private var sourceIdsByGenreId: Map<Long, List<Long>> = emptyMap()
+
+    // Splits "Rock, Metal" / "Pop; Dance" / "R&B/Soul" into separate genres ("&" is NOT a separator)
+    private val genreSeparator = Regex("\\s*[,;/]\\s*")
+
     override fun genres(query: String): List<Genre> {
-        return getGenresFromCursor(makeGenreCursor(query))
+        return mergedGenres().filter { it.name.equals(query.trim(), ignoreCase = true) }
     }
 
     override fun genres(): List<Genre> {
-        return getGenresFromCursor(makeGenreCursor())
+        return mergedGenres()
     }
 
     override fun songs(genreId: Long): List<Song> {
         // The genres table only stores songs that have a genre specified,
         // so we need to get songs without a genre a different way.
-        return if (genreId == -1L) {
-            getSongsWithNoGenre()
-        } else songRepository.songs(makeGenreSongCursor(genreId))
+        if (genreId == -1L) return getSongsWithNoGenre()
+        return sourceIdsFor(genreId)
+            .flatMap { songRepository.songs(makeGenreSongCursor(it)) }
+            .distinctBy { it.id }
     }
 
     override fun song(genreId: Long): Song {
-        return songRepository.song(makeGenreSongCursor(genreId))
+        val sourceIds = sourceIdsFor(genreId)
+        return songRepository.song(makeGenreSongCursor(sourceIds.firstOrNull() ?: genreId))
     }
 
-    private fun getSongCount(genreId: Long): Int {
-        contentResolver.query(
-            Genres.Members.getContentUri("external", genreId),
-            null,
-            null,
-            null,
-            null
-        ).use {
-            return it?.count ?: 0
+    private fun sourceIdsFor(genreId: Long): List<Long> {
+        sourceIdsByGenreId[genreId]?.let { return it }
+        // Registry is empty/stale (e.g. after process restore): rebuild it once
+        mergedGenres()
+        return sourceIdsByGenreId[genreId] ?: if (genreId > 0) listOf(genreId) else emptyList()
+    }
+
+    private class GenreGroup(val name: String) {
+        val sourceIds = linkedSetOf<Long>()
+        val songIds = linkedSetOf<Long>()
+
+        // false when one of the source genres also contains other genres (e.g. "Rock, Metal")
+        var exclusive = true
+    }
+
+    private fun mergedGenres(): List<Genre> {
+        val sources = arrayListOf<Pair<Long, String>>()
+        makeGenreCursor()?.use { cursor ->
+            if (cursor.moveToFirst()) {
+                do {
+                    sources.add(
+                        cursor.getLong(Genres._ID) to (cursor.getStringOrNull(Genres.NAME) ?: "")
+                    )
+                } while (cursor.moveToNext())
+            }
+        }
+
+        val groups = linkedMapOf<String, GenreGroup>()
+        for ((id, rawName) in sources) {
+            val songIds = getSongIds(id)
+            if (songIds.isEmpty()) continue
+            val parts = rawName.split(genreSeparator).map { it.trim() }.filter { it.isNotEmpty() }
+            val names = if (parts.isEmpty()) listOf(rawName) else parts
+            for (part in names) {
+                val group = groups.getOrPut(part.lowercase()) { GenreGroup(part) }
+                group.sourceIds.add(id)
+                group.songIds.addAll(songIds)
+                if (names.size > 1) group.exclusive = false
+            }
+        }
+
+        val usedIds = hashSetOf<Long>()
+        val registry = hashMapOf<Long, List<Long>>()
+        val result = arrayListOf<Genre>()
+        for ((key, group) in groups) {
+            // Keep the original MediaStore id when the genre maps 1:1 to it, otherwise a synthetic negative id
+            var id = if (group.sourceIds.size == 1 && group.exclusive) {
+                group.sourceIds.first()
+            } else {
+                -2L - (key.hashCode().toLong() and 0x7fffffffL)
+            }
+            while (!usedIds.add(id)) id--
+            registry[id] = group.sourceIds.toList()
+            result.add(Genre(id, group.name, group.songIds.size))
+        }
+        sourceIdsByGenreId = registry
+
+        val comparator = compareBy<Genre, String>(String.CASE_INSENSITIVE_ORDER) { it.name }
+        return if (PreferenceUtil.genreSortOrder.contains("DESC", ignoreCase = true)) {
+            result.sortedWith(comparator.reversed())
+        } else {
+            result.sortedWith(comparator)
         }
     }
 
-    private fun getGenreFromCursor(cursor: Cursor): Genre {
-        val id = cursor.getLong(Genres._ID)
-        val name = cursor.getStringOrNull(Genres.NAME)
-        val songCount = getSongCount(id)
-        return Genre(id, name ?: "", songCount)
+    private fun getSongIds(genreId: Long): List<Long> {
+        val ids = arrayListOf<Long>()
+        try {
+            contentResolver.query(
+                Genres.Members.getContentUri("external", genreId),
+                arrayOf(BaseColumns._ID),
+                IS_MUSIC,
+                null,
+                null
+            )?.use { cursor ->
+                if (cursor.moveToFirst()) {
+                    do {
+                        ids.add(cursor.getLong(BaseColumns._ID))
+                    } while (cursor.moveToNext())
+                }
+            }
+        } catch (e: SecurityException) {
+            // no permission -> no songs
+        }
+        return ids
     }
 
     private fun getSongsWithNoGenre(): List<Song> {
@@ -100,21 +177,6 @@ class RealGenreRepository(
         }
     }
 
-    private fun getGenresFromCursor(cursor: Cursor?): ArrayList<Genre> {
-        val genres = arrayListOf<Genre>()
-        cursor?.use {
-            if (cursor.moveToFirst()) {
-                do {
-                    val genre = getGenreFromCursor(cursor)
-                    if (genre.songCount > 0) {
-                        genres.add(genre)
-                    }
-                } while (cursor.moveToNext())
-            }
-        }
-        return genres
-    }
-
     private fun makeGenreCursor(): Cursor? {
         val projection = arrayOf(Genres._ID, Genres.NAME)
         return try {
@@ -123,21 +185,6 @@ class RealGenreRepository(
                 projection,
                 null,
                 null,
-                PreferenceUtil.genreSortOrder
-            )
-        } catch (e: SecurityException) {
-            return null
-        }
-    }
-
-    private fun makeGenreCursor(query: String): Cursor? {
-        val projection = arrayOf(Genres._ID, Genres.NAME)
-        return try {
-            contentResolver.query(
-                Genres.EXTERNAL_CONTENT_URI,
-                projection,
-                Genres.NAME + " = ?",
-                arrayOf(query),
                 PreferenceUtil.genreSortOrder
             )
         } catch (e: SecurityException) {
