@@ -27,6 +27,7 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.isVisible
 import androidx.core.view.updatePadding
+import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.lifecycleScope
 import androidx.navigation.NavBackStackEntry
 import androidx.navigation.fragment.findNavController
@@ -303,7 +304,7 @@ class GenreDetailsFragment : AbsMainActivityFragment(R.layout.fragment_playlist_
     // ---------- القايمة ----------
 
     private fun setUpRecyclerView() {
-        songAdapter = SongAdapter(requireActivity(), ArrayList(), R.layout.item_queue)
+        songAdapter = GenreSongAdapter(requireActivity(), ArrayList(), R.layout.item_queue)
 
         val bottomPadding =
             resources.getDimensionPixelSize(R.dimen.mini_player_height) +
@@ -732,5 +733,25 @@ class GenreDetailsFragment : AbsMainActivityFragment(R.layout.fragment_playlist_
         customOverflowIcon = null
         navEntry = null
         _binding = null
+    }
+}
+
+// نفس صفوف الـ Playlist (item_queue). مقبض السحب هناك ظاهر وبياخد مسافة في أول الصف،
+// وهنا مفيش ترتيب فبنخليه INVISIBLE: المسافة زي الـ Playlist بالظبط من غير أيقونة مش شغالة.
+// لو عايز الأيقونة ظاهرة، غيّر INVISIBLE لـ VISIBLE.
+private class GenreSongAdapter(
+    activity: FragmentActivity,
+    dataSet: MutableList<Song>,
+    itemLayoutRes: Int
+) : SongAdapter(activity, dataSet, itemLayoutRes) {
+
+    override fun createViewHolder(view: View): SongAdapter.ViewHolder {
+        return ViewHolder(view)
+    }
+
+    inner class ViewHolder(itemView: View) : SongAdapter.ViewHolder(itemView) {
+        init {
+            dragView?.visibility = View.INVISIBLE
+        }
     }
 }
