@@ -18,7 +18,6 @@ import android.annotation.SuppressLint
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import android.view.ViewOutlineProvider
 import androidx.fragment.app.FragmentActivity
 import androidx.recyclerview.widget.RecyclerView
 import code.name.monkey.retromusic.R
@@ -79,8 +78,6 @@ class GenreAdapter(
                     setColors(holder, colors)
                 }
             })
-        // Just for a bit of shadow around image
-        holder.binding.image.outlineProvider = ViewOutlineProvider.BOUNDS
     }
 
     private fun setColors(holder: ViewHolder, color: MediaNotificationProcessor) {
@@ -107,6 +104,10 @@ class GenreAdapter(
 
         init {
             itemView.setOnClickListener(this)
+            binding.image.shapeAppearanceModel = binding.image.shapeAppearanceModel
+                .toBuilder()
+                .setAllCornerSizes(8f * activity.resources.displayMetrics.density)
+                .build()
         }
     }
 }
