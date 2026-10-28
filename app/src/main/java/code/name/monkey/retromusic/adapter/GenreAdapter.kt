@@ -28,7 +28,9 @@ import code.name.monkey.retromusic.glide.RetroGlideExtension.asBitmapPalette
 import code.name.monkey.retromusic.glide.RetroGlideExtension.songCoverOptions
 import code.name.monkey.retromusic.glide.RetroMusicColoredTarget
 import code.name.monkey.retromusic.interfaces.IGenreClickListener
+import android.util.LruCache
 import code.name.monkey.retromusic.model.Genre
+import code.name.monkey.retromusic.model.Song
 import code.name.monkey.retromusic.util.MusicUtil
 import code.name.monkey.retromusic.util.color.MediaNotificationProcessor
 import com.bumptech.glide.Glide
@@ -69,7 +71,11 @@ class GenreAdapter(
     }
 
     private fun loadGenreImage(genre: Genre, holder: GenreAdapter.ViewHolder) {
-        val genreSong = MusicUtil.songByGenre(genre.id)
+        // كان بيعمل query على الـ main thread لكل كرت مع كل bind (وأنت راجع من التفاصيل كمان).
+        // دلوقتي بيتحسب مرة وبيتخزّن، ومفتاحه بيتغير لو عدد أغاني الـ genre اتغير.
+        val cacheKey = 31 * genre.id.hashCode() + genre.songCount
+        val genreSong: Song = coverSongCache.get(cacheKey)
+            ?: MusicUtil.songByGenre(genre.id).also { coverSongCache.put(cacheKey, it) }
         Glide.with(activity)
             .asBitmapPalette()
             .songCoverOptions(genreSong)
@@ -100,6 +106,10 @@ class GenreAdapter(
     fun swapDataSet(list: List<Genre>) {
         dataSet = list
         notifyDataSetChanged()
+    }
+
+    companion object {
+        private val coverSongCache = LruCache<Int, Song>(512)
     }
 
     inner class ViewHolder(val binding: ItemGenreBinding) : RecyclerView.ViewHolder(binding.root),
