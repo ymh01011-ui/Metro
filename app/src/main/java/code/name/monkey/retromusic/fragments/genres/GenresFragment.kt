@@ -69,10 +69,9 @@ GenresFragment : AbsRecyclerViewFragment<GenreAdapter, LinearLayoutManager>(),
         val pad = (8 * resources.displayMetrics.density).toInt()
         recyclerView.setPadding(pad, recyclerView.paddingTop, pad, recyclerView.paddingBottom)
         libraryViewModel.getGenre().observe(viewLifecycleOwner) {
-            if (it.isNotEmpty())
-                adapter?.swapDataSet(it)
-            else
-                adapter?.swapDataSet(listOf())
+            // نفس القايمة اللي الـ adapter عنده (رجوع من التفاصيل): منعيدش ربط كل الكروت
+            val list = if (it.isNotEmpty()) it else listOf()
+            if (adapter?.dataSet !== list) adapter?.swapDataSet(list)
         }
     }
 
