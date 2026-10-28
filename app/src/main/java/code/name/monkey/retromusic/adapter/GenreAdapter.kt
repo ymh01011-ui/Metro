@@ -18,6 +18,7 @@ import android.annotation.SuppressLint
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import androidx.core.graphics.ColorUtils
 import androidx.fragment.app.FragmentActivity
 import androidx.recyclerview.widget.RecyclerView
 import code.name.monkey.retromusic.R
@@ -81,9 +82,14 @@ class GenreAdapter(
     }
 
     private fun setColors(holder: ViewHolder, color: MediaNotificationProcessor) {
-        holder.binding.imageContainerCard.setCardBackgroundColor(color.backgroundColor)
-        holder.binding.title.setTextColor(color.primaryTextColor)
-        holder.binding.text.setTextColor(color.secondaryTextColor)
+        // Oto-style: dark muted tint of the cover color, light text on top
+        val hsl = FloatArray(3)
+        ColorUtils.colorToHSL(color.backgroundColor, hsl)
+        hsl[1] = (hsl[1] * 0.4f).coerceAtMost(0.35f)
+        hsl[2] = 0.2f
+        holder.binding.imageContainerCard.setCardBackgroundColor(ColorUtils.HSLToColor(hsl))
+        holder.binding.title.setTextColor(0xFFE6E1E5.toInt())
+        holder.binding.text.setTextColor(0xB3E6E1E5.toInt())
     }
 
     override fun getItemCount(): Int {
