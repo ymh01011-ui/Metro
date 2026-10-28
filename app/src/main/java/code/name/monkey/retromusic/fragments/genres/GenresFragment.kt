@@ -19,7 +19,10 @@ import android.view.Menu
 import android.view.MenuInflater
 import android.view.MenuItem
 import android.view.View
+import android.view.animation.Animation
+import android.view.animation.AnimationUtils
 import androidx.core.os.bundleOf
+import androidx.navigation.NavOptions
 import androidx.navigation.fragment.findNavController
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -31,13 +34,38 @@ import code.name.monkey.retromusic.fragments.base.AbsRecyclerViewFragment
 import code.name.monkey.retromusic.interfaces.IGenreClickListener
 import code.name.monkey.retromusic.model.Genre
 import code.name.monkey.retromusic.util.RetroUtil
-import com.google.android.material.transition.MaterialSharedAxis
 
 class
 GenresFragment : AbsRecyclerViewFragment<GenreAdapter, LinearLayoutManager>(),
     IGenreClickListener {
+
+    // true من ساعة ما بنفتح تفاصيل genre لحد ما نرجع لهنا: بنفرّق بيه بين "رجوع من التفاصيل"
+    // (لازم انيميشن الرجوع) وبين فتح الصفحة عادي (زي صفحة الـ Playlists بالظبط).
+    private var openedGenreDetails = false
+
+    // الرجوع من التفاصيل مبيعملش reload للأنواع (كان بيبني القايمة من الأول كل مرة)
+    private var returningFromDetails = false
+
+    override fun onCreateAnimation(transit: Int, enter: Boolean, nextAnim: Int): Animation? {
+        if (openedGenreDetails) {
+            return if (enter) {
+                // رجعنا من التفاصيل
+                openedGenreDetails = false
+                AnimationUtils.loadAnimation(requireContext(), R.anim.nav_slide_in_left)
+            } else {
+                // بنفتح التفاصيل: الصفحة دي بتطلع لليسار
+                AnimationUtils.loadAnimation(requireContext(), R.anim.nav_slide_out_left)
+            }
+        }
+        return super.onCreateAnimation(transit, enter, nextAnim)
+    }
+
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
+        // الـ base fragment بيحط transition بعد ما الـ view يتبني، وده بيتنفذ بدل أنيميشن الرجوع
+        if (openedGenreDetails) {
+            reenterTransition = null
+        }
         val pad = (8 * resources.displayMetrics.density).toInt()
         recyclerView.setPadding(pad, recyclerView.paddingTop, pad, recyclerView.paddingBottom)
         libraryViewModel.getGenre().observe(viewLifecycleOwner) {
@@ -71,7 +99,11 @@ GenresFragment : AbsRecyclerViewFragment<GenreAdapter, LinearLayoutManager>(),
 
     override fun onResume() {
         super.onResume()
-        libraryViewModel.forceReload(ReloadType.Genres)
+        if (returningFromDetails) {
+            returningFromDetails = false
+        } else {
+            libraryViewModel.forceReload(ReloadType.Genres)
+        }
     }
 
 
@@ -96,11 +128,19 @@ GenresFragment : AbsRecyclerViewFragment<GenreAdapter, LinearLayoutManager>(),
     }
 
     override fun onClickGenre(genre: Genre, view: View) {
-        exitTransition = MaterialSharedAxis(MaterialSharedAxis.Z, true).addTarget(requireView())
-        reenterTransition = MaterialSharedAxis(MaterialSharedAxis.Z, false)
+        // نفس أنيميشن صفحة الـ Playlist (nav_slide_*)
+        val navOptions = NavOptions.Builder()
+            .setEnterAnim(R.anim.nav_slide_in_right)
+            .setExitAnim(R.anim.nav_slide_out_left)
+            .setPopEnterAnim(R.anim.nav_slide_in_left)
+            .setPopExitAnim(R.anim.nav_slide_out_right)
+            .build()
+        openedGenreDetails = true
+        returningFromDetails = true
         findNavController().navigate(
             R.id.genreDetailsFragment,
-            bundleOf(EXTRA_GENRE to genre)
+            bundleOf(EXTRA_GENRE to genre),
+            navOptions
         )
     }
 }
