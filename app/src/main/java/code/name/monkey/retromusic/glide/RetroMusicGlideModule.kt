@@ -22,6 +22,8 @@ import code.name.monkey.retromusic.glide.audiocover.AudioFileCover
 import code.name.monkey.retromusic.glide.audiocover.AudioFileCoverLoader
 import code.name.monkey.retromusic.glide.palette.BitmapPaletteTranscoder
 import code.name.monkey.retromusic.glide.palette.BitmapPaletteWrapper
+import code.name.monkey.retromusic.glide.playlistPreview.GenrePreview
+import code.name.monkey.retromusic.glide.playlistPreview.GenrePreviewLoader
 import code.name.monkey.retromusic.glide.playlistPreview.PlaylistPreview
 import code.name.monkey.retromusic.glide.playlistPreview.PlaylistPreviewLoader
 import com.bumptech.glide.Glide
@@ -37,6 +39,11 @@ class RetroMusicGlideModule : AppGlideModule() {
             PlaylistPreview::class.java,
             Bitmap::class.java,
             PlaylistPreviewLoader.Factory(context)
+        )
+        registry.prepend(
+            GenrePreview::class.java,
+            Bitmap::class.java,
+            GenrePreviewLoader.Factory(context)
         )
         registry.prepend(
             AudioFileCover::class.java,
