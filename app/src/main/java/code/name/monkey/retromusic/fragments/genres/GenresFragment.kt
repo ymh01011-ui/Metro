@@ -38,6 +38,8 @@ GenresFragment : AbsRecyclerViewFragment<GenreAdapter, LinearLayoutManager>(),
     IGenreClickListener {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
+        val pad = (8 * resources.displayMetrics.density).toInt()
+        recyclerView.setPadding(pad, recyclerView.paddingTop, pad, recyclerView.paddingBottom)
         libraryViewModel.getGenre().observe(viewLifecycleOwner) {
             if (it.isNotEmpty())
                 adapter?.swapDataSet(it)
