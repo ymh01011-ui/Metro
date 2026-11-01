@@ -629,9 +629,16 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
                 val statusBarInsets = insets.getInsets(WindowInsetsCompat.Type.statusBars())
                 v.updatePadding(top = statusBarInsets.top)
                 
-                binding.headerContainer.updatePadding(
-                    top = statusBarInsets.top + actionBarSizePx() + (24 * resources.displayMetrics.density).toInt()
-                )
+                if (resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE) {
+                    val gap = (8 * resources.displayMetrics.density).toInt()
+                    binding.headerContainer.updatePadding(top = statusBarInsets.top + gap)
+                    binding.videoHeaderContainer?.updatePadding(top = statusBarInsets.top + gap)
+                    binding.content.updatePadding(top = statusBarInsets.top + actionBarSizePx())
+                } else {
+                    binding.headerContainer.updatePadding(
+                        top = statusBarInsets.top + actionBarSizePx() + (24 * resources.displayMetrics.density).toInt()
+                    )
+                }
                 insets
             }
         }
@@ -647,7 +654,8 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
             // الفيديو مش ظاهر لما نسكرول بعيد عنه، فنوقفه عشان نوفر المعالجة والبطارية
             if (isVideoAlbum) {
                 val frameHeight = binding.videoFrame?.height ?: 0
-                val visibleNow = frameHeight <= 0 || scrollY < frameHeight
+                val visibleNow = frameHeight <= 0 || scrollY < frameHeight ||
+                    resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
                 if (visibleNow != videoVisibleOnScreen) {
                     videoVisibleOnScreen = visibleNow
                     exoPlayer?.playWhenReady = visibleNow && isResumed
@@ -894,7 +902,7 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
         binding.videoImage?.setImageBitmap(poster)
         binding.videoImage?.transitionName = "${getString(R.string.transition_album_art)}_$albumId"
         binding.headerContainer.visibility = View.GONE
-        binding.fragmentAlbumContent.originalButtonsContainer?.visibility = View.GONE
+        if (binding.videoButtonsContainer != null) binding.fragmentAlbumContent.originalButtonsContainer?.visibility = View.GONE
         binding.videoHeaderContainer?.visibility = View.VISIBLE
 
         hasExtractedColors = true
@@ -1538,7 +1546,7 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
         // تبديل الواجهة حسب وجود الفيديو
         if (isVideoAlbum && binding.videoHeaderContainer != null) {
             binding.headerContainer.visibility = View.GONE
-            binding.fragmentAlbumContent.originalButtonsContainer?.visibility = View.GONE
+            if (binding.videoButtonsContainer != null) binding.fragmentAlbumContent.originalButtonsContainer?.visibility = View.GONE
             binding.videoHeaderContainer?.visibility = View.VISIBLE
 
             binding.videoAlbumTitle?.text = album.title
@@ -1548,11 +1556,11 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
             binding.videoHeaderContainer?.visibility = View.GONE
             binding.headerContainer.visibility = View.VISIBLE
             binding.fragmentAlbumContent.originalButtonsContainer?.visibility = View.VISIBLE
-
-            binding.albumTitle.text = album.title
-            binding.albumText.text = artistString
-            binding.albumMetaText.text = metaTextString
         }
+
+        binding.albumTitle.text = album.title
+        binding.albumText.text = artistString
+        binding.albumMetaText.text = metaTextString
 
         binding.fragmentAlbumContent.songTitle.text = songCountText
         binding.image.transitionName = "${getString(R.string.transition_album_art)}_${album.id}"
