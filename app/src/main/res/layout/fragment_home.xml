@@ -22,20 +22,25 @@
         style="?appBarLayoutStyle"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:fitsSystemWindows="true">
+        android:background="@null"
+        android:fitsSystemWindows="true"
+        app:elevation="0dp"
+        app:liftOnScroll="false"
+        app:statusBarForeground="@null">
 
         <com.google.android.material.card.MaterialCardView
             android:id="@+id/searchBar"
             android:layout_width="match_parent"
-            android:layout_height="56dp"
-            android:layout_marginStart="16dp"
+            android:layout_height="48dp"
+            android:layout_marginStart="19dp"
             android:layout_marginTop="8dp"
-            android:layout_marginEnd="16dp"
+            android:layout_marginEnd="19dp"
             android:layout_marginBottom="8dp"
             android:clickable="true"
             android:focusable="true"
-            app:cardCornerRadius="28dp"
+            app:cardCornerRadius="24dp"
             app:cardElevation="0dp"
+            app:layout_scrollFlags="scroll"
             app:strokeWidth="0dp">
 
             <LinearLayout
@@ -58,14 +63,15 @@
                     android:id="@+id/searchText"
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
-                    android:layout_marginStart="8dp"
+                    android:layout_marginStart="4dp"
                     android:layout_marginEnd="16dp"
                     android:layout_weight="1"
                     android:ellipsize="end"
+                    android:letterSpacing="0.015"
                     android:maxLines="1"
                     android:text="Search your music"
                     android:textColor="?android:attr/textColorSecondary"
-                    android:textSize="16sp" />
+                    android:textSize="17sp" />
             </LinearLayout>
         </com.google.android.material.card.MaterialCardView>
     </com.google.android.material.appbar.AppBarLayout>
