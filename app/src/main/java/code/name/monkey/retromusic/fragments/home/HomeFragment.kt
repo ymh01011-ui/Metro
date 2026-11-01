@@ -18,8 +18,6 @@ import android.os.Bundle
 import android.view.*
 import androidx.coordinatorlayout.widget.CoordinatorLayout
 import androidx.core.os.bundleOf
-import androidx.core.view.ViewCompat
-import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.doOnLayout
 import androidx.core.view.doOnPreDraw
 import androidx.core.view.isVisible
@@ -154,17 +152,17 @@ class HomeFragment :
     }
 
     private fun setupSearchBar() {
-        // Apply the status bar height as a top margin on the search bar itself, so it is
-        // part of the AppBarLayout scroll range and the bar hides completely on scroll.
-        val baseTopMargin = (8 * resources.displayMetrics.density).toInt()
-        ViewCompat.setOnApplyWindowInsetsListener(binding.appBarLayout) { _, insets ->
-            val top = insets.getInsets(WindowInsetsCompat.Type.statusBars()).top
-            binding.searchBar.updateLayoutParams<ViewGroup.MarginLayoutParams> {
-                topMargin = top + baseTopMargin
+        // Fade the search bar out as it scrolls away, and fully hide it once collapsed,
+        // so no part of it stays visible under the status bar.
+        binding.appBarLayout.addOnOffsetChangedListener { appBar, verticalOffset ->
+            val range = appBar.totalScrollRange
+            if (range > 0) {
+                val progress = (-verticalOffset).toFloat() / range
+                binding.searchBar.alpha = (1f - progress).coerceIn(0f, 1f)
+                binding.searchBar.visibility =
+                    if (progress >= 0.98f) View.INVISIBLE else View.VISIBLE
             }
-            insets
         }
-        ViewCompat.requestApplyInsets(binding.appBarLayout)
 
         // Same tint family as the History / Last added buttons
         binding.searchBar.setCardBackgroundColor(ColorUtil.withAlpha(accentColor(), 0.12f))
