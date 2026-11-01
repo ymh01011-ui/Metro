@@ -1,0 +1,233 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- الوضع العرضي للبلاي ليست: الغلاف + العنوان شمال (ثابتين)، والأزرار + قايمة الأغاني يمين -->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/rootLayout"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:transitionGroup="true">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="horizontal">
+
+        <!-- ======== الشمال: الغلاف + العنوان (ثابت، مش بيتحرك مع القايمة) ======== -->
+        <androidx.constraintlayout.widget.ConstraintLayout
+            android:id="@+id/headerContainer"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="0.42">
+
+            <FrameLayout
+                android:id="@+id/imageFrame"
+                android:layout_width="0dp"
+                android:layout_height="0dp"
+                app:layout_constraintBottom_toBottomOf="parent"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintTop_toTopOf="parent">
+
+                <androidx.appcompat.widget.AppCompatImageView
+                    android:id="@+id/image"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:scaleType="centerCrop"
+                    tools:srcCompat="@tools:sample/backgrounds/scenic" />
+
+                <View
+                    android:id="@+id/imageGradient"
+                    android:layout_width="match_parent"
+                    android:layout_height="128dp"
+                    android:layout_gravity="bottom" />
+            </FrameLayout>
+
+            <code.name.monkey.retromusic.views.BaselineGridTextView
+                android:id="@+id/playlistTitle"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="4dp"
+                android:gravity="center"
+                android:maxLines="2"
+                android:paddingStart="16dp"
+                android:paddingEnd="16dp"
+                android:textAlignment="center"
+                android:textAppearance="@style/TextViewHeadline5"
+                android:textStyle="bold"
+                app:layout_constraintBottom_toTopOf="@id/playlistInfo"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintStart_toStartOf="parent"
+                tools:text="My Playlist" />
+
+            <com.google.android.material.textview.MaterialTextView
+                android:id="@+id/playlistInfo"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="14dp"
+                android:gravity="center"
+                android:maxLines="1"
+                android:textAppearance="@style/TextViewCaption"
+                app:layout_constraintBottom_toBottomOf="parent"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintStart_toStartOf="parent"
+                tools:text="12 songs • 43 min" />
+        </androidx.constraintlayout.widget.ConstraintLayout>
+
+        <!-- ======== اليمين: الأزرار (ثابتة) + قايمة الأغاني (اللي بتسكرول) ======== -->
+        <FrameLayout
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="0.58">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:orientation="vertical">
+
+                <LinearLayout
+                    android:id="@+id/buttonsContainer"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:gravity="start|center_vertical"
+                    android:orientation="horizontal"
+                    android:paddingStart="16dp"
+                    android:paddingTop="12dp"
+                    android:paddingEnd="16dp"
+                    android:paddingBottom="8dp">
+
+                    <FrameLayout
+                        android:layout_width="44dp"
+                        android:layout_height="44dp">
+
+                        <code.name.monkey.retromusic.views.LiquidGlassView
+                            android:id="@+id/shuffleActionGlass"
+                            android:layout_width="match_parent"
+                            android:layout_height="match_parent" />
+
+                        <com.google.android.material.button.MaterialButton
+                            android:id="@+id/shuffleAction"
+                            style="@style/Widget.Material3.Button.IconButton"
+                            android:layout_width="match_parent"
+                            android:layout_height="match_parent"
+                            android:backgroundTint="@android:color/transparent"
+                            app:cornerRadius="22dp"
+                            app:icon="@drawable/ic_shuffle"
+                            app:iconGravity="textStart"
+                            app:iconPadding="0dp"
+                            app:iconSize="18dp"
+                            app:iconTint="@android:color/white"
+                            app:strokeWidth="0dp" />
+                    </FrameLayout>
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/playAction"
+                        style="@style/Widget.Material3.Button"
+                        android:layout_width="wrap_content"
+                        android:layout_height="44dp"
+                        android:layout_marginStart="14dp"
+                        android:layout_marginEnd="14dp"
+                        android:backgroundTint="@android:color/white"
+                        android:insetTop="0dp"
+                        android:insetBottom="0dp"
+                        android:minWidth="120dp"
+                        android:minHeight="0dp"
+                        android:paddingStart="24dp"
+                        android:paddingEnd="26dp"
+                        android:text="@string/action_play"
+                        android:textColor="@android:color/black"
+                        android:textStyle="bold"
+                        app:cornerRadius="22dp"
+                        app:icon="@drawable/ic_play_arrow"
+                        app:iconGravity="textStart"
+                        app:iconPadding="6dp"
+                        app:iconSize="18dp"
+                        app:iconTint="@android:color/black"
+                        app:rippleColor="#33000000"
+                        app:strokeWidth="0dp" />
+
+                    <FrameLayout
+                        android:layout_width="44dp"
+                        android:layout_height="44dp">
+
+                        <code.name.monkey.retromusic.views.LiquidGlassView
+                            android:id="@+id/addActionGlass"
+                            android:layout_width="match_parent"
+                            android:layout_height="match_parent" />
+
+                        <com.google.android.material.button.MaterialButton
+                            android:id="@+id/addAction"
+                            style="@style/Widget.Material3.Button.IconButton"
+                            android:layout_width="match_parent"
+                            android:layout_height="match_parent"
+                            android:backgroundTint="@android:color/transparent"
+                            app:cornerRadius="22dp"
+                            app:icon="@drawable/ic_album_add"
+                            app:iconGravity="textStart"
+                            app:iconPadding="0dp"
+                            app:iconSize="18dp"
+                            app:iconTint="@android:color/white"
+                            app:strokeWidth="0dp" />
+                    </FrameLayout>
+                </LinearLayout>
+
+                <androidx.recyclerview.widget.RecyclerView
+                    android:id="@+id/recyclerView"
+                    android:layout_width="match_parent"
+                    android:layout_height="0dp"
+                    android:layout_weight="1"
+                    android:clipToPadding="false"
+                    android:overScrollMode="never"
+                    android:scrollbars="none"
+                    tools:listitem="@layout/item_queue" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:id="@android:id/empty"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center"
+                android:gravity="center"
+                android:orientation="vertical"
+                android:visibility="gone"
+                tools:visibility="visible">
+
+                <com.google.android.material.textview.MaterialTextView
+                    android:id="@+id/emptyEmoji"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="16dp"
+                    android:text="@string/empty_text_emoji"
+                    android:textAppearance="@style/TextViewHeadline3" />
+
+                <com.google.android.material.textview.MaterialTextView
+                    android:id="@+id/emptyText"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="center"
+                    android:text="@string/no_songs"
+                    android:textAppearance="@style/TextViewHeadline5"
+                    android:textColor="?android:attr/textColorSecondary" />
+            </LinearLayout>
+        </FrameLayout>
+    </LinearLayout>
+
+    <com.google.android.material.appbar.AppBarLayout
+        android:id="@+id/appBarLayout"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="top"
+        android:background="@android:color/transparent"
+        android:elevation="0dp">
+
+        <code.name.monkey.retromusic.views.TintableToolbar
+            android:id="@+id/toolbar"
+            style="@style/Toolbar"
+            android:layout_width="match_parent"
+            android:layout_height="?attr/actionBarSize"
+            android:background="@android:color/transparent"
+            app:navigationIcon="@drawable/ic_arrow_back" />
+
+    </com.google.android.material.appbar.AppBarLayout>
+
+</FrameLayout>
