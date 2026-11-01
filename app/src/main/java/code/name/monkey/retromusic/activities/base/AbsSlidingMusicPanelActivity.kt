@@ -29,6 +29,7 @@ import android.widget.FrameLayout
 import androidx.activity.OnBackPressedCallback
 import androidx.core.animation.doOnEnd
 import androidx.core.view.*
+import androidx.drawerlayout.widget.DrawerLayout
 import androidx.fragment.app.commit
 import code.name.monkey.appthemehelper.util.VersionUtils
 import code.name.monkey.retromusic.ADAPTIVE_COLOR_APP
@@ -127,6 +128,13 @@ abstract class AbsSlidingMusicPanelActivity : AbsMusicServiceActivity(),
         }
     }
 
+    // Closes the side drawer on back press while it is open
+    private val drawerBackCallback = object : OnBackPressedCallback(false) {
+        override fun handleOnBackPressed() {
+            closeDrawer()
+        }
+    }
+
     private val bottomSheetCallbackList by lazy {
         object : BottomSheetCallback() {
 
@@ -204,6 +212,9 @@ abstract class AbsSlidingMusicPanelActivity : AbsMusicServiceActivity(),
         navigationBarColor = surfaceColor()
 
         onBackPressedDispatcher.addCallback(onBackPressedCallback)
+
+        setupDrawerLock()
+        onBackPressedDispatcher.addCallback(drawerBackCallback)
     }
 
     private fun setupBottomSheet() {
@@ -369,6 +380,41 @@ abstract class AbsSlidingMusicPanelActivity : AbsMusicServiceActivity(),
     val navigationView get() = binding.navigationView
 
     val slidingPanel get() = binding.slidingPanel
+
+    val drawerNavigationView get() = binding.drawerNavigationView
+
+    fun openDrawer() {
+        // Unlock first: the drawer is locked closed so it can't be swiped open from the edge
+        binding.drawerLayout.setDrawerLockMode(DrawerLayout.LOCK_MODE_UNLOCKED)
+        binding.drawerLayout.openDrawer(GravityCompat.START)
+    }
+
+    fun closeDrawer() {
+        binding.drawerLayout.closeDrawer(GravityCompat.START)
+    }
+
+    /**
+     * The drawer is only opened from the hamburger in the home search bar, so edge-swipe
+     * opening is disabled (it would also fight the system back gesture). While the drawer is
+     * open it is unlocked so it can still be swiped closed.
+     */
+    private fun setupDrawerLock() {
+        val drawer = binding.drawerLayout
+        drawer.setDrawerLockMode(DrawerLayout.LOCK_MODE_LOCKED_CLOSED)
+        drawer.addDrawerListener(object : DrawerLayout.SimpleDrawerListener() {
+            override fun onDrawerOpened(drawerView: View) {
+                drawerBackCallback.isEnabled = true
+                drawer.setDrawerLockMode(DrawerLayout.LOCK_MODE_UNLOCKED)
+            }
+
+            override fun onDrawerClosed(drawerView: View) {
+                drawerBackCallback.isEnabled = false
+                if (drawer.getDrawerLockMode(GravityCompat.START) != DrawerLayout.LOCK_MODE_LOCKED_CLOSED) {
+                    drawer.setDrawerLockMode(DrawerLayout.LOCK_MODE_LOCKED_CLOSED)
+                }
+            }
+        })
+    }
 
     val isBottomNavVisible get() = navigationView.isVisible && navigationView is BottomNavigationView
 
