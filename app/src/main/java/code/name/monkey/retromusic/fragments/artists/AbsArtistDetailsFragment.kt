@@ -312,7 +312,7 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
                 // الوضع العرضي: الصورة والمحتوى لازم ينزلوا تحت الستاتس بار والتولبار
                 if (resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE) {
                     val gap = (8 * resources.displayMetrics.density).toInt()
-                    binding.artistCoverPane?.updatePadding(top = statusBarInsets.top + gap)
+                    binding.artistCoverPane?.updatePadding(top = statusBarInsets.top + actionBarSizePx() + gap)
                     binding.content.updatePadding(top = statusBarInsets.top + actionBarSizePx())
                 }
                 insets
