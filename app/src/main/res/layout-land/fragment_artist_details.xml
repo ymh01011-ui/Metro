@@ -1,100 +1,122 @@
 <?xml version="1.0" encoding="utf-8"?>
-<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<!-- الوضع العرضي لصفحة الفنان: الصورة شمال ثابتة، والاسم + الأزرار + الأغاني يمين (بتتسكرول) -->
+<FrameLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
     android:id="@+id/rootLayout"
     android:layout_width="match_parent"
-    android:layout_height="match_parent"
-    android:fitsSystemWindows="true"
-    android:orientation="vertical">
+    android:layout_height="match_parent">
 
-    <com.google.android.material.appbar.MaterialToolbar
-        android:id="@+id/toolbar"
-        style="@style/Toolbar"
+    <LinearLayout
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toTopOf="parent"
-        app:navigationIcon="@drawable/ic_arrow_back" />
+        android:layout_height="match_parent"
+        android:orientation="horizontal">
 
-    <com.google.android.material.card.MaterialCardView
-        android:id="@+id/artistCoverContainer"
-        android:layout_width="0dp"
-        android:layout_height="0dp"
-        android:layout_marginStart="16dp"
-        android:layout_marginTop="8dp"
-        android:layout_marginBottom="@dimen/mini_player_height"
-        android:transitionName="@string/transition_artist_image"
-        app:cardCornerRadius="@dimen/m3_card_large_radius"
-        app:layout_constraintBottom_toBottomOf="parent"
-        app:layout_constraintDimensionRatio="3:4"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@id/toolbar">
-
-        <androidx.appcompat.widget.AppCompatImageView
-            android:id="@+id/image"
-            android:layout_width="match_parent"
+        <!-- ======== الشمال: صورة الفنان (ثابتة) ======== -->
+        <androidx.constraintlayout.widget.ConstraintLayout
+            android:id="@+id/artistCoverPane"
+            android:layout_width="0dp"
             android:layout_height="match_parent"
-            android:scaleType="centerCrop"
-            tools:srcCompat="@tools:sample/backgrounds/scenic[5]" />
+            android:layout_weight="0.42"
+            android:paddingStart="16dp"
+            android:paddingEnd="8dp"
+            android:paddingBottom="12dp">
 
-    </com.google.android.material.card.MaterialCardView>
+            <!-- 0dp × 0dp + نسبة 1:1 = أكبر مربع يدخل في المساحة -->
+            <com.google.android.material.card.MaterialCardView
+                android:id="@+id/artistCoverContainer"
+                android:layout_width="0dp"
+                android:layout_height="0dp"
+                android:transitionName="@string/transition_artist_image"
+                app:cardCornerRadius="@dimen/m3_card_large_radius"
+                app:cardElevation="0dp"
+                app:layout_constraintBottom_toBottomOf="parent"
+                app:layout_constraintDimensionRatio="1:1"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintTop_toTopOf="parent">
 
-    <androidx.core.widget.NestedScrollView
-        android:id="@+id/content"
-        android:layout_width="0dp"
-        android:layout_height="0dp"
-        android:layout_marginStart="16dp"
-        android:layout_weight="1"
-        android:descendantFocusability="beforeDescendants"
-        android:focusableInTouchMode="true"
-        android:overScrollMode="@integer/overScrollMode"
-        app:layout_constraintBottom_toBottomOf="parent"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintHorizontal_bias="0.5"
-        app:layout_constraintStart_toEndOf="@+id/artistCoverContainer"
-        app:layout_constraintTop_toBottomOf="@id/toolbar">
+                <androidx.appcompat.widget.AppCompatImageView
+                    android:id="@+id/image"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:scaleType="centerCrop"
+                    tools:srcCompat="@tools:sample/backgrounds/scenic" />
+            </com.google.android.material.card.MaterialCardView>
+        </androidx.constraintlayout.widget.ConstraintLayout>
 
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="vertical">
+        <!-- ======== اليمين: الاسم + المحتوى ======== -->
+        <androidx.core.widget.NestedScrollView
+            android:id="@+id/content"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="0.58"
+            android:clipToPadding="false"
+            android:overScrollMode="never"
+            android:transitionGroup="true">
 
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:orientation="vertical"
-                android:padding="16dp">
+                android:orientation="vertical">
 
-                <code.name.monkey.retromusic.views.BaselineGridTextView
-                    android:id="@+id/artistTitle"
+                <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:maxLines="2"
-                    android:textAppearance="@style/TextViewHeadline5"
-                    android:textColor="?android:attr/textColorPrimary"
-                    android:textStyle="bold"
-                    tools:ignore="MissingPrefix"
-                    tools:text="Title" />
+                    android:orientation="vertical"
+                    android:paddingStart="16dp"
+                    android:paddingTop="8dp"
+                    android:paddingEnd="16dp"
+                    android:paddingBottom="12dp">
 
-                <code.name.monkey.retromusic.views.BaselineGridTextView
-                    android:id="@+id/text"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:paddingTop="4dp"
-                    android:textAppearance="@style/TextViewCaption"
-                    android:textColor="?android:attr/textColorSecondary"
-                    app:lineHeightHint="24sp"
-                    tools:ignore="MissingPrefix"
-                    tools:text="Title" />
+                    <code.name.monkey.retromusic.views.BaselineGridTextView
+                        android:id="@+id/artistTitle"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:gravity="start"
+                        android:maxLines="2"
+                        android:textAlignment="viewStart"
+                        android:textAppearance="@style/TextViewHeadline5"
+                        android:textColor="@android:color/white"
+                        android:textStyle="bold"
+                        tools:text="Adele" />
+
+                    <code.name.monkey.retromusic.views.BaselineGridTextView
+                        android:id="@+id/text"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:paddingTop="4dp"
+                        android:textAppearance="@style/TextViewCaption"
+                        android:textColor="#B3FFFFFF"
+                        tools:text="3 Albums • 3 Songs • 13:45" />
+                </LinearLayout>
+
+                <include
+                    android:id="@+id/fragment_artist_content"
+                    layout="@layout/fragment_artist_content" />
 
             </LinearLayout>
+        </androidx.core.widget.NestedScrollView>
+    </LinearLayout>
 
-            <include
-                android:id="@+id/fragment_artist_content"
-                layout="@layout/fragment_artist_content" />
-        </LinearLayout>
+    <!-- نفس الـ toolbar بتاع الطولي (TintableToolbar) - ده اللي كان ناقص وبيعمل الكراش -->
+    <com.google.android.material.appbar.AppBarLayout
+        android:id="@+id/appBarLayout"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="top"
+        android:background="@android:color/transparent"
+        android:elevation="0dp">
 
-    </androidx.core.widget.NestedScrollView>
-</androidx.constraintlayout.widget.ConstraintLayout>
+        <code.name.monkey.retromusic.views.TintableToolbar
+            android:id="@+id/toolbar"
+            style="@style/Toolbar"
+            android:layout_width="match_parent"
+            android:layout_height="?attr/actionBarSize"
+            android:background="@android:color/transparent"
+            app:navigationIcon="@drawable/ic_arrow_back" />
+
+    </com.google.android.material.appbar.AppBarLayout>
+
+</FrameLayout>
