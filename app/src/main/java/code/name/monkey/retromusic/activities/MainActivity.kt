@@ -57,6 +57,7 @@ class MainActivity : AbsSlidingMusicPanelActivity() {
         updateTabs()
 
         setupNavigationController()
+        setupDrawerMenu()
 
         WhatsNewFragment.showChangeLog(this)
     }
@@ -127,6 +128,18 @@ class MainActivity : AbsSlidingMusicPanelActivity() {
                     animate = true
                 ) // Hide Bottom Navigation Bar
             }
+        }
+    }
+
+    private fun setupDrawerMenu() {
+        drawerNavigationView.setNavigationItemSelectedListener { item ->
+            when (item.itemId) {
+                R.id.drawer_settings -> {
+                    closeDrawer()
+                    findNavController(R.id.fragment_container).navigate(R.id.settings_fragment)
+                }
+            }
+            true
         }
     }
 
