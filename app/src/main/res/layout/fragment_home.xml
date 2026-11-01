@@ -28,13 +28,6 @@
         app:liftOnScroll="false"
         app:statusBarForeground="@null">
 
-        <FrameLayout
-            android:id="@+id/searchBarWrapper"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:fitsSystemWindows="true"
-            app:layout_scrollFlags="scroll|enterAlways|snap">
-
         <com.google.android.material.card.MaterialCardView
             android:id="@+id/searchBar"
             android:layout_width="match_parent"
@@ -47,6 +40,7 @@
             android:focusable="true"
             app:cardCornerRadius="24dp"
             app:cardElevation="0dp"
+            app:layout_scrollFlags="scroll|enterAlways|snap"
             app:strokeWidth="0dp">
 
             <LinearLayout
@@ -80,7 +74,6 @@
                     android:textSize="17sp" />
             </LinearLayout>
         </com.google.android.material.card.MaterialCardView>
-        </FrameLayout>
     </com.google.android.material.appbar.AppBarLayout>
 
     <androidx.core.widget.NestedScrollView
