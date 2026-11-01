@@ -309,6 +309,12 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
             ViewCompat.setOnApplyWindowInsetsListener(appBar) { v, insets ->
                 val statusBarInsets = insets.getInsets(WindowInsetsCompat.Type.statusBars())
                 v.updatePadding(top = statusBarInsets.top)
+                // الوضع العرضي: الصورة والمحتوى لازم ينزلوا تحت الستاتس بار والتولبار
+                if (resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE) {
+                    val gap = (8 * resources.displayMetrics.density).toInt()
+                    binding.artistCoverPane?.updatePadding(top = statusBarInsets.top + gap)
+                    binding.content.updatePadding(top = statusBarInsets.top + actionBarSizePx())
+                }
                 insets
             }
         }
@@ -1132,6 +1138,12 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
     // عن أي حسابات padding/inset ممكن تغلط. وبما إنها هتتحط فوق التولبار في
     // الترتيب (z-order)، أي ضغطة في مكانها هتوصلها هي الأول، فمش محتاجين
     // نلاقي الزرار الحقيقي ونعطله يدوي - بيبقى تلقائيًا تحتها ومقفول فعليًا.
+    private fun actionBarSizePx(): Int {
+        val typedValue = TypedValue()
+        val resolved = requireContext().theme.resolveAttribute(androidx.appcompat.R.attr.actionBarSize, typedValue, true)
+        return if (resolved) TypedValue.complexToDimensionPixelSize(typedValue.data, resources.displayMetrics) else (56 * resources.displayMetrics.density).toInt()
+    }
+
     private fun setUpCustomOverflowIcon(toolbar: TintableToolbar) {
         val icon = toolbar.overflowIcon?.mutate() ?: return
         toolbar.overflowIcon = ColorDrawable(Color.TRANSPARENT)
