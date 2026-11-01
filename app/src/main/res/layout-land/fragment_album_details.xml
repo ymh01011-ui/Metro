@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- الوضع العرضي: الغلاف/الفيديو شمال ثابت، والعنوان + الأزرار + الأغاني يمين (بتتسكرول) -->
 <FrameLayout
     xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
@@ -7,53 +8,121 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent">
 
-    <androidx.core.widget.NestedScrollView
-        android:id="@+id/content"
+    <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:overScrollMode="never"
-        android:transitionGroup="true">
+        android:orientation="horizontal">
 
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="vertical">
+        <!-- ======== الجانب الشمال: غلاف الألبوم أو الفيديو (ثابت) ======== -->
+        <FrameLayout
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="0.42">
 
-            <FrameLayout
+            <!-- الفيديو (للألبومات اللي ليها فيديو) -->
+            <androidx.constraintlayout.widget.ConstraintLayout
+                android:id="@+id/videoHeaderContainer"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:paddingStart="16dp"
+                android:paddingEnd="8dp"
+                android:paddingBottom="12dp"
+                android:visibility="gone"
+                tools:visibility="gone">
+
+                <!-- الإطار 0dp × 0dp: بياخد أكبر مساحة ممكنة بنفس نسبة الفيديو (الكود بيغير النسبة) -->
+                <FrameLayout
+                    android:id="@+id/videoFrame"
+                    android:layout_width="0dp"
+                    android:layout_height="0dp"
+                    app:layout_constraintBottom_toBottomOf="parent"
+                    app:layout_constraintDimensionRatio="1:1"
+                    app:layout_constraintEnd_toEndOf="parent"
+                    app:layout_constraintStart_toStartOf="parent"
+                    app:layout_constraintTop_toTopOf="parent">
+
+                    <androidx.appcompat.widget.AppCompatImageView
+                        android:id="@+id/videoImage"
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:scaleType="centerCrop" />
+
+                    <androidx.media3.ui.PlayerView
+                        android:id="@+id/videoPlayerView"
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:alpha="0"
+                        app:resize_mode="zoom"
+                        app:surface_type="texture_view"
+                        app:use_controller="false" />
+                </FrameLayout>
+            </androidx.constraintlayout.widget.ConstraintLayout>
+
+            <!-- الغلاف العادي -->
+            <androidx.constraintlayout.widget.ConstraintLayout
                 android:id="@+id/headerContainer"
                 android:layout_width="match_parent"
-                android:layout_height="380dp">
+                android:layout_height="match_parent"
+                android:paddingStart="16dp"
+                android:paddingEnd="8dp"
+                android:paddingBottom="12dp">
 
-                <androidx.appcompat.widget.AppCompatImageView
-                    android:id="@+id/image"
-                    android:layout_width="match_parent"
-                    android:layout_height="match_parent"
-                    android:scaleType="centerCrop"
-                    tools:srcCompat="@tools:sample/backgrounds/scenic" />
+                <com.google.android.material.card.MaterialCardView
+                    android:id="@+id/imageCard"
+                    android:layout_width="0dp"
+                    android:layout_height="0dp"
+                    app:cardBackgroundColor="@android:color/transparent"
+                    app:cardCornerRadius="6dp"
+                    app:cardElevation="0dp"
+                    app:cardUseCompatPadding="false"
+                    app:layout_constraintBottom_toBottomOf="parent"
+                    app:layout_constraintDimensionRatio="1:1"
+                    app:layout_constraintEnd_toEndOf="parent"
+                    app:layout_constraintStart_toStartOf="parent"
+                    app:layout_constraintTop_toTopOf="parent"
+                    app:strokeWidth="0dp">
 
-                <View
-                    android:id="@+id/headerGradient"
-                    android:layout_width="match_parent"
-                    android:layout_height="match_parent"
-                    android:background="@drawable/header_gradient_bg" />
+                    <androidx.appcompat.widget.AppCompatImageView
+                        android:id="@+id/image"
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:scaleType="centerCrop"
+                        tools:srcCompat="@tools:sample/backgrounds/scenic" />
+                </com.google.android.material.card.MaterialCardView>
+            </androidx.constraintlayout.widget.ConstraintLayout>
+        </FrameLayout>
+
+        <!-- ======== الجانب اليمين: العنوان + الأزرار + الأغاني ======== -->
+        <androidx.core.widget.NestedScrollView
+            android:id="@+id/content"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="0.58"
+            android:clipToPadding="false"
+            android:overScrollMode="never"
+            android:transitionGroup="true">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical">
 
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_gravity="bottom"
-                    android:gravity="center"
                     android:orientation="vertical"
-                    android:paddingStart="24dp"
-                    android:paddingEnd="24dp"
+                    android:paddingStart="16dp"
+                    android:paddingTop="8dp"
+                    android:paddingEnd="16dp"
                     android:paddingBottom="12dp">
 
                     <code.name.monkey.retromusic.views.BaselineGridTextView
                         android:id="@+id/albumTitle"
-                        android:layout_width="wrap_content"
+                        android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:gravity="center"
+                        android:gravity="start"
                         android:maxLines="2"
-                        android:textAlignment="center"
+                        android:textAlignment="viewStart"
                         android:textAppearance="@style/TextViewHeadline5"
                         android:textColor="@android:color/white"
                         android:textStyle="bold"
@@ -63,43 +132,34 @@
                         android:id="@+id/albumText"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:layout_marginTop="2dp"
+                        android:layout_marginTop="4dp"
                         android:background="?attr/selectableItemBackgroundBorderless"
                         android:clickable="true"
                         android:focusable="true"
-                        android:gravity="center"
                         android:maxLines="1"
-                        android:paddingStart="4dp"
-                        android:paddingEnd="4dp"
                         android:textAppearance="@style/TextViewSubtitle1"
                         android:textColor="#E6FFFFFF"
                         tools:text="Sabrina Carpenter" />
 
-                    <!-- سطر الميتاداتا زي Apple Music بالظبط: النوع • عدد
-                         الأغاني • إجمالي المدة. -->
                     <com.google.android.material.textview.MaterialTextView
                         android:id="@+id/albumMetaText"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:layout_marginTop="2dp"
-                        android:gravity="center"
+                        android:layout_marginTop="4dp"
                         android:maxLines="1"
                         android:textAppearance="@style/TextViewCaption"
                         android:textColor="#B3FFFFFF"
                         tools:text="Pop • 12 Songs • 43 min" />
                 </LinearLayout>
-            </FrameLayout>
 
-            <include
-                android:id="@+id/fragment_album_content"
-                layout="@layout/fragment_album_content" />
+                <include
+                    android:id="@+id/fragment_album_content"
+                    layout="@layout/fragment_album_content" />
 
-        </LinearLayout>
-    </androidx.core.widget.NestedScrollView>
+            </LinearLayout>
+        </androidx.core.widget.NestedScrollView>
+    </LinearLayout>
 
-    <!-- الـ toolbar جوه rootLayout مباشرة، مش جوه الصورة/الهيدر، بنفس فلسفة
-         صفحة الفنان بالظبط: عايم edge-to-edge فوق الشاشة كلها طول الوقت،
-         شفاف في الأول وبيتلون تدريجيًا وأنت بتسحب لتحت. -->
     <com.google.android.material.appbar.AppBarLayout
         android:id="@+id/appBarLayout"
         android:layout_width="match_parent"
