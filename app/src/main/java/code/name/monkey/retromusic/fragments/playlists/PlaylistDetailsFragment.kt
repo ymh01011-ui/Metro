@@ -184,6 +184,12 @@ class PlaylistDetailsFragment : AbsMainActivityFragment(R.layout.fragment_playli
             ViewCompat.setOnApplyWindowInsetsListener(appBar) { v, insets ->
                 val statusBarInsets = insets.getInsets(WindowInsetsCompat.Type.statusBars())
                 v.updatePadding(top = statusBarInsets.top)
+                // الوضع العرضي: الأزرار اللي فوق القايمة تنزل تحت الستاتس بار والتولبار
+                if (isLandscape()) {
+                    binding.buttonsContainer.updatePadding(
+                        top = statusBarInsets.top + actionBarSizePx() + (4 * resources.displayMetrics.density).toInt()
+                    )
+                }
                 insets
             }
         }
@@ -407,6 +413,11 @@ class PlaylistDetailsFragment : AbsMainActivityFragment(R.layout.fragment_playli
     // ويطلع فوق الصورة وبعدين يقفز لمكانه لما تسيبه.
     private fun updateFastScrollerPadding(headerOffset: Int = -1) {
         if (_binding == null) return
+        // العرضي: القايمة بتبدأ تحت الأزرار أصلًا، فمفيش مسافة علوية للاسكرولير
+        if (isLandscape()) {
+            applyScrollerTop(0)
+            return
+        }
         val appBarHeight = binding.appBarLayout.height
         val headerHeight = binding.headerContainer.height
         if (appBarHeight <= 0 || headerHeight <= 0) return
@@ -491,7 +502,7 @@ class PlaylistDetailsFragment : AbsMainActivityFragment(R.layout.fragment_playli
         val height = header.height
         if (height <= 0) return
         val rv = binding.recyclerView
-        if (rv.paddingTop != height) {
+        if (!isLandscape() && rv.paddingTop != height) {
             val oldPadding = rv.paddingTop
             val lm = rv.layoutManager as? LinearLayoutManager
             // القايمة كانت في أولها؟ (الصفوف اتربطت قبل ما الهيدر يتقاس، فكانت لازقة فوق)
@@ -510,6 +521,8 @@ class PlaylistDetailsFragment : AbsMainActivityFragment(R.layout.fragment_playli
 
     // مقدار ما القايمة اتسكرولت بالنسبة للأعلى = مقدار ما الهيدر لازم يتحرك لفوق
     private fun headerScrollOffset(): Int {
+        // العرضي: الهيدر ثابت شمال ومبيتحركش مع القايمة
+        if (isLandscape()) return 0
         val rv = binding.recyclerView
         if (playlistSongAdapter.itemCount == 0) return 0
         val lm = rv.layoutManager as? LinearLayoutManager ?: return 0
@@ -707,6 +720,15 @@ class PlaylistDetailsFragment : AbsMainActivityFragment(R.layout.fragment_playli
     }
 
     // ---------- أيقونة الثلاث نقط (نفس صفحة الألبوم) ----------
+
+    private fun isLandscape(): Boolean =
+        resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
+
+    private fun actionBarSizePx(): Int {
+        val typedValue = TypedValue()
+        val resolved = requireContext().theme.resolveAttribute(androidx.appcompat.R.attr.actionBarSize, typedValue, true)
+        return if (resolved) TypedValue.complexToDimensionPixelSize(typedValue.data, resources.displayMetrics) else (56 * resources.displayMetrics.density).toInt()
+    }
 
     private fun setUpCustomOverflowIcon(toolbar: TintableToolbar) {
         val icon = toolbar.overflowIcon?.mutate() ?: return
