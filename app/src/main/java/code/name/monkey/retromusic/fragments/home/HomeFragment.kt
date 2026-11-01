@@ -16,7 +16,6 @@ package code.name.monkey.retromusic.fragments.home
 
 import android.os.Bundle
 import android.view.*
-import android.view.MenuItem.SHOW_AS_ACTION_IF_ROOM
 import androidx.coordinatorlayout.widget.CoordinatorLayout
 import androidx.core.os.bundleOf
 import androidx.core.view.doOnLayout
@@ -26,14 +25,10 @@ import androidx.core.view.updateLayoutParams
 import androidx.navigation.fragment.FragmentNavigatorExtras
 import androidx.navigation.fragment.findNavController
 import androidx.recyclerview.widget.LinearLayoutManager
-import code.name.monkey.appthemehelper.common.ATHToolbarActivity
 import code.name.monkey.appthemehelper.util.ColorUtil
-import code.name.monkey.appthemehelper.util.ToolbarContentTintHelper
 import code.name.monkey.retromusic.*
 import code.name.monkey.retromusic.adapter.HomeAdapter
 import code.name.monkey.retromusic.databinding.FragmentHomeBinding
-import code.name.monkey.retromusic.dialogs.CreatePlaylistDialog
-import code.name.monkey.retromusic.dialogs.ImportPlaylistDialog
 import code.name.monkey.retromusic.extensions.accentColor
 import code.name.monkey.retromusic.extensions.dip
 import code.name.monkey.retromusic.extensions.elevatedAccentColor
@@ -62,8 +57,6 @@ class HomeFragment :
         super.onViewCreated(view, savedInstanceState)
         val homeBinding = FragmentHomeBinding.bind(view)
         _binding = HomeBinding(homeBinding)
-        mainActivity.setSupportActionBar(binding.toolbar)
-        mainActivity.supportActionBar?.title = null
         setupListeners()
         binding.titleWelcome.text = String.format("%s", userName)
 
@@ -85,7 +78,7 @@ class HomeFragment :
         }
 
         loadProfile()
-        setupTitle()
+        setupSearchBar()
         colorButtons()
         postponeEnterTransition()
         view.doOnPreDraw { startPostponedEnterTransition() }
@@ -158,11 +151,20 @@ class HomeFragment :
         }
     }
 
-    private fun setupTitle() {
-        binding.toolbar.setNavigationOnClickListener {
+    private fun setupSearchBar() {
+        // Same tint family as the History / Last added buttons
+        binding.searchBar.setCardBackgroundColor(ColorUtil.withAlpha(accentColor(), 0.12f))
+
+        // Tap anywhere on the pill -> search (same destination the old search icon used)
+        binding.searchBar.setOnClickListener {
             findNavController().navigate(R.id.action_search, null, navOptions)
         }
-        binding.appBarLayout.title = getString(R.string.app_name)
+
+        // TODO (step 2): open the side drawer here instead.
+        // Until the drawer exists, the hamburger opens Settings so the app stays usable.
+        binding.menuButton.setOnClickListener {
+            findNavController().navigate(R.id.settings_fragment, null, navOptions)
+        }
     }
 
     private fun loadProfile() {
@@ -193,18 +195,13 @@ class HomeFragment :
         }
     }
 
+    // The home screen no longer has a toolbar menu: search lives in the search bar
+    // and settings will live in the side drawer.
     override fun onCreateMenu(menu: Menu, inflater: MenuInflater) {
-        inflater.inflate(R.menu.menu_main, menu)
-        menu.removeItem(R.id.action_grid_size)
-        menu.removeItem(R.id.action_layout_type)
-        menu.removeItem(R.id.action_sort_order)
-        menu.findItem(R.id.action_settings).setShowAsAction(SHOW_AS_ACTION_IF_ROOM)
-        ToolbarContentTintHelper.handleOnCreateOptionsMenu(
-            requireContext(),
-            binding.toolbar,
-            menu,
-            ATHToolbarActivity.getToolbarBackgroundColor(binding.toolbar)
-        )
+    }
+
+    override fun onMenuItemSelected(item: MenuItem): Boolean {
+        return false
     }
 
     override fun scrollToTop() {
@@ -276,32 +273,6 @@ class HomeFragment :
         fun newInstance(): HomeFragment {
             return HomeFragment()
         }
-    }
-
-    override fun onMenuItemSelected(item: MenuItem): Boolean {
-        when (item.itemId) {
-            R.id.action_settings -> findNavController().navigate(
-                R.id.settings_fragment,
-                null,
-                navOptions
-            )
-
-            R.id.action_import_playlist -> ImportPlaylistDialog().show(
-                childFragmentManager,
-                "ImportPlaylist"
-            )
-
-            R.id.action_add_to_playlist -> CreatePlaylistDialog.create(emptyList()).show(
-                childFragmentManager,
-                "ShowCreatePlaylistDialog"
-            )
-        }
-        return false
-    }
-
-    override fun onPrepareMenu(menu: Menu) {
-        super.onPrepareMenu(menu)
-        ToolbarContentTintHelper.handleOnPrepareOptionsMenu(requireActivity(), binding.toolbar)
     }
 
     override fun onResume() {
