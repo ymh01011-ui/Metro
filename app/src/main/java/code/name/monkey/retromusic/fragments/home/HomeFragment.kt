@@ -160,10 +160,9 @@ class HomeFragment :
             findNavController().navigate(R.id.action_search, null, navOptions)
         }
 
-        // TODO (step 2): open the side drawer here instead.
-        // Until the drawer exists, the hamburger opens Settings so the app stays usable.
+        // Hamburger opens the side drawer
         binding.menuButton.setOnClickListener {
-            findNavController().navigate(R.id.settings_fragment, null, navOptions)
+            mainActivity.openDrawer()
         }
     }
 
