@@ -1,11 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- No fitsSystemWindows here on purpose: AbsRecyclerViewFragment reads the status bar
+     height itself and positions the floating search bar and the header row with it. -->
 <androidx.coordinatorlayout.widget.CoordinatorLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
-    android:layout_height="match_parent"
-    android:fitsSystemWindows="true">
+    android:layout_height="match_parent">
 
+    <!-- The first row of items gets a top offset (item decoration) so the list starts
+         below the search bar + header row, which are drawn on top of it. -->
     <code.name.monkey.retromusic.views.insets.InsetsRecyclerView
         android:id="@+id/recycler_view"
         android:layout_width="match_parent"
@@ -15,16 +18,14 @@
         android:paddingBottom="@dimen/mini_player_height"
         android:scrollbars="none"
         android:transitionGroup="true"
-        app:layout_behavior="com.google.android.material.appbar.AppBarLayout$ScrollingViewBehavior"
         tools:listitem="@layout/item_list" />
 
-    <code.name.monkey.retromusic.views.TopAppBarLayout
-        android:id="@+id/appBarLayout"
-        style="?appBarLayoutStyle"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:fitsSystemWindows="true"
-        android:theme="@style/CenteredCheckBoxTheme" />
+    <!-- Empty placeholder: kept only so existing code that references `toolbar` still compiles. -->
+    <androidx.appcompat.widget.Toolbar
+        android:id="@+id/toolbar"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:visibility="gone" />
 
     <LinearLayout
         android:id="@android:id/empty"
@@ -55,13 +56,107 @@
             tools:visibility="visible" />
     </LinearLayout>
 
-    <com.google.android.material.floatingactionbutton.FloatingActionButton
-        android:id="@+id/shuffle_button"
-        style="@style/Widget.Material3.FloatingActionButton.Primary"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_gravity="bottom|end"
-        android:layout_marginHorizontal="16dp"
-        android:contentDescription="@string/shuffle"
-        app:srcCompat="@drawable/ic_shuffle" />
+    <!-- Header row: lives "inside" the list. It follows the list's scroll offset, so it
+         scrolls away with the items. Top margin is set from code (status bar height). -->
+    <LinearLayout
+        android:id="@+id/listHeaderRow"
+        android:layout_width="match_parent"
+        android:layout_height="40dp"
+        android:layout_gravity="top"
+        android:layout_marginTop="68dp"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingStart="19dp"
+        android:paddingEnd="11dp">
+
+        <TextView
+            android:id="@+id/countText"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:ellipsize="end"
+            android:maxLines="1"
+            android:textColor="?android:attr/textColorSecondary"
+            android:textSize="14sp"
+            android:textStyle="bold"
+            tools:text="100 songs" />
+
+        <com.google.android.material.card.MaterialCardView
+            android:id="@+id/shuffle_button"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:clickable="true"
+            android:contentDescription="@string/shuffle"
+            android:focusable="true"
+            app:cardCornerRadius="20dp"
+            app:cardElevation="0dp"
+            app:strokeWidth="0dp">
+
+            <ImageView
+                android:layout_width="24dp"
+                android:layout_height="24dp"
+                android:layout_gravity="center"
+                android:importantForAccessibility="no"
+                android:src="@drawable/ic_shuffle"
+                android:tint="?android:attr/textColorPrimary" />
+        </com.google.android.material.card.MaterialCardView>
+
+        <ImageView
+            android:id="@+id/moreButton"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:layout_marginStart="4dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="More options"
+            android:padding="8dp"
+            android:src="@drawable/ic_metro_more_horiz" />
+    </LinearLayout>
+
+    <!-- Floating search bar: hides when scrolling down the list, comes back as soon as you
+         scroll up. Top margin is set from code (status bar height). -->
+    <com.google.android.material.card.MaterialCardView
+        android:id="@+id/searchBar"
+        android:layout_width="match_parent"
+        android:layout_height="48dp"
+        android:layout_gravity="top"
+        android:layout_marginStart="19dp"
+        android:layout_marginTop="8dp"
+        android:layout_marginEnd="19dp"
+        android:clickable="true"
+        android:focusable="true"
+        app:cardCornerRadius="24dp"
+        app:cardElevation="0dp"
+        app:strokeWidth="0dp">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <ImageView
+                android:id="@+id/menuButton"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:layout_marginStart="4dp"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="Menu"
+                android:padding="12dp"
+                android:src="@drawable/ic_metro_menu" />
+
+            <TextView
+                android:id="@+id/searchText"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="4dp"
+                android:layout_marginEnd="16dp"
+                android:layout_weight="1"
+                android:ellipsize="end"
+                android:letterSpacing="0.015"
+                android:maxLines="1"
+                android:text="Search your music"
+                android:textColor="?android:attr/textColorSecondary"
+                android:textSize="17sp" />
+        </LinearLayout>
+    </com.google.android.material.card.MaterialCardView>
 </androidx.coordinatorlayout.widget.CoordinatorLayout>
