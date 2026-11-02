@@ -19,10 +19,15 @@ import android.view.*
 import androidx.coordinatorlayout.widget.CoordinatorLayout
 import androidx.core.graphics.ColorUtils
 import androidx.core.os.bundleOf
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.doOnLayout
 import androidx.core.view.doOnPreDraw
 import androidx.core.view.isVisible
 import androidx.core.view.updateLayoutParams
+import androidx.core.view.updatePadding
+import androidx.core.widget.NestedScrollView
+import com.google.android.material.color.MaterialColors
 import androidx.navigation.fragment.FragmentNavigatorExtras
 import androidx.navigation.fragment.findNavController
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -45,7 +50,6 @@ import code.name.monkey.retromusic.model.Song
 import code.name.monkey.retromusic.util.PreferenceUtil
 import code.name.monkey.retromusic.util.PreferenceUtil.userName
 import com.bumptech.glide.Glide
-import com.google.android.material.color.MaterialColors
 import com.google.android.material.transition.MaterialFadeThrough
 import com.google.android.material.transition.MaterialSharedAxis
 
@@ -154,22 +158,45 @@ class HomeFragment :
     }
 
     private fun setupSearchBar() {
-        // Fade the search bar out as it scrolls away, and fully hide it once collapsed,
-        // so no part of it stays visible under the status bar.
-        binding.appBarLayout.addOnOffsetChangedListener { appBar, verticalOffset ->
-            val range = appBar.totalScrollRange
-            if (range > 0) {
-                val progress = (-verticalOffset).toFloat() / range
-                binding.searchBar.alpha = (1f - progress).coerceIn(0f, 1f)
-                binding.searchBar.visibility =
-                    if (progress >= 0.98f) View.INVISIBLE else View.VISIBLE
-            }
-        }
+        val bar = binding.searchBar
+        val scroll = binding.container
+        val density = resources.displayMetrics.density
+        val barMargin = (8 * density).toInt()
+        val barHeight = (48 * density).toInt()
+        var statusBarTop = 0
 
-        // Same tint family as the History / Last added buttons
-        // Opaque version of the tint, so content scrolling under the bar doesn't show through
-        val screenBg = MaterialColors.getColor(binding.searchBar, android.R.attr.colorBackground)
-        binding.searchBar.setCardBackgroundColor(
+        // The pill floats over the content: put the status bar height on the pill's top margin
+        // and push the content down by the same amount (plus the pill itself).
+        ViewCompat.setOnApplyWindowInsetsListener(requireView()) { _, insets ->
+            statusBarTop = insets.getInsets(WindowInsetsCompat.Type.statusBars()).top
+            bar.updateLayoutParams<ViewGroup.MarginLayoutParams> {
+                topMargin = statusBarTop + barMargin
+            }
+            scroll.updatePadding(top = statusBarTop + barMargin * 2 + barHeight)
+            insets
+        }
+        ViewCompat.requestApplyInsets(requireView())
+
+        // Hide on scroll up, show again as soon as you scroll down (from anywhere).
+        fun hideRange() = (statusBarTop + barMargin + barHeight).toFloat()
+        val snap = Runnable {
+            val target = if (bar.translationY < -hideRange() / 2f) -hideRange() else 0f
+            bar.animate().translationY(target).setDuration(150).start()
+        }
+        scroll.setOnScrollChangeListener(
+            NestedScrollView.OnScrollChangeListener { _, _, scrollY, _, oldScrollY ->
+                bar.animate().cancel()
+                bar.translationY = if (scrollY <= 0) 0f
+                else (bar.translationY - (scrollY - oldScrollY)).coerceIn(-hideRange(), 0f)
+                bar.removeCallbacks(snap)
+                bar.postDelayed(snap, 120)
+            }
+        )
+
+        // Same tint family as the History / Last added buttons. Made opaque so the content
+        // scrolling underneath the pill doesn't show through it.
+        val screenBg = MaterialColors.getColor(bar, android.R.attr.colorBackground)
+        bar.setCardBackgroundColor(
             ColorUtils.compositeColors(ColorUtil.withAlpha(accentColor(), 0.12f), screenBg)
         )
 
@@ -223,7 +250,7 @@ class HomeFragment :
 
     override fun scrollToTop() {
         binding.container.scrollTo(0, 0)
-        binding.appBarLayout.setExpanded(true)
+        binding.searchBar.animate().translationY(0f).setDuration(150).start()
     }
 
     fun setSharedAxisXTransitions() {
