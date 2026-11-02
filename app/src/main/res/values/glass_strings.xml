@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="metro_glass_header">Glass</string>
+    <string name="metro_glass_enable_title">Glass effect</string>
+    <string name="metro_glass_enable_summary">Frosted glass behind the bottom bar and the mini player</string>
+    <string name="metro_glass_material">Material</string>
+    <string name="metro_glass_colour">Colour</string>
+    <string name="metro_glass_frost">Frost (dp)</string>
+    <string name="metro_glass_film">Film</string>
+    <string name="metro_glass_tint">Tint</string>
+
+    <string-array name="metro_glass_material_titles">
+        <item>Fastest</item>
+        <item>Balanced</item>
+        <item>Quality</item>
+    </string-array>
+    <string-array name="metro_glass_material_values">
+        <item>fastest</item>
+        <item>balanced</item>
+        <item>quality</item>
+    </string-array>
+
+    <string-array name="metro_glass_tint_titles">
+        <item>None</item>
+        <item>Accent</item>
+        <item>Red</item>
+        <item>Orange</item>
+        <item>Yellow</item>
+        <item>Green</item>
+        <item>Cyan</item>
+        <item>Blue</item>
+        <item>Purple</item>
+        <item>Pink</item>
+    </string-array>
+    <string-array name="metro_glass_tint_values">
+        <item>none</item>
+        <item>accent</item>
+        <item>red</item>
+        <item>orange</item>
+        <item>yellow</item>
+        <item>green</item>
+        <item>cyan</item>
+        <item>blue</item>
+        <item>purple</item>
+        <item>pink</item>
+    </string-array>
+</resources>
