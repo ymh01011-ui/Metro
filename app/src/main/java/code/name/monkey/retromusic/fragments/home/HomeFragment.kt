@@ -17,6 +17,7 @@ package code.name.monkey.retromusic.fragments.home
 import android.os.Bundle
 import android.view.*
 import androidx.coordinatorlayout.widget.CoordinatorLayout
+import androidx.core.graphics.ColorUtils
 import androidx.core.os.bundleOf
 import androidx.core.view.doOnLayout
 import androidx.core.view.doOnPreDraw
@@ -44,6 +45,7 @@ import code.name.monkey.retromusic.model.Song
 import code.name.monkey.retromusic.util.PreferenceUtil
 import code.name.monkey.retromusic.util.PreferenceUtil.userName
 import com.bumptech.glide.Glide
+import com.google.android.material.color.MaterialColors
 import com.google.android.material.transition.MaterialFadeThrough
 import com.google.android.material.transition.MaterialSharedAxis
 
@@ -165,7 +167,11 @@ class HomeFragment :
         }
 
         // Same tint family as the History / Last added buttons
-        binding.searchBar.setCardBackgroundColor(ColorUtil.withAlpha(accentColor(), 0.12f))
+        // Opaque version of the tint, so content scrolling under the bar doesn't show through
+        val screenBg = MaterialColors.getColor(binding.searchBar, android.R.attr.colorBackground)
+        binding.searchBar.setCardBackgroundColor(
+            ColorUtils.compositeColors(ColorUtil.withAlpha(accentColor(), 0.12f), screenBg)
+        )
 
         // Tap anywhere on the pill -> search (same destination the old search icon used)
         binding.searchBar.setOnClickListener {
