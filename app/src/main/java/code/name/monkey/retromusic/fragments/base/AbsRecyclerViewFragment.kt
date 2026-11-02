@@ -72,13 +72,13 @@ abstract class AbsRecyclerViewFragment<A : RecyclerView.Adapter<*>, LM : Recycle
     private var statusBarTop = 0
 
     // ---- أبعاد الهيدر (dp) ----
-    // [status bar] 8 | شريط البحث 48 | 12 | الصف 40 | 4 | أول عنصر في القايمة
+    // [status bar] 8 | شريط البحث 48 | 12 | الصف 40 | 17 | أول عنصر في القايمة
     private fun px(dp: Int) = (dp * resources.displayMetrics.density).toInt()
     private fun pillTop() = statusBarTop + px(8)
     private fun pillBottom() = pillTop() + px(48)
     private fun rowTop() = pillBottom() + px(12)
     private fun rowBottom() = rowTop() + px(40)
-    private fun headerHeight() = rowBottom() + px(4)
+    private fun headerHeight() = rowBottom() + px(17)
 
     // أول صف من العناصر بياخد offset من فوق بمقدار الهيدر، فالقايمة بتبدأ تحت
     // شريط البحث والصف (اللي مرسومين فوقها). الـ padding مش بنلمسه عشان
@@ -153,7 +153,6 @@ abstract class AbsRecyclerViewFragment<A : RecyclerView.Adapter<*>, LM : Recycle
             screenBg
         )
         bar.setCardBackgroundColor(pillColor)
-        binding.shuffleButton.setCardBackgroundColor(pillColor)
 
         ViewCompat.setOnApplyWindowInsetsListener(requireView()) { _, insets ->
             statusBarTop = insets.getInsets(WindowInsetsCompat.Type.statusBars()).top
