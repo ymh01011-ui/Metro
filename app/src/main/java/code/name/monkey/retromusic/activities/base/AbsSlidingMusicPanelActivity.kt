@@ -81,6 +81,7 @@ import code.name.monkey.retromusic.model.CategoryInfo
 import code.name.monkey.retromusic.util.PreferenceUtil
 import code.name.monkey.retromusic.util.ViewUtil
 import code.name.monkey.retromusic.util.logD
+import code.name.monkey.retromusic.views.GlassHelper
 import com.google.android.material.bottomnavigation.BottomNavigationView
 import com.google.android.material.bottomsheet.BottomSheetBehavior
 import com.google.android.material.bottomsheet.BottomSheetBehavior.BottomSheetCallback
@@ -109,6 +110,7 @@ abstract class AbsSlidingMusicPanelActivity : AbsMusicServiceActivity(),
     private var taskColor: Int = 0
     private var paletteColor: Int = Color.WHITE
     private var navigationBarColor = 0
+    private var panelGlass: View? = null
 
     private val panelState: Int
         get() = bottomSheetBehavior.state
@@ -204,6 +206,7 @@ abstract class AbsSlidingMusicPanelActivity : AbsMusicServiceActivity(),
         setupSlidingUpPanel()
         setupBottomSheet()
         updateColor()
+        applyGlass()
         if (!PreferenceUtil.materialYou) {
             binding.slidingPanel.backgroundTintList = ColorStateList.valueOf(darkAccentColor())
             navigationView.backgroundTintList = ColorStateList.valueOf(darkAccentColor())
@@ -228,6 +231,7 @@ abstract class AbsSlidingMusicPanelActivity : AbsMusicServiceActivity(),
     override fun onResume() {
         super.onResume()
         PreferenceUtil.registerOnSharedPreferenceChangedListener(this)
+        applyGlass()
         if (nowPlayingScreen != PreferenceUtil.nowPlayingScreen) {
             postRecreate()
         }
@@ -244,6 +248,13 @@ abstract class AbsSlidingMusicPanelActivity : AbsMusicServiceActivity(),
 
     override fun onSharedPreferenceChanged(sharedPreferences: SharedPreferences?, key: String?) {
         when (key) {
+            PreferenceUtil.GLASS_ENABLED, PreferenceUtil.GLASS_MATERIAL,
+            PreferenceUtil.GLASS_COLOUR, PreferenceUtil.GLASS_FROST,
+            PreferenceUtil.GLASS_FILM, PreferenceUtil.GLASS_TINT,
+            -> {
+                applyGlass()
+            }
+
             SWIPE_DOWN_DISMISS -> {
                 bottomSheetBehavior.isHideable = PreferenceUtil.swipeDownToDismiss
             }
@@ -304,6 +315,25 @@ abstract class AbsSlidingMusicPanelActivity : AbsMusicServiceActivity(),
         }
     }
 
+    /**
+     * Adds / updates / removes the glass layer behind the bottom navigation and the mini player,
+     * according to the "Glass" settings.
+     */
+    private fun applyGlass() {
+        val enabled = PreferenceUtil.glassEnabled
+        val blurRoot = binding.fragmentContainer
+        val nav = binding.navigationView
+        // The landscape navigation rail does not overlap the content, so only the bottom bar gets glass
+        GlassHelper.sync(nav, blurRoot, enabled && nav is BottomNavigationView)
+        panelGlass = GlassHelper.sync(
+            binding.slidingPanel,
+            blurRoot,
+            enabled,
+            dip(R.dimen.mini_player_height)
+        )
+        panelGlass?.alpha = if (panelState == STATE_EXPANDED) 0F else 1F
+    }
+
     fun collapsePanel() {
         bottomSheetBehavior.state = STATE_COLLAPSED
     }
@@ -322,6 +352,7 @@ abstract class AbsSlidingMusicPanelActivity : AbsMusicServiceActivity(),
             binding.navigationView.alpha = alpha
         }
         binding.playerFragmentContainer.alpha = (progress - 0.2F) / 0.2F
+        panelGlass?.alpha = (1 - progress / 0.2F).coerceIn(0F, 1F)
     }
 
     private fun animateNavigationBarColor(color: Int) {
