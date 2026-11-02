@@ -14,22 +14,25 @@
  */
 package code.name.monkey.retromusic.fragments.base
 
+import android.graphics.Rect
 import android.os.Bundle
 import android.os.Parcelable
-import android.util.TypedValue
 import android.view.*
-import android.widget.ImageView
 import androidx.annotation.NonNull
 import androidx.annotation.StringRes
 import androidx.appcompat.widget.PopupMenu
 import androidx.appcompat.widget.Toolbar
-import androidx.coordinatorlayout.widget.CoordinatorLayout
-import androidx.core.content.ContextCompat
+import androidx.core.graphics.ColorUtils
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.doOnPreDraw
 import androidx.core.view.isVisible
 import androidx.core.view.updateLayoutParams
 import androidx.navigation.fragment.findNavController
+import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.RecyclerView
+import androidx.recyclerview.widget.StaggeredGridLayoutManager
+import code.name.monkey.appthemehelper.util.ColorUtil
 import code.name.monkey.retromusic.R
 import code.name.monkey.retromusic.adapter.base.AbsMultiSelectAdapter
 import code.name.monkey.retromusic.databinding.FragmentMainRecyclerBinding
@@ -38,9 +41,8 @@ import code.name.monkey.retromusic.dialogs.ImportPlaylistDialog
 import code.name.monkey.retromusic.extensions.accentColor
 import code.name.monkey.retromusic.extensions.dip
 import code.name.monkey.retromusic.interfaces.IScrollHelper
-import code.name.monkey.retromusic.util.PreferenceUtil
 import code.name.monkey.retromusic.util.ThemedFastScroller.create
-import com.google.android.material.appbar.AppBarLayout
+import com.google.android.material.color.MaterialColors
 import com.google.android.material.transition.MaterialFadeThrough
 import me.zhanghai.android.fastscroll.FastScroller
 import me.zhanghai.android.fastscroll.FastScrollerBuilder
@@ -48,20 +50,10 @@ import me.zhanghai.android.fastscroll.FastScrollerBuilder
 abstract class AbsRecyclerViewFragment<A : RecyclerView.Adapter<*>, LM : RecyclerView.LayoutManager> :
     AbsMainActivityFragment(R.layout.fragment_main_recycler), IScrollHelper {
 
-    // *الحل الجذري*: المشكلة الحقيقية طول الوقت كانت إن toolbar.menu فيه
-    // عناصر حقيقية (Sort, Grid, إلخ) بـ showAsAction="never" - وده اللي
-    // بيخلي الـ ActionMenuView تحجز مساحة زرار overflow حقيقي، بغض النظر عن
-    // شفافية أيقونته. أي حل كان بيحاول "يتحايل" حوالين المساحة المحجوزة دي
-    // (margin سالب، قياس يدوي، sibling overlay) هيفضل عرضة لأي تغيير بسيط.
-    //
-    // الحل الصح: نوقف نظام الـ MenuProvider الحقيقي خالص (registersMenuProvider
-    // = false تحت)، ونستخدم PopupMenu منفصل تمامًا بدل toolbar.menu. كده
-    // toolbar.menu بيفضل فاضي طول الوقت - الـ ActionMenuView عمرها ما هتحجز
-    // أي مساحة، وأيقونتنا بتاخد مكانها الصح تلقائيًا من نظام التمركز العادي
-    // بتاع الـ Toolbar (بالظبط زي زرار البحث) من غير أي حسابات يدوية.
-    // onCreateMenu/onMenuItemSelected لسه نفسهم (فـ ArtistsFragment ومشتقاتها
-    // مش محتاجين يتغيروا خالص) - بس بننده عليهم إحنا يدوي على منيو الـ
-    // PopupMenu بدل ما الإطار ينده عليهم على toolbar.menu.
+    // قايمة (الترتيب، حجم الشبكة، إلخ) بتتفتح من زرار ⋯ في الصف اللي تحت شريط
+    // البحث عن طريق PopupMenu، فمفيش toolbar حقيقي بيعرض menu. عشان كده نوقف نظام
+    // الـ MenuProvider ونحن اللي بننده onCreateMenu/onMenuItemSelected يدوي على
+    // منيو الـ PopupMenu (فـ ArtistsFragment ومشتقاتها مش محتاجين يتغيروا).
     override val registersMenuProvider: Boolean = false
 
     private var _binding: FragmentMainRecyclerBinding? = null
@@ -71,17 +63,57 @@ abstract class AbsRecyclerViewFragment<A : RecyclerView.Adapter<*>, LM : Recycle
     val shuffleButton get() = binding.shuffleButton
     abstract val isShuffleVisible: Boolean
 
-    private var customOverflowIcon: ImageView? = null
-
-    // كل مرة تدخل صفحة فنان وترجع، الـ Navigation Component بيدمر View
-    // الصفحة دي بالكامل ويبنيه تاني من الصفر (نفس نسخة الـ Fragment
-    // نفسها بس View جديد) - يعني الـ LayoutManager والـ AppBarLayout
-    // بيرجعوا لحالتهم الافتراضية (سكرول = صفر، بار مفتوح بالكامل)، حتى لو
-    // كنت لسه نازل تحت قبل ما تفتح صفحة الفنان. بنخزن مكان السكرول وحالة
-    // البار هنا (خصائص على مستوى الـ Fragment نفسه، فبتفضل موجودة حتى لو
-    // الـ View اتدمر) وبنرجعهم تاني لما الـ View الجديد يتبني.
+    // كل مرة تدخل صفحة فنان وترجع، الـ Navigation Component بيدمر View الصفحة
+    // ويبنيه تاني من الصفر، فبنخزن مكان السكرول هنا (على مستوى الـ Fragment نفسه)
+    // وبنرجعه لما الـ View الجديد يتبني.
     private var savedRecyclerLayoutState: Parcelable? = null
-    private var savedAppBarOffset: Int? = null
+
+    // ارتفاع الـ status bar (بيتحدد من الـ insets)
+    private var statusBarTop = 0
+
+    // ---- أبعاد الهيدر (dp) ----
+    // [status bar] 8 | شريط البحث 48 | 12 | الصف 40 | 4 | أول عنصر في القايمة
+    private fun px(dp: Int) = (dp * resources.displayMetrics.density).toInt()
+    private fun pillTop() = statusBarTop + px(8)
+    private fun pillBottom() = pillTop() + px(48)
+    private fun rowTop() = pillBottom() + px(12)
+    private fun rowBottom() = rowTop() + px(40)
+    private fun headerHeight() = rowBottom() + px(4)
+
+    // أول صف من العناصر بياخد offset من فوق بمقدار الهيدر، فالقايمة بتبدأ تحت
+    // شريط البحث والصف (اللي مرسومين فوقها). الـ padding مش بنلمسه عشان
+    // InsetsRecyclerView بيتحكم فيه.
+    private val headerDecoration = object : RecyclerView.ItemDecoration() {
+        override fun getItemOffsets(
+            outRect: Rect,
+            view: View,
+            parent: RecyclerView,
+            state: RecyclerView.State,
+        ) {
+            if (isInFirstRow(parent, parent.getChildAdapterPosition(view))) {
+                outRect.top = headerHeight()
+            }
+        }
+    }
+
+    private fun isInFirstRow(parent: RecyclerView, position: Int): Boolean {
+        if (position == RecyclerView.NO_POSITION) return false
+        return when (val lm = parent.layoutManager) {
+            is GridLayoutManager -> lm.spanSizeLookup.getSpanGroupIndex(position, lm.spanCount) == 0
+            is StaggeredGridLayoutManager -> position < lm.spanCount
+            else -> position == 0
+        }
+    }
+
+    // شريط البحث بيستخبى لما تسحب القايمة لفوق وبيرجع فورًا لما تسحب لتحت؛ ولما
+    // تسيب إيدك بيكمل لأقرب وضع (مخفي/ظاهر).
+    private fun hideRange() = pillBottom().toFloat()
+
+    private val snapSearchBar = Runnable {
+        val bar = _binding?.searchBar ?: return@Runnable
+        val target = if (bar.translationY < -hideRange() / 2f) -hideRange() else 0f
+        bar.animate().translationY(target).setDuration(150).start()
+    }
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
@@ -90,75 +122,116 @@ abstract class AbsRecyclerViewFragment<A : RecyclerView.Adapter<*>, LM : Recycle
         view.doOnPreDraw { startPostponedEnterTransition() }
         enterTransition = MaterialFadeThrough().addTarget(binding.recyclerView)
         reenterTransition = MaterialFadeThrough().addTarget(binding.recyclerView)
-        mainActivity.setSupportActionBar(toolbar)
-        mainActivity.supportActionBar?.title = null
         initLayoutManager()
         initAdapter()
         checkForMargins()
         setUpRecyclerView()
-        setupToolbar()
-        setUpCustomOverflowIcon()
-        restoreScrollAndAppBarState()
-        binding.shuffleButton.fitsSystemWindows = PreferenceUtil.isFullScreenMode
-        // Add listeners when shuffle is visible
-        if (isShuffleVisible) {
-            binding.recyclerView.addOnScrollListener(object : RecyclerView.OnScrollListener() {
-                override fun onScrolled(recyclerView: RecyclerView, dx: Int, dy: Int) {
-                    super.onScrolled(recyclerView, dx, dy)
-                    if (dy > 0) {
-                        binding.shuffleButton.hide()
-                    } else if (dy < 0) {
-                        binding.shuffleButton.show()
-                    }
-
-                }
-            })
-            binding.shuffleButton.apply {
-                setOnClickListener {
-                    onShuffleClicked()
-                }
-                accentColor()
-            }
-        } else {
-            binding.shuffleButton.isVisible = false
-        }
-        libraryViewModel.getFabMargin().observe(viewLifecycleOwner) {
-            binding.shuffleButton.updateLayoutParams<ViewGroup.MarginLayoutParams> {
-                bottomMargin = it
-            }
-        }
+        setUpSearchBar()
+        setUpHeaderRow()
+        restoreScrollState()
+        updateCount()
+        binding.recyclerView.post { updateRowPosition() }
     }
 
     open fun onShuffleClicked() {
     }
 
-    val toolbar: Toolbar get() = binding.appBarLayout.toolbar
-
-    private fun setupToolbar() {
-        toolbar.setNavigationOnClickListener {
-            findNavController().navigate(
-                R.id.action_search,
-                null,
-                navOptions
-            )
-        }
-        val appName = resources.getString(titleRes)
-        binding.appBarLayout.title = appName
-    }
+    // placeholder مخفي، موجود بس عشان أي كود قديم بيشاور على toolbar يفضل يتبني
+    val toolbar: Toolbar get() = binding.toolbar
 
     abstract val titleRes: Int
+
+    private fun setUpSearchBar() {
+        val bar = binding.searchBar
+        val row = binding.listHeaderRow
+        val list = binding.recyclerView
+
+        // نفس عائلة لون أزرار الهوم، بس معتم عشان المحتوى اللي بيعدي تحته مايبانش
+        val screenBg = MaterialColors.getColor(bar, com.google.android.material.R.attr.colorSurface)
+        val pillColor = ColorUtils.compositeColors(
+            ColorUtil.withAlpha(accentColor(), 0.12f),
+            screenBg
+        )
+        bar.setCardBackgroundColor(pillColor)
+        binding.shuffleButton.setCardBackgroundColor(pillColor)
+
+        ViewCompat.setOnApplyWindowInsetsListener(requireView()) { _, insets ->
+            statusBarTop = insets.getInsets(WindowInsetsCompat.Type.statusBars()).top
+            bar.updateLayoutParams<ViewGroup.MarginLayoutParams> { topMargin = pillTop() }
+            row.updateLayoutParams<ViewGroup.MarginLayoutParams> { topMargin = rowTop() }
+            list.invalidateItemDecorations()
+            updateRowPosition()
+            insets
+        }
+        ViewCompat.requestApplyInsets(requireView())
+
+        // الضغط على الشريط -> البحث (نفس وجهة أيقونة البحث القديمة)
+        bar.setOnClickListener {
+            findNavController().navigate(R.id.action_search, null, navOptions)
+        }
+
+        // الهامبرغر يفتح الدراور
+        binding.menuButton.setOnClickListener {
+            mainActivity.openDrawer()
+        }
+    }
+
+    private fun setUpHeaderRow() {
+        if (isShuffleVisible) {
+            binding.shuffleButton.setOnClickListener {
+                onShuffleClicked()
+            }
+        } else {
+            binding.shuffleButton.isVisible = false
+        }
+
+        // ⋯ بيفتح PopupMenu متملي بنفس المنطق اللي كان بيملى toolbar.menu
+        binding.moreButton.setOnClickListener { anchor ->
+            val popup = PopupMenu(requireContext(), anchor)
+            onCreateMenu(popup.menu, popup.menuInflater)
+            popup.setOnMenuItemClickListener { item -> onMenuItemSelected(item) }
+            popup.show()
+        }
+    }
+
+    // الصف بيتحرك مع القايمة: مكانه = أعلى القايمة - مقدار السكرول، فيطلع معاها
+    private fun updateRowPosition() {
+        val b = _binding ?: return
+        val hideDistance = rowBottom().toFloat()
+        val offset = b.recyclerView.computeVerticalScrollOffset().toFloat()
+        b.listHeaderRow.translationY = -offset.coerceAtMost(hideDistance)
+    }
+
+    private fun updateCount() {
+        val b = _binding ?: return
+        val count = adapter?.itemCount ?: 0
+        b.countText.text = "$count ${getString(titleRes).lowercase()}"
+    }
 
     private fun setUpRecyclerView() {
         binding.recyclerView.apply {
             layoutManager = this@AbsRecyclerViewFragment.layoutManager
             adapter = this@AbsRecyclerViewFragment.adapter
+            addItemDecoration(headerDecoration)
+            addOnScrollListener(object : RecyclerView.OnScrollListener() {
+                override fun onScrolled(recyclerView: RecyclerView, dx: Int, dy: Int) {
+                    updateRowPosition()
+                    val bar = _binding?.searchBar ?: return
+                    bar.animate().cancel()
+                    bar.translationY = if (recyclerView.computeVerticalScrollOffset() <= 0) {
+                        0f
+                    } else {
+                        (bar.translationY - dy).coerceIn(-hideRange(), 0f)
+                    }
+                    bar.removeCallbacks(snapSearchBar)
+                    bar.postDelayed(snapSearchBar, 120)
+                }
+            })
             // الـ FastScroller بيعتبر أي حدث layout/تحميل بيانات (حتى لو مفيش
             // سكرول حقيقي) إنه سكرول، فكان بيظهر لحظة مع فتح الصفحة أو
-            // الرجوع من صفحة فنان (لأن الـ View بيتبني من الصفر وبيانات
-            // الفنانين بتتحمل وبيترجع مكان السكرول). عشان كده مش بنعمله
-            // خالص لحد ما المستخدم يلمس القايمة ويبدأ يسحبها فعليًا
-            // (SCROLL_STATE_DRAGGING) - وقتها بس بنعمله، فبيظهر مع السكرول
-            // الحقيقي بس. الـ listener بيشيل نفسه بعد أول مرة.
+            // الرجوع من صفحة فنان. عشان كده مش بنعمله خالص لحد ما المستخدم
+            // يلمس القايمة ويبدأ يسحبها فعليًا (SCROLL_STATE_DRAGGING) - وقتها
+            // بس بنعمله. الـ listener بيشيل نفسه بعد أول مرة.
             addOnScrollListener(object : RecyclerView.OnScrollListener() {
                 override fun onScrollStateChanged(recyclerView: RecyclerView, newState: Int) {
                     if (newState == RecyclerView.SCROLL_STATE_DRAGGING) {
@@ -180,6 +253,17 @@ abstract class AbsRecyclerViewFragment<A : RecyclerView.Adapter<*>, LM : Recycle
             override fun onChanged() {
                 super.onChanged()
                 checkIsEmpty()
+                updateCount()
+            }
+
+            override fun onItemRangeInserted(positionStart: Int, itemCount: Int) {
+                super.onItemRangeInserted(positionStart, itemCount)
+                updateCount()
+            }
+
+            override fun onItemRangeRemoved(positionStart: Int, itemCount: Int) {
+                super.onItemRangeRemoved(positionStart, itemCount)
+                updateCount()
             }
         })
     }
@@ -221,6 +305,7 @@ abstract class AbsRecyclerViewFragment<A : RecyclerView.Adapter<*>, LM : Recycle
     protected fun invalidateAdapter() {
         initAdapter()
         checkIsEmpty()
+        updateCount()
         binding.recyclerView.adapter = adapter
     }
 
@@ -230,61 +315,8 @@ abstract class AbsRecyclerViewFragment<A : RecyclerView.Adapter<*>, LM : Recycle
 
     override fun scrollToTop() {
         recyclerView.scrollToPosition(0)
-        binding.appBarLayout.setExpanded(true, true)
-    }
-
-    // *الحل الجذري*: toolbar.menu دلوقتي بيفضل فاضي طول الوقت (شوف الشرح
-    // فوق الكلاس)، يعني الـ ActionMenuView مش هتحجز أي مساحة overflow
-    // خالص. فمجرد ما نضيف الأيقونة كـ child عادي بـ Gravity.END مع
-    // CENTER_VERTICAL، الـ Toolbar بيحطها في مكانها الصح تلقائيًا - أفقيًا
-    // ورأسيًا - بنفس نظام التمركز اللي بيحط زرار البحث في مكانه، من غير أي
-    // قياس يدوي، margin سالب، أو sibling overlay. وبما إنها جزء حقيقي من
-    // نفس الـ View، بتتحرك مع أي سكرول/إخفاء تلقائيًا.
-    //
-    // الضغط عليها بيفتح PopupMenu منفصل (مش toolbar.showOverflowMenu())،
-    // وبنملاه بنفس المنطق اللي كان بيملى toolbar.menu بالظبط
-    // (onCreateMenu/onMenuItemSelected) - يعني ArtistsFragment ومشتقاتها
-    // مش محتاجين أي تعديل خالص، أوامرهم بتتنفذ زي ما هي.
-    //
-    // عشان ناخد شكل أيقونة الـ overflow الافتراضية بتاعة الثيم (من غير ما
-    // نخمن اسم resource)، بنضيف عنصر وهمي فاضي مؤقت لحد ما نلاقي شكلها،
-    // وبعدين بنمسحه فورًا - toolbar.menu بيرجع فاضي زي ما كان.
-    private fun setUpCustomOverflowIcon() {
-        if (customOverflowIcon != null) return
-
-        val probeMenu = toolbar.menu
-        probeMenu.add(0, View.NO_ID, 0, "").setShowAsAction(MenuItem.SHOW_AS_ACTION_NEVER)
-        val clonedIcon = toolbar.overflowIcon?.constantState?.newDrawable(resources)?.mutate()
-        probeMenu.clear()
-        if (clonedIcon == null) return
-
-        val sizePx = (48 * resources.displayMetrics.density).toInt()
-        val paddingPx = (12 * resources.displayMetrics.density).toInt()
-        val backgroundTypedValue = TypedValue()
-        requireContext().theme.resolveAttribute(
-            android.R.attr.selectableItemBackgroundBorderless, backgroundTypedValue, true
-        )
-
-        val imageView = ImageView(requireContext()).apply {
-            setImageDrawable(clonedIcon)
-            setPadding(paddingPx, paddingPx, paddingPx, paddingPx)
-            isClickable = true
-            isFocusable = true
-            if (backgroundTypedValue.resourceId != 0) {
-                background = ContextCompat.getDrawable(requireContext(), backgroundTypedValue.resourceId)
-            }
-            layoutParams = Toolbar.LayoutParams(sizePx, sizePx).apply {
-                gravity = Gravity.END or Gravity.CENTER_VERTICAL
-            }
-            setOnClickListener {
-                val popup = PopupMenu(requireContext(), this)
-                onCreateMenu(popup.menu, popup.menuInflater)
-                popup.setOnMenuItemClickListener { item -> onMenuItemSelected(item) }
-                popup.show()
-            }
-        }
-        toolbar.addView(imageView)
-        customOverflowIcon = imageView
+        binding.searchBar.animate().translationY(0f).setDuration(150).start()
+        recyclerView.post { updateRowPosition() }
     }
 
     override fun onCreateMenu(menu: Menu, inflater: MenuInflater) {
@@ -316,25 +348,16 @@ abstract class AbsRecyclerViewFragment<A : RecyclerView.Adapter<*>, LM : Recycle
     }
 
     override fun onDestroyView() {
-        // بنسجل مكان السكرول وحالة البار قبل ما الـ View يتدمر خالص، عشان
-        // نرجعهم لما الـ View الجديد يتبني (شوف restoreScrollAndAppBarState).
+        // بنسجل مكان السكرول قبل ما الـ View يتدمر، عشان نرجعه لما الـ View
+        // الجديد يتبني (شوف restoreScrollState).
         savedRecyclerLayoutState = layoutManager?.onSaveInstanceState()
-        savedAppBarOffset = ((binding.appBarLayout.layoutParams as? CoordinatorLayout.LayoutParams)
-            ?.behavior as? AppBarLayout.Behavior)?.topAndBottomOffset
+        _binding?.searchBar?.removeCallbacks(snapSearchBar)
         super.onDestroyView()
-        customOverflowIcon = null
         _binding = null
     }
 
-    private fun restoreScrollAndAppBarState() {
+    private fun restoreScrollState() {
         savedRecyclerLayoutState?.let { layoutManager?.onRestoreInstanceState(it) }
-        val offset = savedAppBarOffset ?: return
-        // لازم نستنى الـ Behavior يتربط بالـ View الجديد الأول (بيحصل في
-        // الـ layout pass)، فبنأجلها لحد بعد أول رسم.
-        binding.appBarLayout.doOnPreDraw {
-            val params = binding.appBarLayout.layoutParams as? CoordinatorLayout.LayoutParams
-            (params?.behavior as? AppBarLayout.Behavior)?.topAndBottomOffset = offset
-        }
     }
 
     override fun onPause() {
