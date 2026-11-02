@@ -756,9 +756,9 @@ object PreferenceUtil {
     val glassFilm: Int
         get() = sharedPreferences.getInt(GLASS_FILM, 50)
 
-    // 0 = none, otherwise ARGB color
-    val glassTint: Int
-        get() = sharedPreferences.getInt(GLASS_TINT, 0)
+    // "none" | "accent" | "red" | "orange" | "yellow" | "green" | "cyan" | "blue" | "purple" | "pink"
+    val glassTint: String
+        get() = sharedPreferences.getString(GLASS_TINT, "none") ?: "none"
 }
 
 enum class CoverLyricsType {
