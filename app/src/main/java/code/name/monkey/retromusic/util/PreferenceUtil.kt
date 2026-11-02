@@ -727,6 +727,38 @@ object PreferenceUtil {
 
     val swipeDownToDismiss
         get() = sharedPreferences.getBoolean(SWIPE_DOWN_DISMISS, true)
+
+    // ---------- Glass (liquid glass) ----------
+    const val GLASS_ENABLED = "glass_enabled"
+    const val GLASS_MATERIAL = "glass_material"
+    const val GLASS_COLOUR = "glass_colour"
+    const val GLASS_FROST = "glass_frost"
+    const val GLASS_FILM = "glass_film"
+    const val GLASS_TINT = "glass_tint"
+
+    var glassEnabled: Boolean
+        get() = sharedPreferences.getBoolean(GLASS_ENABLED, false)
+        set(value) = sharedPreferences.edit { putBoolean(GLASS_ENABLED, value) }
+
+    // "fastest" | "balanced" | "quality"
+    val glassMaterial: String
+        get() = sharedPreferences.getString(GLASS_MATERIAL, "quality") ?: "quality"
+
+    // 0..100
+    val glassColour: Int
+        get() = sharedPreferences.getInt(GLASS_COLOUR, 50)
+
+    // blur radius in dp, 0..25
+    val glassFrost: Int
+        get() = sharedPreferences.getInt(GLASS_FROST, 8)
+
+    // 0..100
+    val glassFilm: Int
+        get() = sharedPreferences.getInt(GLASS_FILM, 50)
+
+    // 0 = none, otherwise ARGB color
+    val glassTint: Int
+        get() = sharedPreferences.getInt(GLASS_TINT, 0)
 }
 
 enum class CoverLyricsType {
