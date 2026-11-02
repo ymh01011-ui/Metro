@@ -24,6 +24,8 @@
         android:layout_height="wrap_content"
         android:background="@null"
         android:fitsSystemWindows="true"
+        android:outlineProvider="none"
+        android:translationZ="2dp"
         app:elevation="0dp"
         app:liftOnScroll="false"
         app:statusBarForeground="@null">
@@ -84,12 +86,14 @@
         android:focusableInTouchMode="true"
         android:overScrollMode="@integer/overScrollMode"
         android:transitionGroup="true"
+        app:behavior_overlapTop="64dp"
         app:layout_behavior="com.google.android.material.appbar.AppBarLayout$ScrollingViewBehavior">
 
         <androidx.constraintlayout.widget.ConstraintLayout
             android:id="@+id/contentContainer"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:paddingTop="64dp"
             android:transitionGroup="true">
 
             <code.name.monkey.retromusic.views.HomeImageLayout
