@@ -195,7 +195,7 @@ class HomeFragment :
 
         // Same tint family as the History / Last added buttons. Made opaque so the content
         // scrolling underneath the pill doesn't show through it.
-        val screenBg = MaterialColors.getColor(bar, android.R.attr.colorBackground)
+        val screenBg = MaterialColors.getColor(bar, com.google.android.material.R.attr.colorSurface)
         bar.setCardBackgroundColor(
             ColorUtils.compositeColors(ColorUtil.withAlpha(accentColor(), 0.12f), screenBg)
         )
