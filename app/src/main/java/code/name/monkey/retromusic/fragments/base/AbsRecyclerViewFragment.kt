@@ -71,14 +71,18 @@ abstract class AbsRecyclerViewFragment<A : RecyclerView.Adapter<*>, LM : Recycle
     // ارتفاع الـ status bar (بيتحدد من الـ insets)
     private var statusBarTop = 0
 
+    // الـ FastScroller بيتعمل أول ما المستخدم يسحب القايمة، فبنحتفظ بيه هنا
+    // عشان نظبط له الـ padding (يبدأ من أول عنصر مش من أول الشاشة).
+    private var fastScroller: FastScroller? = null
+
     // ---- أبعاد الهيدر (dp) ----
-    // [status bar] 8 | شريط البحث 48 | 12 | الصف 40 | 17 | أول عنصر في القايمة
+    // [status bar] 8 | شريط البحث 48 | 18 | الصف 40 | 11 | أول عنصر في القايمة
     private fun px(dp: Int) = (dp * resources.displayMetrics.density).toInt()
     private fun pillTop() = statusBarTop + px(8)
     private fun pillBottom() = pillTop() + px(48)
-    private fun rowTop() = pillBottom() + px(12)
+    private fun rowTop() = pillBottom() + px(18)
     private fun rowBottom() = rowTop() + px(40)
-    private fun headerHeight() = rowBottom() + px(17)
+    private fun headerHeight() = rowBottom() + px(11)
 
     // أول صف من العناصر بياخد offset من فوق بمقدار الهيدر، فالقايمة بتبدأ تحت
     // شريط البحث والصف (اللي مرسومين فوقها). الـ padding مش بنلمسه عشان
@@ -160,6 +164,7 @@ abstract class AbsRecyclerViewFragment<A : RecyclerView.Adapter<*>, LM : Recycle
             row.updateLayoutParams<ViewGroup.MarginLayoutParams> { topMargin = rowTop() }
             list.invalidateItemDecorations()
             updateRowPosition()
+            applyFastScrollerPadding()
             insets
         }
         ViewCompat.requestApplyInsets(requireView())
@@ -235,11 +240,24 @@ abstract class AbsRecyclerViewFragment<A : RecyclerView.Adapter<*>, LM : Recycle
                 override fun onScrollStateChanged(recyclerView: RecyclerView, newState: Int) {
                     if (newState == RecyclerView.SCROLL_STATE_DRAGGING) {
                         recyclerView.removeOnScrollListener(this)
-                        create(recyclerView)
+                        fastScroller = create(recyclerView)
+                        applyFastScrollerPadding()
                     }
                 }
             })
         }
+    }
+
+    // مسار الـ FastScroller يبدأ من أول عنصر (تحت شريط البحث والصف) بدل أعلى
+    // الشاشة. باقي الأطراف بتفضل زي padding القايمة الأصلي.
+    private fun applyFastScrollerPadding() {
+        val list = _binding?.recyclerView ?: return
+        fastScroller?.setPadding(
+            list.paddingLeft,
+            headerHeight(),
+            list.paddingRight,
+            list.paddingBottom
+        )
     }
 
     protected open fun createFastScroller(recyclerView: RecyclerView): FastScroller {
@@ -351,6 +369,7 @@ abstract class AbsRecyclerViewFragment<A : RecyclerView.Adapter<*>, LM : Recycle
         // الجديد يتبني (شوف restoreScrollState).
         savedRecyclerLayoutState = layoutManager?.onSaveInstanceState()
         _binding?.searchBar?.removeCallbacks(snapSearchBar)
+        fastScroller = null
         super.onDestroyView()
         _binding = null
     }
