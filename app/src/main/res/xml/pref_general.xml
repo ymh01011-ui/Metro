@@ -81,4 +81,68 @@
             android:summary="@string/pref_summary_colored_app_shortcuts"
             android:title="@string/pref_title_app_shortcuts" />
     </code.name.monkey.appthemehelper.common.prefs.supportv7.ATEPreferenceCategory>
+
+    <code.name.monkey.appthemehelper.common.prefs.supportv7.ATEPreferenceCategory
+        android:key="category_glass"
+        android:layout="@layout/preference_category_title"
+        android:title="@string/metro_glass_header">
+
+        <code.name.monkey.appthemehelper.common.prefs.supportv7.ATESwitchPreference
+            android:defaultValue="false"
+            android:key="glass_enabled"
+            android:layout="@layout/list_item_view_switch"
+            android:summary="@string/metro_glass_enable_summary"
+            android:title="@string/metro_glass_enable_title" />
+
+        <code.name.monkey.appthemehelper.common.prefs.supportv7.ATEListPreference
+            android:defaultValue="quality"
+            android:dependency="glass_enabled"
+            android:entries="@array/metro_glass_material_titles"
+            android:entryValues="@array/metro_glass_material_values"
+            android:key="glass_material"
+            android:layout="@layout/list_item_view"
+            android:negativeButtonText="@null"
+            android:positiveButtonText="@null"
+            android:title="@string/metro_glass_material"
+            app:useSimpleSummaryProvider="true" />
+
+        <androidx.preference.SeekBarPreference
+            android:defaultValue="50"
+            android:dependency="glass_enabled"
+            android:key="glass_colour"
+            android:max="100"
+            android:title="@string/metro_glass_colour"
+            app:min="0"
+            app:showSeekBarValue="true" />
+
+        <androidx.preference.SeekBarPreference
+            android:defaultValue="8"
+            android:dependency="glass_enabled"
+            android:key="glass_frost"
+            android:max="25"
+            android:title="@string/metro_glass_frost"
+            app:min="1"
+            app:showSeekBarValue="true" />
+
+        <androidx.preference.SeekBarPreference
+            android:defaultValue="50"
+            android:dependency="glass_enabled"
+            android:key="glass_film"
+            android:max="100"
+            android:title="@string/metro_glass_film"
+            app:min="0"
+            app:showSeekBarValue="true" />
+
+        <code.name.monkey.appthemehelper.common.prefs.supportv7.ATEListPreference
+            android:defaultValue="none"
+            android:dependency="glass_enabled"
+            android:entries="@array/metro_glass_tint_titles"
+            android:entryValues="@array/metro_glass_tint_values"
+            android:key="glass_tint"
+            android:layout="@layout/list_item_view"
+            android:negativeButtonText="@null"
+            android:positiveButtonText="@null"
+            android:title="@string/metro_glass_tint"
+            app:useSimpleSummaryProvider="true" />
+    </code.name.monkey.appthemehelper.common.prefs.supportv7.ATEPreferenceCategory>
 </androidx.preference.PreferenceScreen>
