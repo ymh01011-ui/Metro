@@ -735,6 +735,7 @@ object PreferenceUtil {
     const val GLASS_FROST = "glass_frost"
     const val GLASS_FILM = "glass_film"
     const val GLASS_TINT = "glass_tint"
+    const val GLASS_COMPACT = "glass_compact"
 
     var glassEnabled: Boolean
         get() = sharedPreferences.getBoolean(GLASS_ENABLED, false)
@@ -755,6 +756,10 @@ object PreferenceUtil {
     // 0..100
     val glassFilm: Int
         get() = sharedPreferences.getInt(GLASS_FILM, 50)
+
+    // shrink the bar into a round home button while scrolling down
+    val glassCompact: Boolean
+        get() = sharedPreferences.getBoolean(GLASS_COMPACT, true)
 
     // "none" | "accent" | "red" | "orange" | "yellow" | "green" | "cyan" | "blue" | "purple" | "pink"
     val glassTint: String
