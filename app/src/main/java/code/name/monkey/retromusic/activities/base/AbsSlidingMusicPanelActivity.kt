@@ -121,7 +121,9 @@ abstract class AbsSlidingMusicPanelActivity : AbsMusicServiceActivity(),
     private val glassScrollListener = object : androidx.recyclerview.widget.RecyclerView.OnScrollListener() {
         override fun onScrolled(recyclerView: androidx.recyclerview.widget.RecyclerView, dx: Int, dy: Int) {
             // ignore horizontal lists
-            if (recyclerView.layoutManager?.canScrollVertically() == true) onGlassScroll(dy)
+            if (recyclerView.layoutManager?.canScrollVertically() == true) {
+                onGlassScroll(dy, !recyclerView.canScrollVertically(-1))
+            }
         }
     }
 
@@ -356,10 +358,8 @@ abstract class AbsSlidingMusicPanelActivity : AbsMusicServiceActivity(),
         val glassBar = enabled && nav is BottomNavigationView
         val miniVertical = GlassHelper.dp(this, 4)
 
-        GlassHelper.sync(nav, blurRoot, glassBar)
-        GlassHelper.syncHome(nav, blurRoot, glassBar && PreferenceUtil.glassCompact) {
-            onGlassHomeClicked()
-        }
+        // tapping the folded bar unfolds it (as in Square)
+        GlassHelper.sync(nav, blurRoot, glassBar, withIcon = true) { setGlassCompact(false) }
         GlassHelper.setNavBackgroundHidden(nav, glassBar)
 
         panelGlass = GlassHelper.sync(
@@ -384,39 +384,54 @@ abstract class AbsSlidingMusicPanelActivity : AbsMusicServiceActivity(),
         watchScrolling(binding.fragmentContainer)
     }
 
-    // ---- compact bar (round home button + mini player pill) while scrolling down ----
+    // ---- folded bar (circle + mini player pill) while scrolling down, like Square ----
 
-    private fun onGlassScroll(dy: Int) {
+    private var scrollAccum = 0
+
+    private fun onGlassScroll(dy: Int, atTop: Boolean) {
         if (!PreferenceUtil.glassEnabled || !PreferenceUtil.glassCompact) return
-        when {
-            dy > 6 -> setGlassCompact(true)
-            dy < -6 -> setGlassCompact(false)
+        if (atTop) {
+            // the bar comes back at the top of the page
+            scrollAccum = 0
+            setGlassCompact(false)
+            return
         }
-    }
-
-    private fun onGlassHomeClicked() {
-        setGlassCompact(false)
-        val menu = binding.navigationView.menu
-        if (menu.size() > 0) binding.navigationView.selectedItemId = menu.getItem(0).itemId
+        // accumulate, and start over when the direction changes
+        if ((scrollAccum > 0 && dy < 0) || (scrollAccum < 0 && dy > 0)) scrollAccum = 0
+        scrollAccum += dy
+        val threshold = GlassHelper.dp(this, 50)
+        if (scrollAccum >= threshold) {
+            scrollAccum = 0
+            setGlassCompact(true)
+        } else if (scrollAccum <= -threshold) {
+            scrollAccum = 0
+            setGlassCompact(false)
+        }
     }
 
     private fun setGlassCompact(compact: Boolean) {
         if (compact == glassCompact) return
         if (compact) {
             if (isLandscape || !PreferenceUtil.glassEnabled || !PreferenceUtil.glassCompact) return
-            if (panelState != STATE_COLLAPSED || MusicPlayerRemote.playingQueue.isEmpty()) return
-            if (!isBottomNavVisible) return
-            val home = GlassHelper.homeOf(binding.navigationView) ?: return
-            val miniPill = panelGlass ?: return
-            compactShiftY = GlassHelper.centerDelta(home, miniPill)
+            if (panelState != STATE_COLLAPSED || !isBottomNavVisible) return
+            val navLayer = GlassHelper.layerOf(binding.navigationView) ?: return
+            val miniPill = panelGlass
+            compactShiftY =
+                if (miniPill != null && MusicPlayerRemote.playingQueue.isNotEmpty()) {
+                    GlassHelper.centerDelta(navLayer, miniPill)
+                } else 0F
+            // the circle shows the tab you are on
             val menu = binding.navigationView.menu
-            if (menu.size() > 0) GlassHelper.setHomeIcon(home, menu.getItem(0).icon)
+            GlassHelper.setSelectedIcon(
+                navLayer,
+                menu.findItem(binding.navigationView.selectedItemId)?.icon
+            )
         }
         glassCompact = compact
         compactAnimator?.cancel()
         compactAnimator = ValueAnimator.ofFloat(compactProgress, if (compact) 1F else 0F).apply {
-            duration = 260
-            interpolator = android.view.animation.DecelerateInterpolator()
+            duration = 320
+            interpolator = android.view.animation.PathInterpolator(0.2F, 0F, 0F, 1F)
             addUpdateListener {
                 compactProgress = it.animatedValue as Float
                 renderCompact()
@@ -429,16 +444,20 @@ abstract class AbsSlidingMusicPanelActivity : AbsMusicServiceActivity(),
         compactAnimator?.cancel()
         glassCompact = false
         compactProgress = 0F
+        scrollAccum = 0
         renderCompact()
     }
 
     private fun renderCompact() {
+        val circle = panelGlass?.layoutParams?.height?.takeIf { it > 0 }
+            ?: (dip(R.dimen.mini_player_height) - 2 * GlassHelper.dp(this, 4))
         GlassHelper.applyCompact(
             binding.navigationView,
             binding.slidingPanel,
             miniPlayerFragment?.view,
             compactProgress,
-            compactShiftY
+            compactShiftY,
+            circle
         )
     }
 
@@ -453,7 +472,7 @@ abstract class AbsSlidingMusicPanelActivity : AbsMusicServiceActivity(),
                     val y = view.scrollY
                     val dy = y - last
                     last = y
-                    if (dy != 0) onGlassScroll(dy)
+                    if (dy != 0 || y == 0) onGlassScroll(dy, y == 0)
                 }
             }
         }
