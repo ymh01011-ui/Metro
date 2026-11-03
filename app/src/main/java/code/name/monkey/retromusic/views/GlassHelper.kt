@@ -27,13 +27,12 @@ import java.util.WeakHashMap
  */
 object GlassHelper {
     const val TAG_LAYER = "metro_glass_layer"
-    const val TAG_HOME = "metro_glass_home"
     private const val TAG_TINT = "metro_glass_tint"
     private const val TAG_EDGE = "metro_glass_edge"
     private const val TAG_ICON = "metro_glass_icon"
 
-    const val SIDE_MARGIN_DP = 8
-    const val HOME_SIZE_DP = 56
+    const val SIDE_MARGIN_DP = 16
+    const val GAP_DP = 8
 
     private val savedBackgrounds = WeakHashMap<View, Drawable?>()
 
@@ -41,8 +40,6 @@ object GlassHelper {
         (value * context.resources.displayMetrics.density).toInt()
 
     fun layerOf(host: ViewGroup): BlurView? = host.findViewWithTag<BlurView>(TAG_LAYER)
-
-    fun homeOf(host: ViewGroup): BlurView? = host.findViewWithTag<BlurView>(TAG_HOME)
 
     // ------------------------------------------------------------------ pills
 
@@ -57,6 +54,8 @@ object GlassHelper {
         enabled: Boolean,
         layerHeight: Int = ViewGroup.LayoutParams.MATCH_PARENT,
         verticalMarginDp: Int = 6,
+        withIcon: Boolean = false,
+        onClick: (() -> Unit)? = null,
     ): BlurView? {
         var layer = layerOf(host)
         if (!enabled) {
@@ -68,58 +67,38 @@ object GlassHelper {
             val side = dp(context, SIDE_MARGIN_DP)
             val vertical = dp(context, verticalMarginDp)
             val params = FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, layerHeight, Gravity.TOP
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                layerHeight,
+                Gravity.START or (if (withIcon) Gravity.CENTER_VERTICAL else Gravity.TOP)
             )
             params.setMargins(side, vertical, side, vertical)
+            params.marginStart = side
+            params.marginEnd = side
             layer = createLayer(host, blurRoot, params, TAG_LAYER)
+            if (withIcon) {
+                val icon = ImageView(context)
+                icon.tag = TAG_ICON
+                icon.scaleType = ImageView.ScaleType.FIT_CENTER
+                val pad = dp(context, 12)
+                icon.setPadding(pad, pad, pad, pad)
+                icon.layoutParams = FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT
+                )
+                icon.alpha = 0f
+                layer.addView(icon)
+            }
         }
+        layer.setOnClickListener(if (onClick != null) View.OnClickListener { onClick() } else null)
+        layer.isClickable = false
         style(layer)
         return layer
     }
 
-    /** The round button that replaces the tab bar while the bar is compact. */
-    fun syncHome(
-        nav: FrameLayout,
-        blurRoot: ViewGroup,
-        enabled: Boolean,
-        onClick: () -> Unit,
-    ): BlurView? {
-        var home = homeOf(nav)
-        if (!enabled) {
-            home?.let { (it.parent as? ViewGroup)?.removeView(it) }
-            return null
-        }
-        if (home == null) {
-            val context = nav.context
-            val size = dp(context, HOME_SIZE_DP)
-            val params = FrameLayout.LayoutParams(
-                size, size, Gravity.START or Gravity.CENTER_VERTICAL
-            )
-            params.marginStart = dp(context, SIDE_MARGIN_DP)
-            home = createLayer(nav, blurRoot, params, TAG_HOME)
-
-            val icon = ImageView(context)
-            icon.tag = TAG_ICON
-            icon.scaleType = ImageView.ScaleType.FIT_CENTER
-            val pad = dp(context, 15)
-            icon.setPadding(pad, pad, pad, pad)
-            icon.layoutParams = FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT
-            )
-            home.addView(icon)
-            home.alpha = 0f
-            home.visibility = View.INVISIBLE
-            home.isClickable = false
-            home.setOnClickListener { onClick() }
-        }
-        style(home)
-        return home
-    }
-
-    fun setHomeIcon(home: BlurView, icon: Drawable?) {
-        val view = home.findViewWithTag<ImageView>(TAG_ICON) ?: return
+    /** Puts [icon] (the selected tab) in the pill; it fades in while the bar is folded. */
+    fun setSelectedIcon(layer: BlurView?, icon: Drawable?) {
+        val view = layer?.findViewWithTag<ImageView>(TAG_ICON) ?: return
         view.setImageDrawable(icon?.constantState?.newDrawable()?.mutate() ?: icon)
-        view.imageTintList = ColorStateList.valueOf(ThemeStore.accentColor(home.context))
+        view.imageTintList = ColorStateList.valueOf(ThemeStore.accentColor(layer.context))
     }
 
     private fun createLayer(
@@ -234,7 +213,7 @@ object GlassHelper {
         val view = mini ?: return
         val params = view.layoutParams as? ViewGroup.MarginLayoutParams ?: return
         val side = dp(view.context, SIDE_MARGIN_DP)
-        val start = if (enabled) startExtraPx else 0
+        val start = if (enabled) startExtraPx + side - dp(view.context, 8) else 0
         val end = if (enabled) side + dp(view.context, 4) else 0
         if (params.marginStart != start || params.marginEnd != end) {
             params.marginStart = start
@@ -246,47 +225,80 @@ object GlassHelper {
 
     // --------------------------------------------------------------- compact
 
-    /** Vertical distance between the centers of [home] and [mini] (ignoring [mini]'s translation). */
-    fun centerDelta(home: View, mini: View): Float {
+    /** Vertical distance between the centers of [a] and [b] (ignoring [b]'s translation). */
+    fun centerDelta(a: View, b: View): Float {
         val xy = IntArray(2)
-        home.getLocationOnScreen(xy)
-        val homeCenter = xy[1] + home.height / 2f
-        mini.getLocationOnScreen(xy)
-        val miniCenter = xy[1] + mini.height / 2f - mini.translationY
-        return homeCenter - miniCenter
+        a.getLocationOnScreen(xy)
+        val aCenter = xy[1] + a.height / 2f
+        b.getLocationOnScreen(xy)
+        val bCenter = xy[1] + b.height / 2f - b.translationY
+        return aCenter - bCenter
     }
 
+    private fun mix(a: Float, b: Float, p: Float) = a + (b - a) * p
+
     /**
-     * p = 0: normal (tab bar pill above the mini player pill).
-     * p = 1: compact (round home button on the left, mini player pill takes the bar's row).
+     * Same idea as Square's fold: one value p drives everything.
+     * p = 0: tab bar pill above the mini player pill.
+     * p = 1: the tab bar pill has shrunk into a circle (selected tab) on the left and the mini
+     *        player pill sits next to it, in the same row.
      */
-    fun applyCompact(nav: ViewGroup, panel: ViewGroup, mini: View?, p: Float, shiftY: Float) {
+    fun applyCompact(
+        nav: ViewGroup,
+        panel: ViewGroup,
+        mini: View?,
+        p: Float,
+        shiftY: Float,
+        circle: Int,
+    ) {
         val context = nav.context
+        val side = dp(context, SIDE_MARGIN_DP)
+        val gap = dp(context, GAP_DP)
+
+        // tabs fade out within the first third of the fold (as in Square)
+        val tabsAlpha = (1f - p * 3f).coerceIn(0f, 1f)
         for (i in 0 until nav.childCount) {
             val child = nav.getChildAt(i)
-            when (child.tag) {
-                TAG_HOME -> {
-                    child.alpha = p
-                    child.visibility = if (p <= 0.01f) View.INVISIBLE else View.VISIBLE
-                    child.isClickable = p > 0.5f
-                }
-                TAG_LAYER -> child.alpha = 1f - p
-                else -> {
-                    child.alpha = 1f - p
-                    child.visibility = if (p >= 0.99f) View.INVISIBLE else View.VISIBLE
-                }
-            }
+            if (child.tag == TAG_LAYER) continue
+            child.alpha = tabsAlpha
+            child.visibility = if (tabsAlpha <= 0f) View.INVISIBLE else View.VISIBLE
         }
 
-        val homeShift = dp(context, HOME_SIZE_DP + SIDE_MARGIN_DP)
-        val side = dp(context, SIDE_MARGIN_DP)
-        val extra = (homeShift * p).toInt()
+        // the tab bar pill shrinks into a circle
+        layerOf(nav)?.let { layer ->
+            val params = layer.layoutParams as FrameLayout.LayoutParams
+            val fullWidth = nav.width - nav.paddingLeft - nav.paddingRight - 2 * side
+            val fullHeight = nav.height - nav.paddingTop - nav.paddingBottom - 2 * dp(context, 6)
+            val width: Int
+            val height: Int
+            if (p <= 0f || fullWidth <= 0 || fullHeight <= 0) {
+                width = ViewGroup.LayoutParams.MATCH_PARENT
+                height = ViewGroup.LayoutParams.MATCH_PARENT
+            } else {
+                width = mix(fullWidth.toFloat(), circle.toFloat(), p).toInt()
+                height = mix(fullHeight.toFloat(), circle.toFloat(), p).toInt()
+            }
+            if (params.width != width || params.height != height) {
+                params.width = width
+                params.height = height
+                layer.layoutParams = params
+            }
+            layer.findViewWithTag<View>(TAG_ICON)?.alpha = p
+            layer.isClickable = p > 0.5f
+            layer.invalidateOutline()
+        }
 
+        // the mini player pill slides into the row, next to the circle
+        val extra = ((circle + gap) * p).toInt()
         layerOf(panel)?.let { layer ->
             layer.translationY = shiftY * p
             val params = layer.layoutParams as? ViewGroup.MarginLayoutParams
-            if (params != null && params.marginStart != side + extra) {
+            if (params != null &&
+                (params.marginStart != side + extra || params.marginEnd != side)
+            ) {
+                // always set BOTH ends: setting only the start resets the end margin to 0
                 params.marginStart = side + extra
+                params.marginEnd = side
                 layer.layoutParams = params
             }
         }
