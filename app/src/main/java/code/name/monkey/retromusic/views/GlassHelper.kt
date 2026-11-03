@@ -10,12 +10,15 @@ import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.view.ViewOutlineProvider
+import android.view.ViewTreeObserver
+import android.view.animation.OvershootInterpolator
 import android.widget.FrameLayout
 import android.widget.ImageView
 import androidx.core.graphics.ColorUtils
 import code.name.monkey.appthemehelper.ThemeStore
 import code.name.monkey.retromusic.util.PreferenceUtil
 import com.google.android.material.color.MaterialColors
+import com.google.android.material.navigation.NavigationBarView
 import eightbitlab.com.blurview.BlurView
 import eightbitlab.com.blurview.RenderScriptBlur
 import java.util.WeakHashMap
@@ -33,8 +36,15 @@ object GlassHelper {
 
     const val SIDE_MARGIN_DP = 16
     const val GAP_DP = 8
+    const val NAV_PILL_HEIGHT_DP = 62
+    const val TAB_INNER_DP = 4
+    private const val TAG_PUCK = "metro_glass_puck"
 
     private val savedBackgrounds = WeakHashMap<View, Drawable?>()
+    private val savedIndicator = WeakHashMap<View, Boolean>()
+    private val tabWatchers = WeakHashMap<View, ViewTreeObserver.OnPreDrawListener>()
+    private val lastPuckIndex = WeakHashMap<View, Int>()
+    private val puckAnimating = WeakHashMap<View, Boolean>()
 
     fun dp(context: Context, value: Int): Int =
         (value * context.resources.displayMetrics.density).toInt()
@@ -191,6 +201,133 @@ object GlassHelper {
         else -> 0
     }
 
+    // ------------------------------------------------------------------ tabs
+
+    /**
+     * Square-style tabs: the tabs sit inside the pill (4dp padding) and the selection is a
+     * rounded "puck" that slides to the selected tab, instead of Material's small indicator.
+     */
+    fun syncTabs(nav: NavigationBarView, enabled: Boolean) {
+        val context = nav.context
+        val side = dp(context, SIDE_MARGIN_DP)
+        val inner = dp(context, TAB_INNER_DP)
+        val tabsHeight = dp(context, NAV_PILL_HEIGHT_DP) - 2 * inner
+
+        var menuView: View? = null
+        for (i in 0 until nav.childCount) {
+            val child = nav.getChildAt(i)
+            if (child.tag != TAG_LAYER && child.tag != TAG_PUCK) {
+                menuView = child
+                break
+            }
+        }
+        val menuParams = menuView?.layoutParams as? FrameLayout.LayoutParams
+        var puck = nav.findViewWithTag<View>(TAG_PUCK)
+
+        if (!enabled) {
+            savedIndicator.remove(nav)?.let { nav.isItemActiveIndicatorEnabled = it }
+            if (menuView != null && menuParams != null) {
+                menuParams.setMargins(0, 0, 0, 0)
+                menuParams.marginStart = 0
+                menuParams.marginEnd = 0
+                menuParams.height = ViewGroup.LayoutParams.MATCH_PARENT
+                menuParams.gravity = -1
+                menuView.layoutParams = menuParams
+            }
+            puck?.let { nav.removeView(it) }
+            tabWatchers.remove(nav)?.let {
+                if (nav.viewTreeObserver.isAlive) nav.viewTreeObserver.removeOnPreDrawListener(it)
+            }
+            lastPuckIndex.remove(nav)
+            puckAnimating.remove(nav)
+            return
+        }
+
+        if (!savedIndicator.containsKey(nav)) savedIndicator[nav] = nav.isItemActiveIndicatorEnabled
+        nav.isItemActiveIndicatorEnabled = false
+
+        if (menuView != null && menuParams != null) {
+            menuParams.setMargins(side + inner, 0, side + inner, 0)
+            menuParams.marginStart = side + inner
+            menuParams.marginEnd = side + inner
+            menuParams.height = tabsHeight
+            menuParams.gravity = Gravity.CENTER_VERTICAL
+            menuView.layoutParams = menuParams
+        }
+
+        if (puck == null) {
+            puck = View(context)
+            puck.tag = TAG_PUCK
+            val params = FrameLayout.LayoutParams(0, tabsHeight, Gravity.START or Gravity.CENTER_VERTICAL)
+            params.marginStart = side + inner
+            puck.layoutParams = params
+            nav.addView(puck, minOf(1, nav.childCount))
+        }
+        val surface = MaterialColors.getColor(
+            context, com.google.android.material.R.attr.colorSurface, Color.BLACK
+        )
+        val dark = ColorUtils.calculateLuminance(surface) < 0.5
+        val shape = GradientDrawable()
+        shape.shape = GradientDrawable.RECTANGLE
+        shape.cornerRadius = 1000f
+        shape.setColor(if (dark) Color.argb(90, 0, 0, 0) else Color.argb(150, 255, 255, 255))
+        shape.setStroke(
+            dp(context, 1),
+            if (dark) Color.argb(50, 255, 255, 255) else Color.argb(30, 0, 0, 0)
+        )
+        puck.background = shape
+
+        if (!tabWatchers.containsKey(nav)) {
+            val listener = ViewTreeObserver.OnPreDrawListener {
+                syncPuck(nav)
+                true
+            }
+            nav.viewTreeObserver.addOnPreDrawListener(listener)
+            tabWatchers[nav] = listener
+        }
+    }
+
+    private fun syncPuck(nav: NavigationBarView) {
+        val puck = nav.findViewWithTag<View>(TAG_PUCK) ?: return
+        val menu = nav.menu
+        val count = menu.size()
+        if (count == 0 || nav.width == 0) return
+        val context = nav.context
+        val inset = dp(context, SIDE_MARGIN_DP) + dp(context, TAB_INNER_DP)
+        val slot = (nav.width - nav.paddingLeft - nav.paddingRight - 2 * inset) / count
+        if (slot <= 0) return
+
+        var index = 0
+        for (i in 0 until count) {
+            if (menu.getItem(i).isChecked) {
+                index = i
+                break
+            }
+        }
+        val params = puck.layoutParams as FrameLayout.LayoutParams
+        if (params.width != slot) {
+            params.width = slot
+            puck.layoutParams = params
+        }
+        val target = (index * slot).toFloat()
+        val last = lastPuckIndex[nav]
+        when {
+            last == null -> puck.translationX = target
+            last != index -> {
+                puckAnimating[nav] = true
+                puck.animate().cancel()
+                puck.animate()
+                    .translationX(target)
+                    .setDuration(320)
+                    .setInterpolator(OvershootInterpolator(0.8f))
+                    .withEndAction { puckAnimating[nav] = false }
+                    .start()
+            }
+            puckAnimating[nav] != true && puck.translationX != target -> puck.translationX = target
+        }
+        lastPuckIndex[nav] = index
+    }
+
     // ------------------------------------------------------------ host looks
 
     /** The floating bar must not have its own full-width background. */
@@ -268,12 +405,12 @@ object GlassHelper {
         layerOf(nav)?.let { layer ->
             val params = layer.layoutParams as FrameLayout.LayoutParams
             val fullWidth = nav.width - nav.paddingLeft - nav.paddingRight - 2 * side
-            val fullHeight = nav.height - nav.paddingTop - nav.paddingBottom - 2 * dp(context, 6)
+            val fullHeight = dp(context, NAV_PILL_HEIGHT_DP)
             val width: Int
             val height: Int
-            if (p <= 0f || fullWidth <= 0 || fullHeight <= 0) {
+            if (p <= 0f || fullWidth <= 0) {
                 width = ViewGroup.LayoutParams.MATCH_PARENT
-                height = ViewGroup.LayoutParams.MATCH_PARENT
+                height = fullHeight
             } else {
                 width = mix(fullWidth.toFloat(), circle.toFloat(), p).toInt()
                 height = mix(fullHeight.toFloat(), circle.toFloat(), p).toInt()
