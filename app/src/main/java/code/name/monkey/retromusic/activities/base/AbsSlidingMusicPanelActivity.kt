@@ -356,10 +356,18 @@ abstract class AbsSlidingMusicPanelActivity : AbsMusicServiceActivity(),
         val nav = binding.navigationView
         // The landscape navigation rail does not overlap the content, so only the bottom bar gets glass
         val glassBar = enabled && nav is BottomNavigationView
-        val miniVertical = GlassHelper.dp(this, 4)
+        val miniVertical = GlassHelper.dp(this, 2)
 
         // tapping the folded bar unfolds it (as in Square)
-        GlassHelper.sync(nav, blurRoot, glassBar, withIcon = true) { setGlassCompact(false) }
+        GlassHelper.sync(
+            nav,
+            blurRoot,
+            glassBar,
+            GlassHelper.dp(this, GlassHelper.NAV_PILL_HEIGHT_DP),
+            0,
+            withIcon = true
+        ) { setGlassCompact(false) }
+        GlassHelper.syncTabs(nav, glassBar)
         GlassHelper.setNavBackgroundHidden(nav, glassBar)
 
         panelGlass = GlassHelper.sync(
@@ -367,7 +375,7 @@ abstract class AbsSlidingMusicPanelActivity : AbsMusicServiceActivity(),
             blurRoot,
             enabled,
             dip(R.dimen.mini_player_height) - 2 * miniVertical,
-            4
+            2
         )
         panelGlass?.alpha = if (panelState == STATE_EXPANDED) 0F else 1F
         GlassHelper.setHostBackgroundAlpha(
@@ -450,7 +458,7 @@ abstract class AbsSlidingMusicPanelActivity : AbsMusicServiceActivity(),
 
     private fun renderCompact() {
         val circle = panelGlass?.layoutParams?.height?.takeIf { it > 0 }
-            ?: (dip(R.dimen.mini_player_height) - 2 * GlassHelper.dp(this, 4))
+            ?: (dip(R.dimen.mini_player_height) - 2 * GlassHelper.dp(this, 2))
         GlassHelper.applyCompact(
             binding.navigationView,
             binding.slidingPanel,
