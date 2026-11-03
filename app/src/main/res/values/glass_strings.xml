@@ -3,6 +3,8 @@
     <string name="metro_glass_header">Glass</string>
     <string name="metro_glass_enable_title">Glass effect</string>
     <string name="metro_glass_enable_summary">Frosted glass behind the bottom bar and the mini player</string>
+    <string name="metro_glass_compact_title">Compact bar on scroll</string>
+    <string name="metro_glass_compact_summary">Shrinks the bar into a home button while you scroll down</string>
     <string name="metro_glass_material">Material</string>
     <string name="metro_glass_colour">Colour</string>
     <string name="metro_glass_frost">Frost (dp)</string>
