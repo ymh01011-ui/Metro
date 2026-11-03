@@ -5,6 +5,7 @@ import android.content.res.ColorStateList
 import android.graphics.Color
 import android.graphics.Outline
 import android.graphics.drawable.Drawable
+import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.view.Gravity
 import android.view.View
@@ -13,7 +14,10 @@ import android.view.ViewOutlineProvider
 import android.view.ViewTreeObserver
 import android.view.animation.OvershootInterpolator
 import android.widget.FrameLayout
+import android.util.TypedValue
 import android.widget.ImageView
+import android.widget.LinearLayout
+import android.widget.TextView
 import androidx.core.graphics.ColorUtils
 import code.name.monkey.appthemehelper.ThemeStore
 import code.name.monkey.retromusic.util.PreferenceUtil
@@ -39,12 +43,15 @@ object GlassHelper {
     const val NAV_PILL_HEIGHT_DP = 62
     const val TAB_INNER_DP = 4
     private const val TAG_PUCK = "metro_glass_puck"
+    private const val TAG_TABS = "metro_glass_tabs"
 
     private val savedBackgrounds = WeakHashMap<View, Drawable?>()
     private val savedIndicator = WeakHashMap<View, Boolean>()
     private val tabWatchers = WeakHashMap<View, ViewTreeObserver.OnPreDrawListener>()
     private val lastPuckIndex = WeakHashMap<View, Int>()
     private val puckAnimating = WeakHashMap<View, Boolean>()
+    private val tabIds = WeakHashMap<View, IntArray>()
+    private val styledIndex = WeakHashMap<View, Int>()
 
     fun dp(context: Context, value: Int): Int =
         (value * context.resources.displayMetrics.density).toInt()
@@ -149,14 +156,23 @@ object GlassHelper {
 
     private fun style(layer: BlurView) {
         val context = layer.context
+        val density = context.resources.displayMetrics.density
         val material = PreferenceUtil.glassMaterial
         val surface = MaterialColors.getColor(
             context, com.google.android.material.R.attr.colorSurface, Color.BLACK
         )
-        val filmAlpha = PreferenceUtil.glassFilm.coerceIn(0, 100) * 2          // 0..200
+        val dark = ColorUtils.calculateLuminance(surface) < 0.5
+        val film = PreferenceUtil.glassFilm.coerceIn(0, 100)
         val tintAlpha = (PreferenceUtil.glassColour.coerceIn(0, 100) * 12) / 10 // 0..120
-        val radius = PreferenceUtil.glassFrost.coerceIn(1, 25).toFloat()
+        // Frost is in dp of real blur; BlurView blurs a down-scaled copy, hence the divisor.
+        // Square's 8dp frost is a thin glass: the artwork behind stays recognisable.
+        val radius = (PreferenceUtil.glassFrost * density / 4f).coerceIn(0.5f, 25f)
         val tint = tintColor(context)
+
+        // Dark mode: a light veil (Square's glass is brighter than the page, not darker).
+        // Light mode: the surface colour.
+        val filmColor = if (dark) Color.WHITE else surface
+        val filmAlpha = if (dark) film / 2 else film * 2 // dark 0..50, light 0..200
 
         layer.findViewWithTag<View>(TAG_TINT)?.setBackgroundColor(
             if (tint == 0) Color.TRANSPARENT else ColorUtils.setAlphaComponent(tint, tintAlpha)
@@ -169,21 +185,23 @@ object GlassHelper {
             rim.shape = GradientDrawable.RECTANGLE
             rim.cornerRadius = 1000f
             rim.setColor(Color.TRANSPARENT)
-            rim.setStroke(dp(context, 1), ColorUtils.setAlphaComponent(Color.WHITE, 80))
+            rim.setStroke(
+                dp(context, 1),
+                if (dark) ColorUtils.setAlphaComponent(Color.WHITE, 110)
+                else ColorUtils.setAlphaComponent(Color.BLACK, 45)
+            )
             edge.background = rim
         }
 
         if (material == "fastest") {
             // No live blur: a flat translucent surface, the cheapest option
             layer.setBlurEnabled(false)
-            layer.setBackgroundColor(
-                ColorUtils.setAlphaComponent(surface, (150 + filmAlpha / 4).coerceAtMost(255))
-            )
+            layer.setBackgroundColor(ColorUtils.setAlphaComponent(surface, (150 + film).coerceAtMost(255)))
         } else {
             layer.setBackgroundColor(Color.TRANSPARENT)
             layer.setBlurEnabled(true)
             layer.setBlurRadius(radius)
-            layer.setOverlayColor(ColorUtils.setAlphaComponent(surface, filmAlpha))
+            layer.setOverlayColor(ColorUtils.setAlphaComponent(filmColor, filmAlpha))
         }
         layer.invalidateOutline()
     }
@@ -204,8 +222,9 @@ object GlassHelper {
     // ------------------------------------------------------------------ tabs
 
     /**
-     * Square-style tabs: the tabs sit inside the pill (4dp padding) and the selection is a
-     * rounded "puck" that slides to the selected tab, instead of Material's small indicator.
+     * Square-style tabs. Material's own tab views are hidden and replaced by a row we control
+     * (24dp icon, 2dp gap, 11sp label, so nothing can overlap), plus a rounded "puck" that
+     * slides to the selected tab. Tapping a tab still goes through the real navigation view.
      */
     fun syncTabs(nav: NavigationBarView, enabled: Boolean) {
         val context = nav.context
@@ -213,52 +232,39 @@ object GlassHelper {
         val inner = dp(context, TAB_INNER_DP)
         val tabsHeight = dp(context, NAV_PILL_HEIGHT_DP) - 2 * inner
 
-        var menuView: View? = null
+        var materialMenu: View? = null
         for (i in 0 until nav.childCount) {
             val child = nav.getChildAt(i)
-            if (child.tag != TAG_LAYER && child.tag != TAG_PUCK) {
-                menuView = child
+            val tag = child.tag
+            if (tag != TAG_LAYER && tag != TAG_PUCK && tag != TAG_TABS) {
+                materialMenu = child
                 break
             }
         }
-        val menuParams = menuView?.layoutParams as? FrameLayout.LayoutParams
+        val row = nav.findViewWithTag<LinearLayout>(TAG_TABS)
         var puck = nav.findViewWithTag<View>(TAG_PUCK)
 
         if (!enabled) {
-            savedIndicator.remove(nav)?.let { nav.isItemActiveIndicatorEnabled = it }
-            if (menuView != null && menuParams != null) {
-                menuParams.setMargins(0, 0, 0, 0)
-                menuParams.marginStart = 0
-                menuParams.marginEnd = 0
-                menuParams.height = ViewGroup.LayoutParams.MATCH_PARENT
-                menuParams.gravity = -1
-                menuView.layoutParams = menuParams
-            }
+            materialMenu?.visibility = View.VISIBLE
+            row?.let { nav.removeView(it) }
             puck?.let { nav.removeView(it) }
             tabWatchers.remove(nav)?.let {
                 if (nav.viewTreeObserver.isAlive) nav.viewTreeObserver.removeOnPreDrawListener(it)
             }
             lastPuckIndex.remove(nav)
             puckAnimating.remove(nav)
+            tabIds.remove(nav)
+            styledIndex.remove(nav)
             return
         }
 
-        if (!savedIndicator.containsKey(nav)) savedIndicator[nav] = nav.isItemActiveIndicatorEnabled
-        nav.isItemActiveIndicatorEnabled = false
-
-        if (menuView != null && menuParams != null) {
-            menuParams.setMargins(side + inner, 0, side + inner, 0)
-            menuParams.marginStart = side + inner
-            menuParams.marginEnd = side + inner
-            menuParams.height = tabsHeight
-            menuParams.gravity = Gravity.CENTER_VERTICAL
-            menuView.layoutParams = menuParams
-        }
+        materialMenu?.visibility = View.GONE
 
         if (puck == null) {
             puck = View(context)
             puck.tag = TAG_PUCK
-            val params = FrameLayout.LayoutParams(0, tabsHeight, Gravity.START or Gravity.CENTER_VERTICAL)
+            val params =
+                FrameLayout.LayoutParams(0, tabsHeight, Gravity.START or Gravity.CENTER_VERTICAL)
             params.marginStart = side + inner
             puck.layoutParams = params
             nav.addView(puck, minOf(1, nav.childCount))
@@ -273,17 +279,118 @@ object GlassHelper {
         shape.setColor(if (dark) Color.argb(90, 0, 0, 0) else Color.argb(150, 255, 255, 255))
         shape.setStroke(
             dp(context, 1),
-            if (dark) Color.argb(50, 255, 255, 255) else Color.argb(30, 0, 0, 0)
+            if (dark) Color.argb(60, 255, 255, 255) else Color.argb(40, 0, 0, 0)
         )
         puck.background = shape
 
+        if (row == null) {
+            val newRow = LinearLayout(context)
+            newRow.tag = TAG_TABS
+            newRow.orientation = LinearLayout.HORIZONTAL
+            val params = FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, tabsHeight, Gravity.START or Gravity.CENTER_VERTICAL
+            )
+            params.setMargins(side + inner, 0, side + inner, 0)
+            params.marginStart = side + inner
+            params.marginEnd = side + inner
+            newRow.layoutParams = params
+            nav.addView(newRow, minOf(2, nav.childCount))
+        }
+        // force a rebuild + restyle (theme / accent may have changed)
+        tabIds.remove(nav)
+        styledIndex.remove(nav)
+        syncRow(nav)
+
         if (!tabWatchers.containsKey(nav)) {
             val listener = ViewTreeObserver.OnPreDrawListener {
+                syncRow(nav)
                 syncPuck(nav)
                 true
             }
             nav.viewTreeObserver.addOnPreDrawListener(listener)
             tabWatchers[nav] = listener
+        }
+    }
+
+    private fun syncRow(nav: NavigationBarView) {
+        val row = nav.findViewWithTag<LinearLayout>(TAG_TABS) ?: return
+        val menu = nav.menu
+        val count = menu.size()
+
+        val known = tabIds[nav]
+        var changed = known == null || known.size != count
+        if (!changed && known != null) {
+            for (i in 0 until count) {
+                if (known[i] != menu.getItem(i).itemId) {
+                    changed = true
+                    break
+                }
+            }
+        }
+        var selected = 0
+        for (i in 0 until count) {
+            if (menu.getItem(i).isChecked) {
+                selected = i
+                break
+            }
+        }
+
+        if (changed) {
+            row.removeAllViews()
+            val context = nav.context
+            for (i in 0 until count) {
+                val item = menu.getItem(i)
+                val itemId = item.itemId
+
+                val tab = LinearLayout(context)
+                tab.orientation = LinearLayout.VERTICAL
+                tab.gravity = Gravity.CENTER
+                tab.layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f)
+                tab.setOnClickListener { nav.selectedItemId = itemId }
+
+                val icon = ImageView(context)
+                icon.scaleType = ImageView.ScaleType.FIT_CENTER
+                icon.layoutParams = LinearLayout.LayoutParams(dp(context, 24), dp(context, 24))
+                icon.setImageDrawable(item.icon?.constantState?.newDrawable()?.mutate() ?: item.icon)
+
+                val label = TextView(context)
+                label.text = item.title
+                label.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
+                label.maxLines = 1
+                label.ellipsize = android.text.TextUtils.TruncateAt.END
+                label.gravity = Gravity.CENTER
+                val labelParams = LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT
+                )
+                labelParams.topMargin = dp(context, 2)
+                label.layoutParams = labelParams
+
+                tab.addView(icon)
+                tab.addView(label)
+                row.addView(tab)
+            }
+            tabIds[nav] = IntArray(count) { menu.getItem(it).itemId }
+            styledIndex.remove(nav)
+        }
+
+        if (styledIndex[nav] != selected) {
+            val context = nav.context
+            val accent = ThemeStore.accentColor(context)
+            val ink = MaterialColors.getColor(
+                context, com.google.android.material.R.attr.colorOnSurface, Color.WHITE
+            )
+            val dim = ColorUtils.setAlphaComponent(ink, 175)
+            for (i in 0 until row.childCount) {
+                val tab = row.getChildAt(i) as? LinearLayout ?: continue
+                val chosen = i == selected
+                val color = if (chosen) accent else dim
+                (tab.getChildAt(0) as? ImageView)?.imageTintList = ColorStateList.valueOf(color)
+                (tab.getChildAt(1) as? TextView)?.let {
+                    it.setTextColor(color)
+                    it.setTypeface(Typeface.DEFAULT, if (chosen) Typeface.BOLD else Typeface.NORMAL)
+                }
+            }
+            styledIndex[nav] = selected
         }
     }
 
@@ -350,8 +457,10 @@ object GlassHelper {
         val view = mini ?: return
         val params = view.layoutParams as? ViewGroup.MarginLayoutParams ?: return
         val side = dp(view.context, SIDE_MARGIN_DP)
-        val start = if (enabled) startExtraPx + side - dp(view.context, 8) else 0
-        val end = if (enabled) side + dp(view.context, 4) else 0
+        // same horizontal bounds as the pill: the layout's own 10dp padding then puts the
+        // artwork 10dp inside the pill, as in Square
+        val start = if (enabled) startExtraPx + side else 0
+        val end = if (enabled) side else 0
         if (params.marginStart != start || params.marginEnd != end) {
             params.marginStart = start
             params.marginEnd = end
@@ -396,7 +505,7 @@ object GlassHelper {
         val tabsAlpha = (1f - p * 3f).coerceIn(0f, 1f)
         for (i in 0 until nav.childCount) {
             val child = nav.getChildAt(i)
-            if (child.tag == TAG_LAYER) continue
+            if (child.tag != TAG_TABS && child.tag != TAG_PUCK) continue
             child.alpha = tabsAlpha
             child.visibility = if (tabsAlpha <= 0f) View.INVISIBLE else View.VISIBLE
         }
