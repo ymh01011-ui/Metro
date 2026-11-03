@@ -111,6 +111,30 @@ abstract class AbsSlidingMusicPanelActivity : AbsMusicServiceActivity(),
     private var paletteColor: Int = Color.WHITE
     private var navigationBarColor = 0
     private var panelGlass: View? = null
+    private var glassCompact = false
+    private var compactProgress = 0f
+    private var compactShiftY = 0f
+    private var compactAnimator: ValueAnimator? = null
+    private val scrollWatched: MutableSet<View> =
+        java.util.Collections.newSetFromMap(java.util.WeakHashMap<View, Boolean>())
+
+    private val glassScrollListener = object : androidx.recyclerview.widget.RecyclerView.OnScrollListener() {
+        override fun onScrolled(recyclerView: androidx.recyclerview.widget.RecyclerView, dx: Int, dy: Int) {
+            // ignore horizontal lists
+            if (recyclerView.layoutManager?.canScrollVertically() == true) onGlassScroll(dy)
+        }
+    }
+
+    private val glassFragmentCallbacks = object : androidx.fragment.app.FragmentManager.FragmentLifecycleCallbacks() {
+        override fun onFragmentViewCreated(
+            fm: androidx.fragment.app.FragmentManager,
+            f: androidx.fragment.app.Fragment,
+            v: View,
+            savedInstanceState: Bundle?
+        ) {
+            watchScrolling(v)
+        }
+    }
 
     private val panelState: Int
         get() = bottomSheetBehavior.state
@@ -154,6 +178,8 @@ abstract class AbsSlidingMusicPanelActivity : AbsMusicServiceActivity(),
 
             override fun onStateChanged(bottomSheet: View, newState: Int) {
                 onBackPressedCallback.isEnabled = newState == STATE_EXPANDED
+                if (newState != STATE_COLLAPSED) setGlassCompact(false)
+                if (newState == STATE_EXPANDED) resetGlassCompact()
                 when (newState) {
                     STATE_EXPANDED -> {
                         onPanelExpanded()
@@ -206,6 +232,7 @@ abstract class AbsSlidingMusicPanelActivity : AbsMusicServiceActivity(),
         setupSlidingUpPanel()
         setupBottomSheet()
         updateColor()
+        supportFragmentManager.registerFragmentLifecycleCallbacks(glassFragmentCallbacks, true)
         applyGlass()
         if (!PreferenceUtil.materialYou) {
             binding.slidingPanel.backgroundTintList = ColorStateList.valueOf(darkAccentColor())
@@ -243,6 +270,8 @@ abstract class AbsSlidingMusicPanelActivity : AbsMusicServiceActivity(),
     override fun onDestroy() {
         super.onDestroy()
         bottomSheetBehavior.removeBottomSheetCallback(bottomSheetCallbackList)
+        supportFragmentManager.unregisterFragmentLifecycleCallbacks(glassFragmentCallbacks)
+        compactAnimator?.cancel()
         PreferenceUtil.unregisterOnSharedPreferenceChangedListener(this)
     }
 
@@ -250,7 +279,7 @@ abstract class AbsSlidingMusicPanelActivity : AbsMusicServiceActivity(),
         when (key) {
             PreferenceUtil.GLASS_ENABLED, PreferenceUtil.GLASS_MATERIAL,
             PreferenceUtil.GLASS_COLOUR, PreferenceUtil.GLASS_FROST,
-            PreferenceUtil.GLASS_FILM, PreferenceUtil.GLASS_TINT,
+            PreferenceUtil.GLASS_FILM, PreferenceUtil.GLASS_TINT, PreferenceUtil.GLASS_COMPACT,
             -> {
                 applyGlass()
             }
@@ -316,22 +345,121 @@ abstract class AbsSlidingMusicPanelActivity : AbsMusicServiceActivity(),
     }
 
     /**
-     * Adds / updates / removes the glass layer behind the bottom navigation and the mini player,
-     * according to the "Glass" settings.
+     * Adds / updates / removes the floating glass pills behind the bottom navigation and the
+     * mini player, according to the "Glass" settings.
      */
     private fun applyGlass() {
         val enabled = PreferenceUtil.glassEnabled
         val blurRoot = binding.fragmentContainer
         val nav = binding.navigationView
         // The landscape navigation rail does not overlap the content, so only the bottom bar gets glass
-        GlassHelper.sync(nav, blurRoot, enabled && nav is BottomNavigationView)
+        val glassBar = enabled && nav is BottomNavigationView
+        val miniVertical = GlassHelper.dp(this, 4)
+
+        GlassHelper.sync(nav, blurRoot, glassBar)
+        GlassHelper.syncHome(nav, blurRoot, glassBar && PreferenceUtil.glassCompact) {
+            onGlassHomeClicked()
+        }
+        GlassHelper.setNavBackgroundHidden(nav, glassBar)
+
         panelGlass = GlassHelper.sync(
             binding.slidingPanel,
             blurRoot,
             enabled,
-            dip(R.dimen.mini_player_height)
+            dip(R.dimen.mini_player_height) - 2 * miniVertical,
+            4
         )
         panelGlass?.alpha = if (panelState == STATE_EXPANDED) 0F else 1F
+        GlassHelper.setHostBackgroundAlpha(
+            binding.slidingPanel,
+            if (!enabled || panelState == STATE_EXPANDED) 255 else 0
+        )
+        GlassHelper.setMiniInsets(
+            miniPlayerFragment?.view,
+            enabled,
+            0
+        )
+
+        if (!glassBar || !PreferenceUtil.glassCompact) resetGlassCompact()
+        watchScrolling(binding.fragmentContainer)
+    }
+
+    // ---- compact bar (round home button + mini player pill) while scrolling down ----
+
+    private fun onGlassScroll(dy: Int) {
+        if (!PreferenceUtil.glassEnabled || !PreferenceUtil.glassCompact) return
+        when {
+            dy > 6 -> setGlassCompact(true)
+            dy < -6 -> setGlassCompact(false)
+        }
+    }
+
+    private fun onGlassHomeClicked() {
+        setGlassCompact(false)
+        val menu = binding.navigationView.menu
+        if (menu.size() > 0) binding.navigationView.selectedItemId = menu.getItem(0).itemId
+    }
+
+    private fun setGlassCompact(compact: Boolean) {
+        if (compact == glassCompact) return
+        if (compact) {
+            if (isLandscape || !PreferenceUtil.glassEnabled || !PreferenceUtil.glassCompact) return
+            if (panelState != STATE_COLLAPSED || MusicPlayerRemote.playingQueue.isEmpty()) return
+            if (!isBottomNavVisible) return
+            val home = GlassHelper.homeOf(binding.navigationView) ?: return
+            val miniPill = panelGlass ?: return
+            compactShiftY = GlassHelper.centerDelta(home, miniPill)
+            val menu = binding.navigationView.menu
+            if (menu.size() > 0) GlassHelper.setHomeIcon(home, menu.getItem(0).icon)
+        }
+        glassCompact = compact
+        compactAnimator?.cancel()
+        compactAnimator = ValueAnimator.ofFloat(compactProgress, if (compact) 1F else 0F).apply {
+            duration = 260
+            interpolator = android.view.animation.DecelerateInterpolator()
+            addUpdateListener {
+                compactProgress = it.animatedValue as Float
+                renderCompact()
+            }
+            start()
+        }
+    }
+
+    private fun resetGlassCompact() {
+        compactAnimator?.cancel()
+        glassCompact = false
+        compactProgress = 0F
+        renderCompact()
+    }
+
+    private fun renderCompact() {
+        GlassHelper.applyCompact(
+            binding.navigationView,
+            binding.slidingPanel,
+            miniPlayerFragment?.view,
+            compactProgress,
+            compactShiftY
+        )
+    }
+
+    /** Finds the scrolling lists of a fragment and reports their scroll direction. */
+    private fun watchScrolling(view: View) {
+        if (view is androidx.recyclerview.widget.RecyclerView) {
+            if (scrollWatched.add(view)) view.addOnScrollListener(glassScrollListener)
+        } else if (view is androidx.core.widget.NestedScrollView) {
+            if (scrollWatched.add(view)) {
+                var last = view.scrollY
+                view.viewTreeObserver.addOnScrollChangedListener {
+                    val y = view.scrollY
+                    val dy = y - last
+                    last = y
+                    if (dy != 0) onGlassScroll(dy)
+                }
+            }
+        }
+        if (view is ViewGroup) {
+            for (i in 0 until view.childCount) watchScrolling(view.getChildAt(i))
+        }
     }
 
     fun collapsePanel() {
@@ -353,6 +481,12 @@ abstract class AbsSlidingMusicPanelActivity : AbsMusicServiceActivity(),
         }
         binding.playerFragmentContainer.alpha = (progress - 0.2F) / 0.2F
         panelGlass?.alpha = (1 - progress / 0.2F).coerceIn(0F, 1F)
+        if (PreferenceUtil.glassEnabled) {
+            GlassHelper.setHostBackgroundAlpha(
+                binding.slidingPanel,
+                ((progress / 0.4F).coerceIn(0F, 1F) * 255).toInt()
+            )
+        }
     }
 
     private fun animateNavigationBarColor(color: Int) {
@@ -578,6 +712,7 @@ abstract class AbsSlidingMusicPanelActivity : AbsMusicServiceActivity(),
         animate: Boolean = false,
         isBottomNavVisible: Boolean = navigationView.isVisible && navigationView is BottomNavigationView,
     ) {
+        resetGlassCompact()
         val heightOfBar = windowInsets.getBottomInsets() + dip(R.dimen.mini_player_height)
         val heightOfBarWithTabs = heightOfBar + dip(R.dimen.bottom_nav_height)
         if (hide) {
