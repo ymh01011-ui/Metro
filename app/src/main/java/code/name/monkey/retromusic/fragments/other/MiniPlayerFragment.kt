@@ -16,14 +16,17 @@ package code.name.monkey.retromusic.fragments.other
 
 import android.annotation.SuppressLint
 import android.content.Context
+import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
 import android.text.SpannableStringBuilder
 import android.text.style.ForegroundColorSpan
 import android.view.GestureDetector
 import android.view.MotionEvent
 import android.view.View
+import androidx.core.graphics.ColorUtils
 import androidx.core.text.toSpannable
 import androidx.core.view.isVisible
+import code.name.monkey.appthemehelper.ThemeStore
 import code.name.monkey.retromusic.R
 import code.name.monkey.retromusic.databinding.FragmentMiniPlayerBinding
 import code.name.monkey.retromusic.extensions.accentColor
@@ -82,7 +85,18 @@ open class MiniPlayerFragment : AbsMusicServiceFragment(R.layout.fragment_mini_p
 
     private fun setUpMiniPlayer() {
         setUpPlayPauseButton()
-        binding.progressBar.accentColor()
+        val ink = textColorPrimary()
+        binding.progressBar.setIndicatorColor(ThemeStore.accentColor(requireContext()))
+        binding.progressBar.trackColor = ColorUtils.setAlphaComponent(ink, 46)
+        // the play button gets a soft surface of its own, like Square's glass button
+        val surface = GradientDrawable()
+        surface.shape = GradientDrawable.OVAL
+        surface.setColor(ColorUtils.setAlphaComponent(ink, 30))
+        surface.setStroke(
+            resources.displayMetrics.density.toInt().coerceAtLeast(1),
+            ColorUtils.setAlphaComponent(ink, 50)
+        )
+        binding.miniPlayerPlayPauseButton.background = surface
     }
 
     private fun setUpPlayPauseButton() {
@@ -90,26 +104,13 @@ open class MiniPlayerFragment : AbsMusicServiceFragment(R.layout.fragment_mini_p
     }
 
     private fun updateSongTitle() {
-
         val song = MusicPlayerRemote.currentSong
-
-        val builder = SpannableStringBuilder()
-
-        val title = song.title.toSpannable()
-        title.setSpan(ForegroundColorSpan(textColorPrimary()), 0, title.length, 0)
-
-        val text = song.artistName.toSpannable()
-        text.setSpan(ForegroundColorSpan(textColorSecondary()), 0, text.length, 0)
-
-        builder.append(title).append(" • ").append(text)
-
+        // title on top, artist underneath
         binding.miniPlayerTitle.isSelected = true
-        binding.miniPlayerTitle.text = builder
-
-//        binding.title.isSelected = true
-//        binding.title.text = song.title
-//        binding.text.isSelected = true
-//        binding.text.text = song.artistName
+        binding.miniPlayerTitle.text = song.title
+        binding.miniPlayerTitle.setTextColor(textColorPrimary())
+        binding.miniPlayerArtist.text = song.artistName
+        binding.miniPlayerArtist.setTextColor(textColorSecondary())
     }
 
     private fun updateSongCover() {
