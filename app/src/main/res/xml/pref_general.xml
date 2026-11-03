@@ -94,6 +94,14 @@
             android:summary="@string/metro_glass_enable_summary"
             android:title="@string/metro_glass_enable_title" />
 
+        <code.name.monkey.appthemehelper.common.prefs.supportv7.ATESwitchPreference
+            android:defaultValue="true"
+            android:dependency="glass_enabled"
+            android:key="glass_compact"
+            android:layout="@layout/list_item_view_switch"
+            android:summary="@string/metro_glass_compact_summary"
+            android:title="@string/metro_glass_compact_title" />
+
         <code.name.monkey.appthemehelper.common.prefs.supportv7.ATEListPreference
             android:defaultValue="quality"
             android:dependency="glass_enabled"
