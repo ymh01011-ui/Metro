@@ -45,6 +45,12 @@ object GlassHelper {
     private const val TAG_PUCK = "metro_glass_puck"
     private const val TAG_TABS = "metro_glass_tabs"
 
+    /**
+     * While true the pills use a flat translucent fill instead of the live blur. The activity sets
+     * it during page transitions, so the blur never captures a half-animated page.
+     */
+    var frozen = false
+
     private val savedBackgrounds = WeakHashMap<View, Drawable?>()
     private val savedIndicator = WeakHashMap<View, Boolean>()
     private val tabWatchers = WeakHashMap<View, ViewTreeObserver.OnPreDrawListener>()
@@ -57,6 +63,11 @@ object GlassHelper {
         (value * context.resources.displayMetrics.density).toInt()
 
     fun layerOf(host: ViewGroup): BlurView? = host.findViewWithTag<BlurView>(TAG_LAYER)
+
+    /** Re-reads the settings (and [frozen]) for the pill of [host]. */
+    fun restyle(host: ViewGroup) {
+        layerOf(host)?.let { style(it) }
+    }
 
     // ------------------------------------------------------------------ pills
 
@@ -193,7 +204,7 @@ object GlassHelper {
             edge.background = rim
         }
 
-        if (material == "fastest") {
+        if (material == "fastest" || frozen) {
             // No live blur: a flat translucent surface, the cheapest option
             layer.setBlurEnabled(false)
             layer.setBackgroundColor(ColorUtils.setAlphaComponent(surface, (150 + film).coerceAtMost(255)))
