@@ -44,6 +44,11 @@ object GlassHelper {
     private const val TAG_PUCK = "metro_glass_puck"
     private const val TAG_TABS = "metro_glass_tabs"
 
+    private val CHECKED_STATE = intArrayOf(
+        android.R.attr.state_checked, android.R.attr.state_selected, android.R.attr.state_enabled
+    )
+    private val UNCHECKED_STATE = intArrayOf(android.R.attr.state_enabled)
+
     private val savedBackgrounds = WeakHashMap<View, Drawable?>()
     private val savedIndicator = WeakHashMap<View, Boolean>()
     private val tabWatchers = WeakHashMap<View, ViewTreeObserver.OnPreDrawListener>()
@@ -378,6 +383,8 @@ object GlassHelper {
         }
 
         if (styledIndex[nav] != selected) {
+            // animate only when the selection really changes, not when the tabs are (re)built
+            val animate = styledIndex[nav] != null
             val context = nav.context
             val accent = ThemeStore.accentColor(context)
             val ink = MaterialColors.getColor(
@@ -388,7 +395,14 @@ object GlassHelper {
                 val tab = row.getChildAt(i) as? LinearLayout ?: continue
                 val chosen = i == selected
                 val color = if (chosen) accent else dim
-                (tab.getChildAt(0) as? ImageView)?.imageTintList = ColorStateList.valueOf(color)
+                (tab.getChildAt(0) as? ImageView)?.let { icon ->
+                    icon.imageTintList = ColorStateList.valueOf(color)
+                    // animated icon selectors (the little notes around the songs icon...) react to
+                    // the checked state, exactly like Material's own tab did
+                    icon.isSelected = chosen
+                    icon.setImageState(if (chosen) CHECKED_STATE else UNCHECKED_STATE, false)
+                    if (!animate) icon.drawable?.jumpToCurrentState()
+                }
                 (tab.getChildAt(1) as? TextView)?.let {
                     it.setTextColor(color)
                     it.setTypeface(Typeface.DEFAULT, if (chosen) Typeface.BOLD else Typeface.NORMAL)
