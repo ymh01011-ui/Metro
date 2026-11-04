@@ -463,7 +463,7 @@ abstract class AbsSlidingMusicPanelActivity : AbsMusicServiceActivity(),
         glassCompact = compact
         compactAnimator?.cancel()
         compactAnimator = ValueAnimator.ofFloat(compactProgress, if (compact) 1F else 0F).apply {
-            duration = 320
+            duration = 450
             interpolator = android.view.animation.PathInterpolator(0.2F, 0F, 0F, 1F)
             addUpdateListener {
                 compactProgress = it.animatedValue as Float
