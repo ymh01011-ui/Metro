@@ -6,6 +6,7 @@ import android.graphics.Color
 import android.graphics.Outline
 import android.graphics.drawable.Drawable
 import android.graphics.Typeface
+import android.os.Build
 import android.graphics.drawable.GradientDrawable
 import android.view.Gravity
 import android.view.View
@@ -23,13 +24,11 @@ import code.name.monkey.appthemehelper.ThemeStore
 import code.name.monkey.retromusic.util.PreferenceUtil
 import com.google.android.material.color.MaterialColors
 import com.google.android.material.navigation.NavigationBarView
-import eightbitlab.com.blurview.BlurView
-import eightbitlab.com.blurview.RenderScriptBlur
 import java.util.WeakHashMap
 
 /**
  * Floating "liquid glass" pills (Apple Music style): live backdrop blur + tint + film + rim light.
- * A pill is a BlurView added as the first child of a FrameLayout host, so it follows the host's
+ * A pill is a [GlassLayer] added as the first child of a FrameLayout host, so it follows the host's
  * animations, alpha and visibility. Everything is driven by the Glass settings in [PreferenceUtil].
  */
 object GlassHelper {
@@ -45,13 +44,6 @@ object GlassHelper {
     private const val TAG_PUCK = "metro_glass_puck"
     private const val TAG_TABS = "metro_glass_tabs"
 
-    /**
-     * While true the blur stops following the page (it keeps its last frame, so the pill looks
-     * the same). The activity sets it briefly during page transitions, so the blur never
-     * captures a half-animated page.
-     */
-    var frozen = false
-
     private val savedBackgrounds = WeakHashMap<View, Drawable?>()
     private val savedIndicator = WeakHashMap<View, Boolean>()
     private val tabWatchers = WeakHashMap<View, ViewTreeObserver.OnPreDrawListener>()
@@ -63,9 +55,9 @@ object GlassHelper {
     fun dp(context: Context, value: Int): Int =
         (value * context.resources.displayMetrics.density).toInt()
 
-    fun layerOf(host: ViewGroup): BlurView? = host.findViewWithTag<BlurView>(TAG_LAYER)
+    fun layerOf(host: ViewGroup): GlassLayer? = host.findViewWithTag<GlassLayer>(TAG_LAYER)
 
-    /** Re-reads the settings (and [frozen]) for the pill of [host]. */
+    /** Re-reads the settings for the pill of [host]. */
     fun restyle(host: ViewGroup) {
         layerOf(host)?.let { style(it) }
     }
@@ -85,7 +77,7 @@ object GlassHelper {
         verticalMarginDp: Int = 6,
         withIcon: Boolean = false,
         onClick: (() -> Unit)? = null,
-    ): BlurView? {
+    ): GlassLayer? {
         var layer = layerOf(host)
         if (!enabled) {
             layer?.let { (it.parent as? ViewGroup)?.removeView(it) }
@@ -124,7 +116,7 @@ object GlassHelper {
     }
 
     /** Puts [icon] (the selected tab) in the pill; it fades in while the bar is folded. */
-    fun setSelectedIcon(layer: BlurView?, icon: Drawable?) {
+    fun setSelectedIcon(layer: GlassLayer?, icon: Drawable?) {
         val view = layer?.findViewWithTag<ImageView>(TAG_ICON) ?: return
         view.setImageDrawable(icon?.constantState?.newDrawable()?.mutate() ?: icon)
         view.imageTintList = ColorStateList.valueOf(ThemeStore.accentColor(layer.context))
@@ -135,11 +127,11 @@ object GlassHelper {
         blurRoot: ViewGroup,
         params: FrameLayout.LayoutParams,
         layerTag: String,
-    ): BlurView {
+    ): GlassLayer {
         val context = host.context
         val match = ViewGroup.LayoutParams.MATCH_PARENT
 
-        val layer = BlurView(context)
+        val layer = GlassLayer(context)
         layer.tag = layerTag
         layer.layoutParams = params
         layer.outlineProvider = object : ViewOutlineProvider() {
@@ -162,11 +154,11 @@ object GlassHelper {
         layer.addView(tintView)
         layer.addView(edgeView)
         host.addView(layer, 0)
-        layer.setupWith(blurRoot, RenderScriptBlur(context)).setBlurRadius(8f)
+        layer.backdrop = blurRoot
         return layer
     }
 
-    private fun style(layer: BlurView) {
+    private fun style(layer: GlassLayer) {
         val context = layer.context
         val density = context.resources.displayMetrics.density
         val material = PreferenceUtil.glassMaterial
@@ -175,10 +167,6 @@ object GlassHelper {
         )
         val dark = ColorUtils.calculateLuminance(surface) < 0.5
         val film = PreferenceUtil.glassFilm.coerceIn(0, 100)
-        val tintAlpha = (PreferenceUtil.glassColour.coerceIn(0, 100) * 12) / 10 // 0..120
-        // Frost is in dp of real blur; BlurView blurs a down-scaled copy, hence the divisor.
-        // Square's 8dp frost is a thin glass: the artwork behind stays recognisable.
-        val radius = (PreferenceUtil.glassFrost * density / 4f).coerceIn(0.5f, 25f)
         val tint = tintColor(context)
 
         // Dark mode: a light veil (Square's glass is brighter than the page, not darker).
@@ -187,7 +175,7 @@ object GlassHelper {
         val filmAlpha = if (dark) film / 2 else film * 2 // dark 0..50, light 0..200
 
         layer.findViewWithTag<View>(TAG_TINT)?.setBackgroundColor(
-            if (tint == 0) Color.TRANSPARENT else ColorUtils.setAlphaComponent(tint, tintAlpha)
+            if (tint == 0) Color.TRANSPARENT else ColorUtils.setAlphaComponent(tint, 90)
         )
 
         // Rim light: a thin translucent outline around the pill
@@ -205,19 +193,21 @@ object GlassHelper {
             edge.background = rim
         }
 
-        if (material == "fastest") {
-            // No live blur: a flat translucent surface, the cheapest option
-            layer.setBlurEnabled(false)
-            layer.setBackgroundColor(ColorUtils.setAlphaComponent(surface, (150 + film).coerceAtMost(255)))
-        } else {
+        val liveBlur = material != "fastest" && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+        layer.live = liveBlur
+        if (liveBlur) {
             layer.setBackgroundColor(Color.TRANSPARENT)
-            layer.setBlurEnabled(true)
-            // while a page animates the blur keeps its last frame instead of following the page
-            layer.setBlurAutoUpdate(!frozen)
-            layer.setBlurRadius(radius)
-            layer.setOverlayColor(ColorUtils.setAlphaComponent(filmColor, filmAlpha))
+            // Frost is in dp of blur (sigma), Colour boosts saturation: 0% = 1.0x, 100% = 2.0x
+            layer.blurSigmaPx = (PreferenceUtil.glassFrost * density * 0.6f).coerceAtLeast(0.5f)
+            layer.saturation = 1f + PreferenceUtil.glassColour.coerceIn(0, 100) / 100f
+            layer.filmColor = ColorUtils.setAlphaComponent(filmColor, filmAlpha)
+        } else {
+            // No blur (Fastest, or below Android 12): a flat translucent surface
+            layer.filmColor = Color.TRANSPARENT
+            layer.setBackgroundColor(ColorUtils.setAlphaComponent(surface, (150 + film).coerceAtMost(255)))
         }
         layer.invalidateOutline()
+        layer.invalidate()
     }
 
     private fun tintColor(context: Context): Int = when (PreferenceUtil.glassTint) {
