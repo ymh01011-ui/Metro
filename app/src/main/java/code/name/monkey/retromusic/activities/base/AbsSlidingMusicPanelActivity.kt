@@ -406,7 +406,7 @@ abstract class AbsSlidingMusicPanelActivity : AbsMusicServiceActivity(),
         watchScrolling(binding.fragmentContainer)
     }
 
-    /** Flat glass for the length of a page transition, then the live blur again. */
+    /** Keeps the blur still for the length of a page transition, then lets it follow again. */
     private fun freezeGlass() {
         if (!PreferenceUtil.glassEnabled) return
         glassHandler.removeCallbacks(glassUnfreeze)
@@ -414,7 +414,7 @@ abstract class AbsSlidingMusicPanelActivity : AbsMusicServiceActivity(),
             GlassHelper.frozen = true
             refreshGlassLooks()
         }
-        glassHandler.postDelayed(glassUnfreeze, 800)
+        glassHandler.postDelayed(glassUnfreeze, 400)
     }
 
     private fun refreshGlassLooks() {
