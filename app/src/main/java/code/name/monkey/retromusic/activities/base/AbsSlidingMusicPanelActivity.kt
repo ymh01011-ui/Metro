@@ -112,6 +112,8 @@ abstract class AbsSlidingMusicPanelActivity : AbsMusicServiceActivity(),
     private var navigationBarColor = 0
     private var panelGlass: View? = null
     private var glassCompact = false
+    /** true while a detail page (album, artist, playlist...) is open and the bar is folded */
+    private var glassDetailMode = false
     private var compactProgress = 0f
     private var compactShiftY = 0f
     private var compactAnimator: ValueAnimator? = null
@@ -180,7 +182,8 @@ abstract class AbsSlidingMusicPanelActivity : AbsMusicServiceActivity(),
 
             override fun onStateChanged(bottomSheet: View, newState: Int) {
                 onBackPressedCallback.isEnabled = newState == STATE_EXPANDED
-                if (newState != STATE_COLLAPSED) setGlassCompact(false)
+                // the player is opening: unfold; back to the mini player: fold again on detail pages
+                setGlassCompact(newState == STATE_COLLAPSED && glassDetailMode)
                 if (newState == STATE_EXPANDED) resetGlassCompact()
                 if (PreferenceUtil.glassEnabled) {
                     if (newState == STATE_EXPANDED) {
@@ -241,7 +244,6 @@ abstract class AbsSlidingMusicPanelActivity : AbsMusicServiceActivity(),
         setupSlidingUpPanel()
         setupBottomSheet()
         updateColor()
-        supportFragmentManager.registerFragmentLifecycleCallbacks(glassFragmentCallbacks, true)
         applyGlass()
         if (!PreferenceUtil.materialYou) {
             binding.slidingPanel.backgroundTintList = ColorStateList.valueOf(darkAccentColor())
@@ -279,7 +281,6 @@ abstract class AbsSlidingMusicPanelActivity : AbsMusicServiceActivity(),
     override fun onDestroy() {
         super.onDestroy()
         bottomSheetBehavior.removeBottomSheetCallback(bottomSheetCallbackList)
-        supportFragmentManager.unregisterFragmentLifecycleCallbacks(glassFragmentCallbacks)
         compactAnimator?.cancel()
         PreferenceUtil.unregisterOnSharedPreferenceChangedListener(this)
     }
@@ -373,7 +374,7 @@ abstract class AbsSlidingMusicPanelActivity : AbsMusicServiceActivity(),
             GlassHelper.dp(this, GlassHelper.NAV_PILL_HEIGHT_DP),
             0,
             withIcon = true
-        ) { setGlassCompact(false) }
+        ) { onGlassCircleClicked() }
         GlassHelper.syncTabs(nav, glassBar)
         GlassHelper.setNavBackgroundHidden(nav, glassBar)
 
@@ -395,15 +396,32 @@ abstract class AbsSlidingMusicPanelActivity : AbsMusicServiceActivity(),
             0
         )
 
-        if (!glassBar || !PreferenceUtil.glassCompact) resetGlassCompact()
-        watchScrolling(binding.fragmentContainer)
+        if (!glassBar || !PreferenceUtil.glassCompact) {
+            glassDetailMode = false
+            resetGlassCompact()
+        }
     }
 
     // ---- folded bar (circle + mini player pill) while scrolling down, like Square ----
 
     private var scrollAccum = 0
 
+    private fun glassBarActive(): Boolean =
+        PreferenceUtil.glassEnabled && PreferenceUtil.glassCompact && !isLandscape &&
+            navigationView is BottomNavigationView && !isInOneTabMode
+
+    /** Tapping the circle goes back to the page you came from. */
+    private fun onGlassCircleClicked() {
+        if (glassCompact) {
+            onBackPressedDispatcher.onBackPressed()
+        } else {
+            setGlassCompact(false)
+        }
+    }
+
     private fun onGlassScroll(dy: Int, atTop: Boolean) {
+        // folding on scroll was replaced by folding on detail pages
+        if (true) return
         if (!PreferenceUtil.glassEnabled || !PreferenceUtil.glassCompact) return
         if (atTop) {
             // the bar comes back at the top of the page
@@ -718,6 +736,21 @@ abstract class AbsSlidingMusicPanelActivity : AbsMusicServiceActivity(),
             )
             return
         }
+        if (glassBarActive()) {
+            // Glass: the bar never disappears. On a detail page it folds into a circle (the
+            // icon of the page you came from) next to the mini player.
+            glassDetailMode = !visible
+            binding.navigationView.isVisible = true
+            binding.navigationView.translationY = 0F
+            if (bottomSheetBehavior.state != STATE_EXPANDED) binding.navigationView.bringToFront()
+            hideBottomSheet(
+                hide = hideBottomSheet,
+                animate = animate,
+                isBottomNavVisible = true
+            )
+            setGlassCompact(glassDetailMode)
+            return
+        }
         if (visible xor navigationView.isVisible) {
             val mAnimate = animate && bottomSheetBehavior.state == STATE_COLLAPSED
             if (mAnimate) {
@@ -746,7 +779,6 @@ abstract class AbsSlidingMusicPanelActivity : AbsMusicServiceActivity(),
         animate: Boolean = false,
         isBottomNavVisible: Boolean = navigationView.isVisible && navigationView is BottomNavigationView,
     ) {
-        resetGlassCompact()
         val heightOfBar = windowInsets.getBottomInsets() + dip(R.dimen.mini_player_height)
         val heightOfBarWithTabs = heightOfBar + dip(R.dimen.bottom_nav_height)
         if (hide) {
