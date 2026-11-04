@@ -112,6 +112,11 @@ abstract class AbsSlidingMusicPanelActivity : AbsMusicServiceActivity(),
     private var navigationBarColor = 0
     private var panelGlass: View? = null
     private var glassCompact = false
+    private val glassHandler = android.os.Handler(android.os.Looper.getMainLooper())
+    private val glassUnfreeze = Runnable {
+        GlassHelper.frozen = false
+        refreshGlassLooks()
+    }
     private var compactProgress = 0f
     private var compactShiftY = 0f
     private var compactAnimator: ValueAnimator? = null
@@ -182,6 +187,13 @@ abstract class AbsSlidingMusicPanelActivity : AbsMusicServiceActivity(),
                 onBackPressedCallback.isEnabled = newState == STATE_EXPANDED
                 if (newState != STATE_COLLAPSED) setGlassCompact(false)
                 if (newState == STATE_EXPANDED) resetGlassCompact()
+                if (PreferenceUtil.glassEnabled) {
+                    if (newState == STATE_EXPANDED) {
+                        GlassHelper.setHostBackgroundAlpha(binding.slidingPanel, 255)
+                    } else if (newState == STATE_COLLAPSED) {
+                        GlassHelper.setHostBackgroundAlpha(binding.slidingPanel, 0)
+                    }
+                }
                 when (newState) {
                     STATE_EXPANDED -> {
                         onPanelExpanded()
@@ -274,6 +286,8 @@ abstract class AbsSlidingMusicPanelActivity : AbsMusicServiceActivity(),
         bottomSheetBehavior.removeBottomSheetCallback(bottomSheetCallbackList)
         supportFragmentManager.unregisterFragmentLifecycleCallbacks(glassFragmentCallbacks)
         compactAnimator?.cancel()
+        glassHandler.removeCallbacks(glassUnfreeze)
+        GlassHelper.frozen = false
         PreferenceUtil.unregisterOnSharedPreferenceChangedListener(this)
     }
 
@@ -390,6 +404,22 @@ abstract class AbsSlidingMusicPanelActivity : AbsMusicServiceActivity(),
 
         if (!glassBar || !PreferenceUtil.glassCompact) resetGlassCompact()
         watchScrolling(binding.fragmentContainer)
+    }
+
+    /** Flat glass for the length of a page transition, then the live blur again. */
+    private fun freezeGlass() {
+        if (!PreferenceUtil.glassEnabled) return
+        glassHandler.removeCallbacks(glassUnfreeze)
+        if (!GlassHelper.frozen) {
+            GlassHelper.frozen = true
+            refreshGlassLooks()
+        }
+        glassHandler.postDelayed(glassUnfreeze, 800)
+    }
+
+    private fun refreshGlassLooks() {
+        GlassHelper.restyle(binding.navigationView)
+        GlassHelper.restyle(binding.slidingPanel)
     }
 
     // ---- folded bar (circle + mini player pill) while scrolling down, like Square ----
@@ -511,7 +541,7 @@ abstract class AbsSlidingMusicPanelActivity : AbsMusicServiceActivity(),
         if (PreferenceUtil.glassEnabled) {
             GlassHelper.setHostBackgroundAlpha(
                 binding.slidingPanel,
-                ((progress / 0.4F).coerceIn(0F, 1F) * 255).toInt()
+                ((progress / 0.2F).coerceIn(0F, 1F) * 255).toInt()
             )
         }
     }
@@ -712,6 +742,8 @@ abstract class AbsSlidingMusicPanelActivity : AbsMusicServiceActivity(),
             return
         }
         if (visible xor navigationView.isVisible) {
+            // opening / leaving an album or artist page: don't blur a half-animated page
+            freezeGlass()
             val mAnimate = animate && bottomSheetBehavior.state == STATE_COLLAPSED
             if (mAnimate) {
                 if (visible) {
