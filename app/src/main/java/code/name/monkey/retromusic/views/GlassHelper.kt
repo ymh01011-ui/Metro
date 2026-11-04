@@ -46,8 +46,9 @@ object GlassHelper {
     private const val TAG_TABS = "metro_glass_tabs"
 
     /**
-     * While true the pills use a flat translucent fill instead of the live blur. The activity sets
-     * it during page transitions, so the blur never captures a half-animated page.
+     * While true the blur stops following the page (it keeps its last frame, so the pill looks
+     * the same). The activity sets it briefly during page transitions, so the blur never
+     * captures a half-animated page.
      */
     var frozen = false
 
@@ -204,13 +205,15 @@ object GlassHelper {
             edge.background = rim
         }
 
-        if (material == "fastest" || frozen) {
+        if (material == "fastest") {
             // No live blur: a flat translucent surface, the cheapest option
             layer.setBlurEnabled(false)
             layer.setBackgroundColor(ColorUtils.setAlphaComponent(surface, (150 + film).coerceAtMost(255)))
         } else {
             layer.setBackgroundColor(Color.TRANSPARENT)
             layer.setBlurEnabled(true)
+            // while a page animates the blur keeps its last frame instead of following the page
+            layer.setBlurAutoUpdate(!frozen)
             layer.setBlurRadius(radius)
             layer.setOverlayColor(ColorUtils.setAlphaComponent(filmColor, filmAlpha))
         }
