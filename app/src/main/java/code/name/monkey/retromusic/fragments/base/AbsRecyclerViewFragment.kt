@@ -28,6 +28,7 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.doOnPreDraw
 import androidx.core.view.isVisible
 import androidx.core.view.updateLayoutParams
+import androidx.core.view.updatePadding
 import androidx.navigation.fragment.findNavController
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.RecyclerView
@@ -40,6 +41,7 @@ import code.name.monkey.retromusic.dialogs.CreatePlaylistDialog
 import code.name.monkey.retromusic.dialogs.ImportPlaylistDialog
 import code.name.monkey.retromusic.extensions.accentColor
 import code.name.monkey.retromusic.extensions.dip
+import code.name.monkey.retromusic.util.PreferenceUtil
 import code.name.monkey.retromusic.interfaces.IScrollHelper
 import code.name.monkey.retromusic.util.ThemedFastScroller.create
 import com.google.android.material.color.MaterialColors
@@ -297,10 +299,33 @@ abstract class AbsRecyclerViewFragment<A : RecyclerView.Adapter<*>, LM : Recycle
         binding.empty.isVisible = adapter!!.itemCount == 0
     }
 
+    private var defaultBottomPadding = -1
+    private var defaultClipToPadding = true
+
     private fun checkForMargins() {
+        val list = binding.recyclerView
+        if (defaultBottomPadding < 0) {
+            defaultBottomPadding = list.paddingBottom
+            defaultClipToPadding = list.clipToPadding
+        }
         if (mainActivity.isBottomNavVisible) {
-            binding.recyclerView.updateLayoutParams<ViewGroup.MarginLayoutParams> {
-                bottomMargin = dip(R.dimen.bottom_nav_height)
+            if (PreferenceUtil.glassEnabled) {
+                // Glass bar: the list keeps going under the floating bar and mini player (so there
+                // is something to blur) instead of stopping above them. The padding lets the
+                // last item scroll up clear of both.
+                val inset = ViewCompat.getRootWindowInsets(list)
+                    ?.getInsets(WindowInsetsCompat.Type.navigationBars())?.bottom ?: 0
+                list.updateLayoutParams<ViewGroup.MarginLayoutParams> { bottomMargin = 0 }
+                list.clipToPadding = false
+                list.updatePadding(
+                    bottom = defaultBottomPadding + dip(R.dimen.bottom_nav_mini_player_height) + inset
+                )
+            } else {
+                list.updateLayoutParams<ViewGroup.MarginLayoutParams> {
+                    bottomMargin = dip(R.dimen.bottom_nav_height)
+                }
+                list.clipToPadding = defaultClipToPadding
+                list.updatePadding(bottom = defaultBottomPadding)
             }
         }
     }
