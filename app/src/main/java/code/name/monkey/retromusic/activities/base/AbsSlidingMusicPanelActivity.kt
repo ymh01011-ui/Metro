@@ -112,11 +112,6 @@ abstract class AbsSlidingMusicPanelActivity : AbsMusicServiceActivity(),
     private var navigationBarColor = 0
     private var panelGlass: View? = null
     private var glassCompact = false
-    private val glassHandler = android.os.Handler(android.os.Looper.getMainLooper())
-    private val glassUnfreeze = Runnable {
-        GlassHelper.frozen = false
-        refreshGlassLooks()
-    }
     private var compactProgress = 0f
     private var compactShiftY = 0f
     private var compactAnimator: ValueAnimator? = null
@@ -286,8 +281,6 @@ abstract class AbsSlidingMusicPanelActivity : AbsMusicServiceActivity(),
         bottomSheetBehavior.removeBottomSheetCallback(bottomSheetCallbackList)
         supportFragmentManager.unregisterFragmentLifecycleCallbacks(glassFragmentCallbacks)
         compactAnimator?.cancel()
-        glassHandler.removeCallbacks(glassUnfreeze)
-        GlassHelper.frozen = false
         PreferenceUtil.unregisterOnSharedPreferenceChangedListener(this)
     }
 
@@ -404,22 +397,6 @@ abstract class AbsSlidingMusicPanelActivity : AbsMusicServiceActivity(),
 
         if (!glassBar || !PreferenceUtil.glassCompact) resetGlassCompact()
         watchScrolling(binding.fragmentContainer)
-    }
-
-    /** Keeps the blur still for the length of a page transition, then lets it follow again. */
-    private fun freezeGlass() {
-        if (!PreferenceUtil.glassEnabled) return
-        glassHandler.removeCallbacks(glassUnfreeze)
-        if (!GlassHelper.frozen) {
-            GlassHelper.frozen = true
-            refreshGlassLooks()
-        }
-        glassHandler.postDelayed(glassUnfreeze, 400)
-    }
-
-    private fun refreshGlassLooks() {
-        GlassHelper.restyle(binding.navigationView)
-        GlassHelper.restyle(binding.slidingPanel)
     }
 
     // ---- folded bar (circle + mini player pill) while scrolling down, like Square ----
@@ -742,8 +719,6 @@ abstract class AbsSlidingMusicPanelActivity : AbsMusicServiceActivity(),
             return
         }
         if (visible xor navigationView.isVisible) {
-            // opening / leaving an album or artist page: don't blur a half-animated page
-            freezeGlass()
             val mAnimate = animate && bottomSheetBehavior.state == STATE_COLLAPSED
             if (mAnimate) {
                 if (visible) {
