@@ -14,6 +14,8 @@
  */
 package code.name.monkey.retromusic.fragments.base
 
+import android.content.res.ColorStateList
+import android.graphics.Color
 import android.graphics.Rect
 import android.os.Bundle
 import android.os.Parcelable
@@ -41,6 +43,9 @@ import code.name.monkey.retromusic.dialogs.CreatePlaylistDialog
 import code.name.monkey.retromusic.dialogs.ImportPlaylistDialog
 import code.name.monkey.retromusic.extensions.accentColor
 import code.name.monkey.retromusic.extensions.dip
+import code.name.monkey.retromusic.extensions.textColorSecondary
+import code.name.monkey.retromusic.views.GlassHelper
+import code.name.monkey.retromusic.views.GlassLayer
 import code.name.monkey.retromusic.util.PreferenceUtil
 import code.name.monkey.retromusic.interfaces.IScrollHelper
 import code.name.monkey.retromusic.util.ThemedFastScroller.create
@@ -158,7 +163,8 @@ abstract class AbsRecyclerViewFragment<A : RecyclerView.Adapter<*>, LM : Recycle
             ColorUtil.withAlpha(accentColor(), 0.12f),
             screenBg
         )
-        bar.setCardBackgroundColor(pillColor)
+        searchPillColor = pillColor
+        applySearchGlass()
 
         ViewCompat.setOnApplyWindowInsetsListener(requireView()) { _, insets ->
             statusBarTop = insets.getInsets(WindowInsetsCompat.Type.statusBars()).top
@@ -180,6 +186,31 @@ abstract class AbsRecyclerViewFragment<A : RecyclerView.Adapter<*>, LM : Recycle
         binding.menuButton.setOnClickListener {
             mainActivity.openDrawer()
         }
+    }
+
+    private var searchPillColor = Color.TRANSPARENT
+
+    /**
+     * The search bar is a glass pill (same as the bottom bar and the mini player) that blurs the
+     * list scrolling under it; with the glass setting off it keeps its plain coloured pill.
+     */
+    private fun applySearchGlass() {
+        val b = _binding ?: return
+        val layer = GlassHelper.syncFill(b.searchBar, b.recyclerView, PreferenceUtil.glassEnabled)
+        b.searchBar.setCardBackgroundColor(if (layer != null) Color.TRANSPARENT else searchPillColor)
+        layer?.onToneExtra = { tone -> applySearchInk(tone) }
+        applySearchInk(if (layer != null && layer.sampled) layer.lightness else null)
+    }
+
+    /** Text and icon follow the brightness of the page behind the glass (null = theme colours). */
+    private fun applySearchInk(tone: Float?) {
+        val b = _binding ?: return
+        if (!isAdded) return
+        val ink = tone?.let { ColorUtils.blendARGB(Color.WHITE, GlassLayer.DARK_INK, it) }
+        b.searchText.setTextColor(
+            if (ink != null) ColorUtils.setAlphaComponent(ink, 200) else textColorSecondary()
+        )
+        b.menuButton.imageTintList = ink?.let { ColorStateList.valueOf(it) }
     }
 
     private fun setUpHeaderRow() {
@@ -387,6 +418,7 @@ abstract class AbsRecyclerViewFragment<A : RecyclerView.Adapter<*>, LM : Recycle
     override fun onResume() {
         super.onResume()
         checkForMargins()
+        applySearchGlass()
     }
 
     override fun onDestroyView() {
