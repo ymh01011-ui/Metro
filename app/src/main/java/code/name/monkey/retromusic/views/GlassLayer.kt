@@ -213,9 +213,11 @@ class GlassLayer(context: Context) : FrameLayout(context) {
             root.getLocationInWindow(there)
             val recording = n.beginRecording(w, h)
             try {
+                // root.draw() does not apply root's own scroll (the parent does that), so a
+                // scrolling backdrop such as a NestedScrollView needs it added back here
                 recording.translate(
-                    (margin + there[0] - here[0]).toFloat(),
-                    (margin + there[1] - here[1]).toFloat()
+                    (margin + there[0] - here[0]).toFloat() - root.scrollX,
+                    (margin + there[1] - here[1]).toFloat() - root.scrollY
                 )
                 root.draw(recording)
             } finally {
