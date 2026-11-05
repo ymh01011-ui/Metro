@@ -395,6 +395,12 @@ abstract class AbsSlidingMusicPanelActivity : AbsMusicServiceActivity(),
             enabled,
             0
         )
+        // the mini player's text and buttons follow the brightness of the page behind it
+        val miniGlass = GlassHelper.layerOf(binding.slidingPanel)
+        miniGlass?.onLightExtra = { onLight -> miniPlayerFragment?.applyGlassInk(onLight) }
+        miniPlayerFragment?.applyGlassInk(
+            if (miniGlass != null && miniGlass.sampled) miniGlass.onLight else null
+        )
 
         if (!glassBar || !PreferenceUtil.glassCompact) {
             glassDetailMode = false
