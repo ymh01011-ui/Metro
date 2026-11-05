@@ -390,11 +390,13 @@ abstract class AbsSlidingMusicPanelActivity : AbsMusicServiceActivity(),
             binding.slidingPanel,
             if (!enabled || panelState == STATE_EXPANDED) 255 else 0
         )
-        GlassHelper.setMiniInsets(
-            miniPlayerFragment?.view,
-            enabled,
-            0
-        )
+        if (enabled) {
+            // re-apply the current fold state (a setting change must not reset the mini player's
+            // margins while the bar is folded: that is what squeezed its content to the left)
+            renderCompact()
+        } else {
+            GlassHelper.setMiniInsets(miniPlayerFragment?.view, false, 0)
+        }
         // the mini player's text and buttons follow the brightness of the page behind it
         val miniGlass = GlassHelper.layerOf(binding.slidingPanel)
         miniGlass?.onToneExtra = { tone -> miniPlayerFragment?.applyGlassInk(tone) }
@@ -405,6 +407,25 @@ abstract class AbsSlidingMusicPanelActivity : AbsMusicServiceActivity(),
         if (!glassBar || !PreferenceUtil.glassCompact) {
             glassDetailMode = false
             resetGlassCompact()
+        }
+
+        // Changing a glass setting rebuilds the tabs and restyles the pills in the middle of a
+        // layout pass, which left the folded bar / mini player distorted until the page was
+        // left. Re-apply the fold state once the new layout is done, and force a fresh layout.
+        binding.root.post {
+            if (isFinishing || isDestroyed) return@post
+            renderCompact()
+            binding.navigationView.requestLayout()
+            binding.slidingPanel.requestLayout()
+            miniPlayerFragment?.view?.requestLayout()
+            GlassHelper.layerOf(binding.navigationView)?.let {
+                it.invalidateOutline()
+                it.invalidate()
+            }
+            panelGlass?.let {
+                it.invalidateOutline()
+                it.invalidate()
+            }
         }
     }
 
@@ -469,7 +490,7 @@ abstract class AbsSlidingMusicPanelActivity : AbsMusicServiceActivity(),
         glassCompact = compact
         compactAnimator?.cancel()
         compactAnimator = ValueAnimator.ofFloat(compactProgress, if (compact) 1F else 0F).apply {
-            duration = 450
+            duration = if (compact) 450L else 1100L
             interpolator = android.view.animation.PathInterpolator(0.2F, 0F, 0F, 1F)
             addUpdateListener {
                 compactProgress = it.animatedValue as Float
