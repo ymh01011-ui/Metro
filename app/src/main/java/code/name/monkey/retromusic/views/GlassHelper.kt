@@ -45,6 +45,8 @@ object GlassHelper {
     private const val TAG_EDGE = "metro_glass_edge"
     private const val TAG_ICON = "metro_glass_icon"
 
+    private const val SEARCH_FILM_FACTOR = 1f
+
     const val SIDE_MARGIN_DP = 16
     const val GAP_DP = 8
     const val NAV_PILL_HEIGHT_DP = 62
@@ -147,6 +149,9 @@ object GlassHelper {
             layer = createLayer(host, backdrop, FrameLayout.LayoutParams(match, match), TAG_LAYER)
         }
         layer.backdrop = backdrop
+        // the search bar sits over a plain page, so the white veil shows much more than on the
+        // bottom bar: use a lighter one (raise towards 1f for more, lower for less)
+        layer.filmFactor = SEARCH_FILM_FACTOR
         // the list under the bar has no background of its own: give the blur an opaque page
         layer.baseColor = MaterialColors.getColor(
             host.context, android.R.attr.colorBackground, Color.BLACK
@@ -248,7 +253,9 @@ object GlassHelper {
             // Frost is in dp of blur (sigma), Colour boosts saturation: 0% = 1.0x, 100% = 2.0x
             layer.blurSigmaPx = (PreferenceUtil.glassFrost * density * 0.6f).coerceAtLeast(0.5f)
             layer.saturation = 1f + PreferenceUtil.glassColour.coerceIn(0, 100) / 100f
-            layer.filmColor = ColorUtils.setAlphaComponent(filmColor, filmAlpha)
+            layer.filmColor = ColorUtils.setAlphaComponent(
+                filmColor, (filmAlpha * layer.filmFactor).toInt().coerceIn(0, 255)
+            )
         } else {
             // No blur (Fastest, or below Android 12): a flat translucent surface
             layer.filmColor = Color.TRANSPARENT
