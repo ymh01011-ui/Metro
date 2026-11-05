@@ -158,10 +158,10 @@ object GlassHelper {
         }
         layer.clipToOutline = true
         // depth: a soft shadow around the pill (clipped away under the glass itself)
-        layer.elevation = dp(context, 5).toFloat()
+        layer.elevation = dp(context, 3).toFloat()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-            layer.outlineSpotShadowColor = Color.argb(80, 0, 0, 0)
-            layer.outlineAmbientShadowColor = Color.argb(40, 0, 0, 0)
+            layer.outlineSpotShadowColor = Color.argb(55, 0, 0, 0)
+            layer.outlineAmbientShadowColor = Color.argb(25, 0, 0, 0)
         }
         host.clipChildren = false
         host.clipToPadding = false
@@ -178,7 +178,7 @@ object GlassHelper {
         layer.addView(edgeView)
         host.addView(layer, 0)
         layer.backdrop = blurRoot
-        layer.onLightChanged = { style(layer) }
+        layer.onToneChanged = { applyTone(layer) }
         return layer
     }
 
@@ -190,8 +190,6 @@ object GlassHelper {
             context, com.google.android.material.R.attr.colorSurface, Color.BLACK
         )
         val dark = ColorUtils.calculateLuminance(surface) < 0.5
-        // what the rim should look like follows the page behind the pill once it is measured
-        val overDark = if (layer.sampled) !layer.onLight else dark
         val film = PreferenceUtil.glassFilm.coerceIn(0, 100)
         val tint = tintColor(context)
 
@@ -207,7 +205,7 @@ object GlassHelper {
         // Rim light: a thin translucent outline around the pill
         layer.findViewWithTag<View>(TAG_EDGE)?.let { edge ->
             edge.visibility = if (material == "quality") View.VISIBLE else View.GONE
-            edge.background = RimDrawable(overDark, 1f * density)
+            if (edge.background !is RimDrawable) edge.background = RimDrawable(0.75f * density)
         }
 
         val liveBlur = material != "fastest" && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
@@ -223,8 +221,19 @@ object GlassHelper {
             layer.filmColor = Color.TRANSPARENT
             layer.setBackgroundColor(ColorUtils.setAlphaComponent(surface, (150 + film).coerceAtMost(255)))
         }
+        applyTone(layer)
         layer.invalidateOutline()
         layer.invalidate()
+    }
+
+    /** The rim follows the page behind the pill: dark variant on dark, light variant on bright. */
+    private fun applyTone(layer: GlassLayer) {
+        val surface = MaterialColors.getColor(
+            layer.context, com.google.android.material.R.attr.colorSurface, Color.BLACK
+        )
+        val themeLight = ColorUtils.calculateLuminance(surface) >= 0.5
+        val tone = if (layer.sampled) layer.lightness else if (themeLight) 1f else 0f
+        (layer.findViewWithTag<View>(TAG_EDGE)?.background as? RimDrawable)?.setTone(tone)
     }
 
     private fun tintColor(context: Context): Int = when (PreferenceUtil.glassTint) {
@@ -332,20 +341,22 @@ object GlassHelper {
             context, com.google.android.material.R.attr.colorSurface, Color.BLACK
         )
         val glass = layerOf(nav)
-        val overDark = if (glass != null && glass.sampled) {
-            !glass.onLight
+        val tone = if (glass != null && glass.sampled) {
+            glass.lightness
+        } else if (ColorUtils.calculateLuminance(surface) >= 0.5) {
+            1f
         } else {
-            ColorUtils.calculateLuminance(surface) < 0.5
+            0f
         }
-        val shape = GradientDrawable()
-        shape.shape = GradientDrawable.RECTANGLE
-        shape.cornerRadius = 1000f
-        shape.setColor(if (overDark) Color.argb(90, 0, 0, 0) else Color.argb(32, 0, 0, 0))
-        shape.setStroke(
-            dp(context, 1),
-            if (overDark) Color.argb(60, 255, 255, 255) else Color.argb(45, 0, 0, 0)
-        )
-        puck.background = shape
+        val fill = ColorUtils.blendARGB(Color.argb(90, 0, 0, 0), Color.argb(32, 0, 0, 0), tone)
+        val stroke = ColorUtils.blendARGB(Color.argb(60, 255, 255, 255), Color.argb(45, 0, 0, 0), tone)
+        val shape = (puck.background as? GradientDrawable) ?: GradientDrawable().also {
+            it.shape = GradientDrawable.RECTANGLE
+            it.cornerRadius = 1000f
+            puck.background = it
+        }
+        shape.setColor(fill)
+        shape.setStroke(dp(context, 1), stroke)
     }
 
     private fun syncRow(nav: NavigationBarView) {
@@ -417,13 +428,18 @@ object GlassHelper {
             val animate = styledIndex[nav] != null && styledIndex[nav] != selected
             val context = nav.context
             // over a bright page: dark ink and a deeper accent, like Apple's glass flipping to dark
-            val overLight = glass != null && glass.sampled && glass.onLight
             val baseAccent = ThemeStore.accentColor(context)
-            val accent = if (overLight) ColorUtils.blendARGB(baseAccent, Color.BLACK, 0.35f) else baseAccent
+            val accent = if (glass != null && glass.sampled) {
+                ColorUtils.blendARGB(
+                    baseAccent, ColorUtils.blendARGB(baseAccent, Color.BLACK, 0.35f), glass.lightness
+                )
+            } else {
+                baseAccent
+            }
             val ink = glassInk ?: MaterialColors.getColor(
                 context, com.google.android.material.R.attr.colorOnSurface, Color.WHITE
             )
-            val dim = ColorUtils.setAlphaComponent(ink, if (overLight) 190 else 175)
+            val dim = ColorUtils.setAlphaComponent(ink, 180)
             for (i in 0 until row.childCount) {
                 val tab = row.getChildAt(i) as? LinearLayout ?: continue
                 val chosen = i == selected
@@ -611,14 +627,15 @@ object GlassHelper {
 
 /**
  * The edge of a glass pill: a faint vertical sheen over the whole pill, a soft inner glow and a
- * 1.5dp rim that is bright on top, dim in the middle and lit again at the bottom (light catching
- * the glass), which is what gives the pills their thickness.
+ * thin rim that is bright on top, dim in the middle and lit again at the bottom (light catching
+ * the glass). [setTone] glides it between the variant for dark pages (0) and bright pages (1).
  */
-private class RimDrawable(private val dark: Boolean, private val strokePx: Float) : Drawable() {
+private class RimDrawable(private val strokePx: Float) : Drawable() {
+    private var tone = 0f
     private val sheen = Paint(Paint.ANTI_ALIAS_FLAG)
     private val glow = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
-        strokeWidth = strokePx * 1.5f
+        strokeWidth = strokePx * 1.25f
     }
     private val rim = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
@@ -626,28 +643,42 @@ private class RimDrawable(private val dark: Boolean, private val strokePx: Float
     }
     private val rect = RectF()
 
-    override fun onBoundsChange(bounds: Rect) {
-        val top = bounds.top.toFloat()
-        val bottom = bounds.bottom.toFloat()
+    fun setTone(value: Float) {
+        if (value == tone) return
+        tone = value
+        rebuild()
+        invalidateSelf()
+    }
+
+    private fun mix(dark: Int, light: Int) = ColorUtils.blendARGB(dark, light, tone)
+
+    private fun a(color: Int, alpha: Int) = ColorUtils.setAlphaComponent(color, alpha)
+
+    private fun rebuild() {
+        val b = bounds
+        if (b.isEmpty) return
+        val top = b.top.toFloat()
+        val bottom = b.bottom.toFloat()
         val white = Color.WHITE
         val black = Color.BLACK
         sheen.shader = LinearGradient(
             0f, top, 0f, bottom,
             intArrayOf(
-                ColorUtils.setAlphaComponent(white, if (dark) 30 else 70),
-                ColorUtils.setAlphaComponent(white, 0),
-                ColorUtils.setAlphaComponent(black, if (dark) 38 else 14)
+                mix(a(white, 20), a(white, 45)),
+                a(white, 0),
+                mix(a(black, 26), a(black, 10))
             ),
             floatArrayOf(0f, 0.5f, 1f),
             Shader.TileMode.CLAMP
         )
+        val middle = mix(a(white, 28), a(black, 20))
         rim.shader = LinearGradient(
             0f, top, 0f, bottom,
             intArrayOf(
-                ColorUtils.setAlphaComponent(white, if (dark) 165 else 235),
-                ColorUtils.setAlphaComponent(if (dark) white else black, if (dark) 35 else 22),
-                ColorUtils.setAlphaComponent(if (dark) white else black, if (dark) 35 else 22),
-                ColorUtils.setAlphaComponent(if (dark) white else black, if (dark) 80 else 55)
+                mix(a(white, 150), a(white, 220)),
+                middle,
+                middle,
+                mix(a(white, 60), a(black, 45))
             ),
             floatArrayOf(0f, 0.4f, 0.6f, 1f),
             Shader.TileMode.CLAMP
@@ -655,13 +686,17 @@ private class RimDrawable(private val dark: Boolean, private val strokePx: Float
         glow.shader = LinearGradient(
             0f, top, 0f, bottom,
             intArrayOf(
-                ColorUtils.setAlphaComponent(white, if (dark) 36 else 70),
-                ColorUtils.setAlphaComponent(white, 0),
-                ColorUtils.setAlphaComponent(white, if (dark) 18 else 0)
+                mix(a(white, 24), a(white, 50)),
+                a(white, 0),
+                mix(a(white, 12), a(white, 0))
             ),
             floatArrayOf(0f, 0.5f, 1f),
             Shader.TileMode.CLAMP
         )
+    }
+
+    override fun onBoundsChange(bounds: Rect) {
+        rebuild()
     }
 
     override fun draw(canvas: Canvas) {
@@ -672,7 +707,7 @@ private class RimDrawable(private val dark: Boolean, private val strokePx: Float
         rect.set(b)
         canvas.drawRoundRect(rect, radius, radius, sheen)
 
-        val glowInset = strokePx * 1.75f
+        val glowInset = strokePx * 1.5f
         rect.set(b)
         rect.inset(glowInset, glowInset)
         canvas.drawRoundRect(rect, radius - glowInset, radius - glowInset, glow)
