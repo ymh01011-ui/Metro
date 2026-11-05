@@ -1,5 +1,6 @@
 package code.name.monkey.retromusic.views
 
+import android.animation.ValueAnimator
 import android.app.Activity
 import android.content.Context
 import android.content.ContextWrapper
@@ -57,12 +58,24 @@ class GlassLayer(context: Context) : FrameLayout(context) {
     var onLight = false
         private set
 
-    /** the ink to use over this glass, or null until the first measurement */
-    val inkColor: Int?
-        get() = if (!sampled) null else if (onLight) DARK_INK else Color.WHITE
+    /**
+     * 0 = over a dark page (light ink), 1 = over a bright page (dark ink). It glides between the
+     * two instead of jumping, so the content never flashes from one colour to the other.
+     */
+    var lightness = 0f
+        private set
 
-    var onLightChanged: ((Boolean) -> Unit)? = null
-    var onLightExtra: ((Boolean) -> Unit)? = null
+    /** the ink to use over this glass right now, or null until the first measurement */
+    val inkColor: Int?
+        get() = if (!sampled) null else ColorUtils.blendARGB(Color.WHITE, DARK_INK, lightness)
+
+    /** called on every step of the glide (used by GlassHelper) */
+    var onToneChanged: ((Float) -> Unit)? = null
+
+    /** called on every step of the glide (used by the activity for the mini player) */
+    var onToneExtra: ((Float) -> Unit)? = null
+
+    private var toneAnimator: ValueAnimator? = null
 
     private val mainHandler = Handler(Looper.getMainLooper())
     private var lastSample = 0L
@@ -144,9 +157,32 @@ class GlassLayer(context: Context) : FrameLayout(context) {
         sampled = true
         if (first || light != onLight) {
             onLight = light
-            onLightChanged?.invoke(light)
-            onLightExtra?.invoke(light)
+            glideTo(if (light) 1f else 0f, animate = !first)
         }
+    }
+
+    private fun glideTo(target: Float, animate: Boolean) {
+        toneAnimator?.cancel()
+        if (!animate) {
+            setTone(target)
+            return
+        }
+        toneAnimator = ValueAnimator.ofFloat(lightness, target).apply {
+            duration = 450
+            addUpdateListener { setTone(it.animatedValue as Float) }
+            start()
+        }
+    }
+
+    private fun setTone(value: Float) {
+        lightness = value
+        onToneChanged?.invoke(value)
+        onToneExtra?.invoke(value)
+    }
+
+    override fun onDetachedFromWindow() {
+        toneAnimator?.cancel()
+        super.onDetachedFromWindow()
     }
 
     private fun findWindow(): Window? {
