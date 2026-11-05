@@ -50,6 +50,13 @@ class GlassLayer(context: Context) : FrameLayout(context) {
     /** Veil painted over the blurred page (Square's "Film"). */
     var filmColor = Color.TRANSPARENT
 
+    /**
+     * Painted under the page before it is blurred. Needed when the backdrop view itself has no
+     * background (a bare list): its gaps are transparent, so the blurred copy would be partly
+     * transparent and the sharp page would show through the glass.
+     */
+    var baseColor = Color.TRANSPARENT
+
     /** true once the brightness behind the pill has been measured at least once */
     var sampled = false
         private set
@@ -213,6 +220,7 @@ class GlassLayer(context: Context) : FrameLayout(context) {
             root.getLocationInWindow(there)
             val recording = n.beginRecording(w, h)
             try {
+                if (baseColor != Color.TRANSPARENT) recording.drawColor(baseColor)
                 // root.draw() does not apply root's own scroll (the parent does that), so a
                 // scrolling backdrop such as a NestedScrollView needs it added back here
                 recording.translate(
