@@ -1,16 +1,26 @@
 package code.name.monkey.retromusic.views
 
+import android.app.Activity
 import android.content.Context
+import android.content.ContextWrapper
+import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.ColorMatrix
 import android.graphics.ColorMatrixColorFilter
 import android.graphics.RenderEffect
+import android.graphics.Rect
 import android.graphics.RenderNode
 import android.graphics.Shader
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
+import android.os.SystemClock
+import android.view.PixelCopy
 import android.view.ViewGroup
+import android.view.Window
 import android.widget.FrameLayout
+import androidx.core.graphics.ColorUtils
 import kotlin.math.ceil
 
 /**
@@ -39,6 +49,29 @@ class GlassLayer(context: Context) : FrameLayout(context) {
     /** Veil painted over the blurred page (Square's "Film"). */
     var filmColor = Color.TRANSPARENT
 
+    /** true once the brightness behind the pill has been measured at least once */
+    var sampled = false
+        private set
+
+    /** true when the pill sits over a bright page: its content should then be dark */
+    var onLight = false
+        private set
+
+    /** the ink to use over this glass, or null until the first measurement */
+    val inkColor: Int?
+        get() = if (!sampled) null else if (onLight) DARK_INK else Color.WHITE
+
+    var onLightChanged: ((Boolean) -> Unit)? = null
+    var onLightExtra: ((Boolean) -> Unit)? = null
+
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private var lastSample = 0L
+    private var sampling = false
+    private var sampleBitmap: Bitmap? = null
+    private val sampleRect = Rect()
+    private val spot = IntArray(2)
+    private val pixels = IntArray(SAMPLE_W * SAMPLE_H)
+
     private var node: RenderNode? = null
     private var effect: RenderEffect? = null
     private var effectSigma = -1f
@@ -55,6 +88,74 @@ class GlassLayer(context: Context) : FrameLayout(context) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             drawGlass(canvas)
         }
+        maybeSample()
+    }
+
+    /**
+     * Like Apple's glass over a bright page: a few times a second the (tiny) area of the pill is
+     * read back from the window and its brightness decides whether the content over it must be
+     * dark or light. Two thresholds, so it never flickers between the two.
+     */
+    private fun maybeSample() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O || sampling) return
+        val now = SystemClock.uptimeMillis()
+        if (now - lastSample < 300 || !isShown || alpha < 0.5f) return
+        if (width < 8 || height < 8) return
+        val window = findWindow() ?: return
+        getLocationInWindow(spot)
+        sampleRect.set(
+            spot[0] + width / 8, spot[1] + height / 4,
+            spot[0] + width - width / 8, spot[1] + height - height / 4
+        )
+        val decor = window.decorView
+        if (!sampleRect.intersect(0, 0, decor.width, decor.height) ||
+            sampleRect.width() < 4 || sampleRect.height() < 4
+        ) return
+        val bitmap = sampleBitmap
+            ?: Bitmap.createBitmap(SAMPLE_W, SAMPLE_H, Bitmap.Config.ARGB_8888).also { sampleBitmap = it }
+        lastSample = now
+        sampling = true
+        try {
+            PixelCopy.request(window, sampleRect, bitmap, { result ->
+                sampling = false
+                if (result == PixelCopy.SUCCESS) onSampled(bitmap)
+            }, mainHandler)
+        } catch (e: Exception) {
+            sampling = false
+        }
+    }
+
+    private fun onSampled(bitmap: Bitmap) {
+        bitmap.getPixels(pixels, 0, SAMPLE_W, 0, 0, SAMPLE_W, SAMPLE_H)
+        var r = 0L
+        var g = 0L
+        var b = 0L
+        for (p in pixels) {
+            r += Color.red(p)
+            g += Color.green(p)
+            b += Color.blue(p)
+        }
+        val n = pixels.size
+        val luminance = ColorUtils.calculateLuminance(
+            Color.rgb((r / n).toInt(), (g / n).toInt(), (b / n).toInt())
+        )
+        val light = if (onLight) luminance > 0.30 else luminance > 0.45
+        val first = !sampled
+        sampled = true
+        if (first || light != onLight) {
+            onLight = light
+            onLightChanged?.invoke(light)
+            onLightExtra?.invoke(light)
+        }
+    }
+
+    private fun findWindow(): Window? {
+        var c: Context? = context
+        while (c != null) {
+            if (c is Activity) return c.window
+            c = (c as? ContextWrapper)?.baseContext
+        }
+        return null
     }
 
     @androidx.annotation.RequiresApi(Build.VERSION_CODES.S)
@@ -110,5 +211,11 @@ class GlassLayer(context: Context) : FrameLayout(context) {
             effectSaturation = saturation
         }
         return current
+    }
+
+    companion object {
+        val DARK_INK: Int = Color.parseColor("#1C1B1F")
+        private const val SAMPLE_W = 32
+        private const val SAMPLE_H = 8
     }
 }
