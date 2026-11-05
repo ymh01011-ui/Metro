@@ -96,13 +96,9 @@ open class MiniPlayerFragment : AbsMusicServiceFragment(R.layout.fragment_mini_p
         applyInk()
     }
 
-    /** Called by the glass when the page behind the mini player gets bright or dark. */
-    fun applyGlassInk(onLight: Boolean?) {
-        glassInk = when (onLight) {
-            null -> null
-            true -> GlassLayer.DARK_INK
-            false -> Color.WHITE
-        }
+    /** Called by the glass as the page behind the mini player glides between dark (0) and bright (1). */
+    fun applyGlassInk(tone: Float?) {
+        glassInk = tone?.let { ColorUtils.blendARGB(Color.WHITE, GlassLayer.DARK_INK, it) }
         if (_binding != null && isAdded) applyInk()
     }
 
