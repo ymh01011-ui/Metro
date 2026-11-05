@@ -158,10 +158,10 @@ object GlassHelper {
         }
         layer.clipToOutline = true
         // depth: a soft shadow around the pill (clipped away under the glass itself)
-        layer.elevation = dp(context, 8).toFloat()
+        layer.elevation = dp(context, 5).toFloat()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-            layer.outlineSpotShadowColor = Color.argb(120, 0, 0, 0)
-            layer.outlineAmbientShadowColor = Color.argb(60, 0, 0, 0)
+            layer.outlineSpotShadowColor = Color.argb(80, 0, 0, 0)
+            layer.outlineAmbientShadowColor = Color.argb(40, 0, 0, 0)
         }
         host.clipChildren = false
         host.clipToPadding = false
@@ -207,7 +207,7 @@ object GlassHelper {
         // Rim light: a thin translucent outline around the pill
         layer.findViewWithTag<View>(TAG_EDGE)?.let { edge ->
             edge.visibility = if (material == "quality") View.VISIBLE else View.GONE
-            edge.background = RimDrawable(overDark, 1.5f * density)
+            edge.background = RimDrawable(overDark, 1f * density)
         }
 
         val liveBlur = material != "fastest" && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
@@ -618,7 +618,7 @@ private class RimDrawable(private val dark: Boolean, private val strokePx: Float
     private val sheen = Paint(Paint.ANTI_ALIAS_FLAG)
     private val glow = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
-        strokeWidth = strokePx * 2.5f
+        strokeWidth = strokePx * 1.5f
     }
     private val rim = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
@@ -644,10 +644,10 @@ private class RimDrawable(private val dark: Boolean, private val strokePx: Float
         rim.shader = LinearGradient(
             0f, top, 0f, bottom,
             intArrayOf(
-                ColorUtils.setAlphaComponent(white, if (dark) 200 else 255),
+                ColorUtils.setAlphaComponent(white, if (dark) 165 else 235),
                 ColorUtils.setAlphaComponent(if (dark) white else black, if (dark) 35 else 22),
                 ColorUtils.setAlphaComponent(if (dark) white else black, if (dark) 35 else 22),
-                ColorUtils.setAlphaComponent(if (dark) white else black, if (dark) 110 else 70)
+                ColorUtils.setAlphaComponent(if (dark) white else black, if (dark) 80 else 55)
             ),
             floatArrayOf(0f, 0.4f, 0.6f, 1f),
             Shader.TileMode.CLAMP
@@ -655,9 +655,9 @@ private class RimDrawable(private val dark: Boolean, private val strokePx: Float
         glow.shader = LinearGradient(
             0f, top, 0f, bottom,
             intArrayOf(
-                ColorUtils.setAlphaComponent(white, if (dark) 60 else 110),
+                ColorUtils.setAlphaComponent(white, if (dark) 36 else 70),
                 ColorUtils.setAlphaComponent(white, 0),
-                ColorUtils.setAlphaComponent(white, if (dark) 30 else 0)
+                ColorUtils.setAlphaComponent(white, if (dark) 18 else 0)
             ),
             floatArrayOf(0f, 0.5f, 1f),
             Shader.TileMode.CLAMP
@@ -672,7 +672,7 @@ private class RimDrawable(private val dark: Boolean, private val strokePx: Float
         rect.set(b)
         canvas.drawRoundRect(rect, radius, radius, sheen)
 
-        val glowInset = strokePx * 2f
+        val glowInset = strokePx * 1.75f
         rect.set(b)
         rect.inset(glowInset, glowInset)
         canvas.drawRoundRect(rect, radius - glowInset, radius - glowInset, glow)
