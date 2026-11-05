@@ -118,15 +118,14 @@ open class MiniPlayerFragment : AbsMusicServiceFragment(R.layout.fragment_mini_p
         binding.actionNext.imageTintList = tint
         binding.miniPlayerPlayPauseButton.imageTintList = tint
         binding.progressBar.trackColor = ColorUtils.setAlphaComponent(ink, 46)
-        // the play button gets a soft surface of its own, like Square's glass button
-        val surface = GradientDrawable()
-        surface.shape = GradientDrawable.OVAL
-        surface.setColor(ColorUtils.setAlphaComponent(ink, 30))
-        surface.setStroke(
-            resources.displayMetrics.density.toInt().coerceAtLeast(1),
-            ColorUtils.setAlphaComponent(ink, 50)
+        // no circle around the play button: just a bigger icon with a round ripple
+        val outValue = android.util.TypedValue()
+        requireContext().theme.resolveAttribute(
+            android.R.attr.selectableItemBackgroundBorderless, outValue, true
         )
-        binding.miniPlayerPlayPauseButton.background = surface
+        binding.miniPlayerPlayPauseButton.setBackgroundResource(outValue.resourceId)
+        binding.miniPlayerPlayPauseButton.scaleX = 1.3f
+        binding.miniPlayerPlayPauseButton.scaleY = 1.3f
     }
 
     private fun setUpPlayPauseButton() {
