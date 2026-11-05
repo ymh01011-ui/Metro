@@ -147,6 +147,10 @@ object GlassHelper {
             layer = createLayer(host, backdrop, FrameLayout.LayoutParams(match, match), TAG_LAYER)
         }
         layer.backdrop = backdrop
+        // the list under the bar has no background of its own: give the blur an opaque page
+        layer.baseColor = MaterialColors.getColor(
+            host.context, android.R.attr.colorBackground, Color.BLACK
+        )
         // the pill has an elevation, so the bar's own content must sit above it
         val lift = dp(host.context, 9).toFloat()
         for (i in 0 until host.childCount) {
