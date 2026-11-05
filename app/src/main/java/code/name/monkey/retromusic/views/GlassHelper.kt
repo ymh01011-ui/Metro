@@ -129,6 +129,35 @@ object GlassHelper {
         return layer
     }
 
+    /**
+     * A glass pill that fills [host] completely (used for the floating search bar, a card that has
+     * its own size and margins). [backdrop] must NOT contain [host]: pass a sibling of it
+     * (the list / scroll view under the bar), never one of its parents.
+     * @return the pill, or null when [enabled] is false
+     */
+    fun syncFill(host: FrameLayout, backdrop: ViewGroup, enabled: Boolean): GlassLayer? {
+        var layer = layerOf(host)
+        if (!enabled) {
+            layer?.let { (it.parent as? ViewGroup)?.removeView(it) }
+            for (i in 0 until host.childCount) host.getChildAt(i).elevation = 0f
+            return null
+        }
+        if (layer == null) {
+            val match = ViewGroup.LayoutParams.MATCH_PARENT
+            layer = createLayer(host, backdrop, FrameLayout.LayoutParams(match, match), TAG_LAYER)
+        }
+        layer.backdrop = backdrop
+        // the pill has an elevation, so the bar's own content must sit above it
+        val lift = dp(host.context, 9).toFloat()
+        for (i in 0 until host.childCount) {
+            val child = host.getChildAt(i)
+            if (child !== layer) child.elevation = lift
+        }
+        layer.isClickable = false
+        style(layer)
+        return layer
+    }
+
     /** Puts [icon] (the selected tab) in the pill; it fades in while the bar is folded. */
     fun setSelectedIcon(layer: GlassLayer?, icon: Drawable?) {
         val view = layer?.findViewWithTag<ImageView>(TAG_ICON) ?: return
