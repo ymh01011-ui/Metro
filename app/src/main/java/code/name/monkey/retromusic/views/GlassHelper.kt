@@ -2,7 +2,15 @@ package code.name.monkey.retromusic.views
 
 import android.content.Context
 import android.content.res.ColorStateList
+import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.ColorFilter
+import android.graphics.LinearGradient
+import android.graphics.Paint
+import android.graphics.PixelFormat
+import android.graphics.Rect
+import android.graphics.RectF
+import android.graphics.Shader
 import android.graphics.Outline
 import android.graphics.drawable.Drawable
 import android.graphics.Typeface
@@ -144,9 +152,18 @@ object GlassHelper {
                 outline.setRoundRect(
                     0, 0, view.width, view.height, minOf(view.width, view.height) / 2f
                 )
+                outline.alpha = 1f
             }
         }
         layer.clipToOutline = true
+        // depth: a soft shadow around the pill (clipped away under the glass itself)
+        layer.elevation = dp(context, 8).toFloat()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            layer.outlineSpotShadowColor = Color.argb(120, 0, 0, 0)
+            layer.outlineAmbientShadowColor = Color.argb(60, 0, 0, 0)
+        }
+        host.clipChildren = false
+        host.clipToPadding = false
 
         val tintView = View(context)
         tintView.tag = TAG_TINT
@@ -186,16 +203,7 @@ object GlassHelper {
         // Rim light: a thin translucent outline around the pill
         layer.findViewWithTag<View>(TAG_EDGE)?.let { edge ->
             edge.visibility = if (material == "quality") View.VISIBLE else View.GONE
-            val rim = GradientDrawable()
-            rim.shape = GradientDrawable.RECTANGLE
-            rim.cornerRadius = 1000f
-            rim.setColor(Color.TRANSPARENT)
-            rim.setStroke(
-                dp(context, 1),
-                if (dark) ColorUtils.setAlphaComponent(Color.WHITE, 110)
-                else ColorUtils.setAlphaComponent(Color.BLACK, 45)
-            )
-            edge.background = rim
+            edge.background = RimDrawable(dark, 1.5f * density)
         }
 
         val liveBlur = material != "fastest" && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
@@ -278,6 +286,8 @@ object GlassHelper {
             puck.layoutParams = params
             nav.addView(puck, minOf(1, nav.childCount))
         }
+        puck.elevation = dp(context, 9).toFloat()
+        puck.outlineProvider = null // the puck must not cast a shadow
         val surface = MaterialColors.getColor(
             context, com.google.android.material.R.attr.colorSurface, Color.BLACK
         )
@@ -303,6 +313,7 @@ object GlassHelper {
             params.marginStart = side + inner
             params.marginEnd = side + inner
             newRow.layoutParams = params
+            newRow.elevation = dp(context, 10).toFloat()
             nav.addView(newRow, minOf(2, nav.childCount))
         }
         // force a rebuild + restyle (theme / accent may have changed)
@@ -484,6 +495,7 @@ object GlassHelper {
             params.marginEnd = end
             view.layoutParams = params
         }
+        view.elevation = if (enabled) dp(view.context, 9).toFloat() else 0f
         if (!enabled) view.translationY = 0f
     }
 
@@ -571,4 +583,96 @@ object GlassHelper {
             mini.translationY = shiftY * p
         }
     }
+}
+
+/**
+ * The edge of a glass pill: a faint vertical sheen over the whole pill, a soft inner glow and a
+ * 1.5dp rim that is bright on top, dim in the middle and lit again at the bottom (light catching
+ * the glass), which is what gives the pills their thickness.
+ */
+private class RimDrawable(private val dark: Boolean, private val strokePx: Float) : Drawable() {
+    private val sheen = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val glow = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+        strokeWidth = strokePx * 2.5f
+    }
+    private val rim = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+        strokeWidth = strokePx
+    }
+    private val rect = RectF()
+
+    override fun onBoundsChange(bounds: Rect) {
+        val top = bounds.top.toFloat()
+        val bottom = bounds.bottom.toFloat()
+        val white = Color.WHITE
+        val black = Color.BLACK
+        sheen.shader = LinearGradient(
+            0f, top, 0f, bottom,
+            intArrayOf(
+                ColorUtils.setAlphaComponent(white, if (dark) 30 else 70),
+                ColorUtils.setAlphaComponent(white, 0),
+                ColorUtils.setAlphaComponent(black, if (dark) 38 else 14)
+            ),
+            floatArrayOf(0f, 0.5f, 1f),
+            Shader.TileMode.CLAMP
+        )
+        rim.shader = LinearGradient(
+            0f, top, 0f, bottom,
+            intArrayOf(
+                ColorUtils.setAlphaComponent(white, if (dark) 200 else 255),
+                ColorUtils.setAlphaComponent(if (dark) white else black, if (dark) 35 else 22),
+                ColorUtils.setAlphaComponent(if (dark) white else black, if (dark) 35 else 22),
+                ColorUtils.setAlphaComponent(if (dark) white else black, if (dark) 110 else 70)
+            ),
+            floatArrayOf(0f, 0.4f, 0.6f, 1f),
+            Shader.TileMode.CLAMP
+        )
+        glow.shader = LinearGradient(
+            0f, top, 0f, bottom,
+            intArrayOf(
+                ColorUtils.setAlphaComponent(white, if (dark) 60 else 110),
+                ColorUtils.setAlphaComponent(white, 0),
+                ColorUtils.setAlphaComponent(white, if (dark) 30 else 0)
+            ),
+            floatArrayOf(0f, 0.5f, 1f),
+            Shader.TileMode.CLAMP
+        )
+    }
+
+    override fun draw(canvas: Canvas) {
+        val b = bounds
+        if (b.isEmpty) return
+        val radius = minOf(b.width(), b.height()) / 2f
+
+        rect.set(b)
+        canvas.drawRoundRect(rect, radius, radius, sheen)
+
+        val glowInset = strokePx * 2f
+        rect.set(b)
+        rect.inset(glowInset, glowInset)
+        canvas.drawRoundRect(rect, radius - glowInset, radius - glowInset, glow)
+
+        val rimInset = strokePx / 2f
+        rect.set(b)
+        rect.inset(rimInset, rimInset)
+        canvas.drawRoundRect(rect, radius - rimInset, radius - rimInset, rim)
+    }
+
+    override fun setAlpha(alpha: Int) {
+        sheen.alpha = alpha
+        glow.alpha = alpha
+        rim.alpha = alpha
+        invalidateSelf()
+    }
+
+    override fun setColorFilter(colorFilter: ColorFilter?) {
+        sheen.colorFilter = colorFilter
+        glow.colorFilter = colorFilter
+        rim.colorFilter = colorFilter
+        invalidateSelf()
+    }
+
+    @Deprecated("Deprecated in Java")
+    override fun getOpacity(): Int = PixelFormat.TRANSLUCENT
 }
