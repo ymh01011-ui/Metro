@@ -14,8 +14,13 @@
  */
 package code.name.monkey.retromusic.fragments.home
 
+import android.content.res.ColorStateList
+import android.graphics.Color
 import android.os.Bundle
 import android.view.*
+import android.widget.TextView
+import code.name.monkey.retromusic.views.GlassHelper
+import code.name.monkey.retromusic.views.GlassLayer
 import androidx.coordinatorlayout.widget.CoordinatorLayout
 import androidx.core.graphics.ColorUtils
 import androidx.core.os.bundleOf
@@ -196,9 +201,9 @@ class HomeFragment :
         // Same tint family as the History / Last added buttons. Made opaque so the content
         // scrolling underneath the pill doesn't show through it.
         val screenBg = MaterialColors.getColor(bar, com.google.android.material.R.attr.colorSurface)
-        bar.setCardBackgroundColor(
+        searchPillColor =
             ColorUtils.compositeColors(ColorUtil.withAlpha(accentColor(), 0.12f), screenBg)
-        )
+        applySearchGlass()
 
         // Tap anywhere on the pill -> search (same destination the old search icon used)
         binding.searchBar.setOnClickListener {
@@ -209,6 +214,34 @@ class HomeFragment :
         binding.menuButton.setOnClickListener {
             mainActivity.openDrawer()
         }
+    }
+
+    private var searchPillColor = Color.TRANSPARENT
+
+    /**
+     * The search bar is a glass pill (same as the bottom bar and the mini player) that blurs the
+     * page scrolling under it; with the glass setting off it keeps its plain coloured pill.
+     */
+    private fun applySearchGlass() {
+        val b = _binding ?: return
+        val layer = GlassHelper.syncFill(b.searchBar, b.container, PreferenceUtil.glassEnabled)
+        b.searchBar.setCardBackgroundColor(if (layer != null) Color.TRANSPARENT else searchPillColor)
+        layer?.onToneExtra = { tone -> applySearchInk(tone) }
+        applySearchInk(if (layer != null && layer.sampled) layer.lightness else null)
+    }
+
+    /** Text and icon follow the brightness of the page behind the glass (null = theme colours). */
+    private fun applySearchInk(tone: Float?) {
+        val b = _binding ?: return
+        if (!isAdded) return
+        val ink = tone?.let { ColorUtils.blendARGB(Color.WHITE, GlassLayer.DARK_INK, it) }
+        b.searchBar.findViewById<TextView>(R.id.searchText)?.setTextColor(
+            if (ink != null) ColorUtils.setAlphaComponent(ink, 200)
+            else MaterialColors.getColor(
+                b.searchBar, android.R.attr.textColorSecondary, Color.GRAY
+            )
+        )
+        b.menuButton.imageTintList = ink?.let { ColorStateList.valueOf(it) }
     }
 
     private fun loadProfile() {
@@ -322,6 +355,7 @@ class HomeFragment :
     override fun onResume() {
         super.onResume()
         checkForMargins()
+        applySearchGlass()
         libraryViewModel.forceReload(ReloadType.HomeSections)
         exitTransition = null
     }
