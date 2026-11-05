@@ -64,6 +64,7 @@ object GlassHelper {
     private val puckAnimating = WeakHashMap<View, Boolean>()
     private val tabIds = WeakHashMap<View, IntArray>()
     private val styledIndex = WeakHashMap<View, Int>()
+    private val styledInk = WeakHashMap<View, Int>()
 
     fun dp(context: Context, value: Int): Int =
         (value * context.resources.displayMetrics.density).toInt()
@@ -177,6 +178,7 @@ object GlassHelper {
         layer.addView(edgeView)
         host.addView(layer, 0)
         layer.backdrop = blurRoot
+        layer.onLightChanged = { style(layer) }
         return layer
     }
 
@@ -188,6 +190,8 @@ object GlassHelper {
             context, com.google.android.material.R.attr.colorSurface, Color.BLACK
         )
         val dark = ColorUtils.calculateLuminance(surface) < 0.5
+        // what the rim should look like follows the page behind the pill once it is measured
+        val overDark = if (layer.sampled) !layer.onLight else dark
         val film = PreferenceUtil.glassFilm.coerceIn(0, 100)
         val tint = tintColor(context)
 
@@ -203,7 +207,7 @@ object GlassHelper {
         // Rim light: a thin translucent outline around the pill
         layer.findViewWithTag<View>(TAG_EDGE)?.let { edge ->
             edge.visibility = if (material == "quality") View.VISIBLE else View.GONE
-            edge.background = RimDrawable(dark, 1.5f * density)
+            edge.background = RimDrawable(overDark, 1.5f * density)
         }
 
         val liveBlur = material != "fastest" && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
@@ -272,6 +276,7 @@ object GlassHelper {
             puckAnimating.remove(nav)
             tabIds.remove(nav)
             styledIndex.remove(nav)
+            styledInk.remove(nav)
             return
         }
 
@@ -288,19 +293,7 @@ object GlassHelper {
         }
         puck.elevation = dp(context, 9).toFloat()
         puck.outlineProvider = null // the puck must not cast a shadow
-        val surface = MaterialColors.getColor(
-            context, com.google.android.material.R.attr.colorSurface, Color.BLACK
-        )
-        val dark = ColorUtils.calculateLuminance(surface) < 0.5
-        val shape = GradientDrawable()
-        shape.shape = GradientDrawable.RECTANGLE
-        shape.cornerRadius = 1000f
-        shape.setColor(if (dark) Color.argb(90, 0, 0, 0) else Color.argb(150, 255, 255, 255))
-        shape.setStroke(
-            dp(context, 1),
-            if (dark) Color.argb(60, 255, 255, 255) else Color.argb(40, 0, 0, 0)
-        )
-        puck.background = shape
+        stylePuck(nav)
 
         if (row == null) {
             val newRow = LinearLayout(context)
@@ -330,6 +323,29 @@ object GlassHelper {
             nav.viewTreeObserver.addOnPreDrawListener(listener)
             tabWatchers[nav] = listener
         }
+    }
+
+    private fun stylePuck(nav: NavigationBarView) {
+        val puck = nav.findViewWithTag<View>(TAG_PUCK) ?: return
+        val context = nav.context
+        val surface = MaterialColors.getColor(
+            context, com.google.android.material.R.attr.colorSurface, Color.BLACK
+        )
+        val glass = layerOf(nav)
+        val overDark = if (glass != null && glass.sampled) {
+            !glass.onLight
+        } else {
+            ColorUtils.calculateLuminance(surface) < 0.5
+        }
+        val shape = GradientDrawable()
+        shape.shape = GradientDrawable.RECTANGLE
+        shape.cornerRadius = 1000f
+        shape.setColor(if (overDark) Color.argb(90, 0, 0, 0) else Color.argb(32, 0, 0, 0))
+        shape.setStroke(
+            dp(context, 1),
+            if (overDark) Color.argb(60, 255, 255, 255) else Color.argb(45, 0, 0, 0)
+        )
+        puck.background = shape
     }
 
     private fun syncRow(nav: NavigationBarView) {
@@ -393,15 +409,21 @@ object GlassHelper {
             styledIndex.remove(nav)
         }
 
-        if (styledIndex[nav] != selected) {
+        val glass = layerOf(nav)
+        val glassInk = glass?.inkColor
+        val inkKey = glassInk ?: 0
+        if (styledIndex[nav] != selected || styledInk[nav] != inkKey) {
             // animate only when the selection really changes, not when the tabs are (re)built
-            val animate = styledIndex[nav] != null
+            val animate = styledIndex[nav] != null && styledIndex[nav] != selected
             val context = nav.context
-            val accent = ThemeStore.accentColor(context)
-            val ink = MaterialColors.getColor(
+            // over a bright page: dark ink and a deeper accent, like Apple's glass flipping to dark
+            val overLight = glass != null && glass.sampled && glass.onLight
+            val baseAccent = ThemeStore.accentColor(context)
+            val accent = if (overLight) ColorUtils.blendARGB(baseAccent, Color.BLACK, 0.35f) else baseAccent
+            val ink = glassInk ?: MaterialColors.getColor(
                 context, com.google.android.material.R.attr.colorOnSurface, Color.WHITE
             )
-            val dim = ColorUtils.setAlphaComponent(ink, 175)
+            val dim = ColorUtils.setAlphaComponent(ink, if (overLight) 190 else 175)
             for (i in 0 until row.childCount) {
                 val tab = row.getChildAt(i) as? LinearLayout ?: continue
                 val chosen = i == selected
@@ -420,6 +442,8 @@ object GlassHelper {
                 }
             }
             styledIndex[nav] = selected
+            styledInk[nav] = inkKey
+            stylePuck(nav)
         }
     }
 
