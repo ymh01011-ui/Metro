@@ -16,6 +16,8 @@ package code.name.monkey.retromusic.fragments.other
 
 import android.annotation.SuppressLint
 import android.content.Context
+import android.content.res.ColorStateList
+import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
 import android.text.SpannableStringBuilder
@@ -27,6 +29,8 @@ import androidx.core.graphics.ColorUtils
 import androidx.core.text.toSpannable
 import androidx.core.view.isVisible
 import code.name.monkey.appthemehelper.ThemeStore
+import code.name.monkey.retromusic.views.GlassLayer
+import com.google.android.material.color.MaterialColors
 import code.name.monkey.retromusic.R
 import code.name.monkey.retromusic.databinding.FragmentMiniPlayerBinding
 import code.name.monkey.retromusic.extensions.accentColor
@@ -83,10 +87,40 @@ open class MiniPlayerFragment : AbsMusicServiceFragment(R.layout.fragment_mini_p
         binding.actionPrevious.setOnClickListener(this)
     }
 
+    /** Ink forced by the glass (dark over a bright page, white over a dark one); null = theme. */
+    private var glassInk: Int? = null
+
     private fun setUpMiniPlayer() {
         setUpPlayPauseButton()
-        val ink = textColorPrimary()
         binding.progressBar.setIndicatorColor(ThemeStore.accentColor(requireContext()))
+        applyInk()
+    }
+
+    /** Called by the glass when the page behind the mini player gets bright or dark. */
+    fun applyGlassInk(onLight: Boolean?) {
+        glassInk = when (onLight) {
+            null -> null
+            true -> GlassLayer.DARK_INK
+            false -> Color.WHITE
+        }
+        if (_binding != null && isAdded) applyInk()
+    }
+
+    private fun applyInk() {
+        val forced = glassInk
+        val ink = forced ?: textColorPrimary()
+        binding.miniPlayerTitle.setTextColor(ink)
+        binding.miniPlayerArtist.setTextColor(
+            if (forced != null) ColorUtils.setAlphaComponent(ink, 175) else textColorSecondary()
+        )
+        val tint = ColorStateList.valueOf(
+            forced ?: MaterialColors.getColor(
+                requireContext(), androidx.appcompat.R.attr.colorControlNormal, ink
+            )
+        )
+        binding.actionPrevious.imageTintList = tint
+        binding.actionNext.imageTintList = tint
+        binding.miniPlayerPlayPauseButton.imageTintList = tint
         binding.progressBar.trackColor = ColorUtils.setAlphaComponent(ink, 46)
         // the play button gets a soft surface of its own, like Square's glass button
         val surface = GradientDrawable()
@@ -108,9 +142,8 @@ open class MiniPlayerFragment : AbsMusicServiceFragment(R.layout.fragment_mini_p
         // title on top, artist underneath
         binding.miniPlayerTitle.isSelected = true
         binding.miniPlayerTitle.text = song.title
-        binding.miniPlayerTitle.setTextColor(textColorPrimary())
         binding.miniPlayerArtist.text = song.artistName
-        binding.miniPlayerArtist.setTextColor(textColorSecondary())
+        applyInk()
     }
 
     private fun updateSongCover() {
