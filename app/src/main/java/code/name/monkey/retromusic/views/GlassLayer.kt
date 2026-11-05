@@ -57,6 +57,9 @@ class GlassLayer(context: Context) : FrameLayout(context) {
      */
     var baseColor = Color.TRANSPARENT
 
+    /** 1 = full film strength; below 1 = less veil (the search bar uses a lighter one) */
+    var filmFactor = 1f
+
     /** true once the brightness behind the pill has been measured at least once */
     var sampled = false
         private set
