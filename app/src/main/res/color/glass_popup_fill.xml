@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Fill of the glass popup menus: the theme's surface colour, slightly see-through.
+     Raise android:alpha (max 1.0) for a more solid menu, lower it for a clearer one. -->
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:alpha="0.82" android:color="?attr/colorSurface" />
+</selector>
