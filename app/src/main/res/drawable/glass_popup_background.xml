@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Glass-looking popup menu: translucent surface, big round corners, thin light rim. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <solid android:color="@color/glass_popup_fill" />
+    <corners android:radius="24dp" />
+    <stroke
+        android:width="0.75dp"
+        android:color="#33FFFFFF" />
+</shape>
