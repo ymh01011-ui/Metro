@@ -14,6 +14,7 @@
  */
 package code.name.monkey.retromusic.fragments.player.gradient
 
+import code.name.monkey.retromusic.views.GlassPopupMenu
 import android.annotation.SuppressLint
 import android.content.res.ColorStateList
 import android.graphics.Color
@@ -135,7 +136,7 @@ class GradientPlayerFragment : AbsPlayerFragment(R.layout.fragment_gradient_play
 
     private fun setupMenu() {
         binding.playbackControlsFragment.playerMenu.setOnClickListener {
-            val popupMenu = PopupMenu(requireContext(), it)
+            val popupMenu = GlassPopupMenu(requireContext(), it)
             popupMenu.setOnMenuItemClickListener(this)
             popupMenu.inflate(R.menu.menu_player)
             popupMenu.menu.findItem(R.id.action_toggle_favorite).isVisible = false
