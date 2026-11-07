@@ -45,7 +45,7 @@ object GlassHelper {
     private const val TAG_EDGE = "metro_glass_edge"
     private const val TAG_ICON = "metro_glass_icon"
 
-    private const val SEARCH_FILM_FACTOR = 1f
+    private const val SEARCH_FILM_FACTOR = 0.5f
 
     const val SIDE_MARGIN_DP = 16
     const val GAP_DP = 8
