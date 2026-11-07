@@ -14,6 +14,7 @@
  */
 package code.name.monkey.retromusic.adapter.album
 
+import code.name.monkey.retromusic.views.GlassPopupMenu
 import android.content.res.ColorStateList
 import android.view.LayoutInflater
 import android.view.MenuItem
@@ -190,7 +191,7 @@ open class AlbumAdapter(
     private fun showAlbumMenu(anchor: View, position: Int) {
         if (position == RecyclerView.NO_POSITION) return
         val album = dataSet[position]
-        PopupMenu(activity, anchor).apply {
+        GlassPopupMenu(activity, anchor).apply {
             inflate(R.menu.menu_media_selection)
             setOnMenuItemClickListener { item ->
                 onMultipleItemAction(item, listOf(album))
