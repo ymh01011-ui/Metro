@@ -14,6 +14,7 @@
  */
 package code.name.monkey.retromusic.fragments.player.full
 
+import code.name.monkey.retromusic.views.GlassPopupMenu
 import android.content.Intent
 import android.content.res.ColorStateList
 import android.graphics.Color
@@ -190,7 +191,7 @@ class FullPlaybackControlsFragment :
 
     private fun setupMenu() {
         binding.playerMenu.setOnClickListener {
-            val popupMenu = PopupMenu(requireContext(), it)
+            val popupMenu = GlassPopupMenu(requireContext(), it)
             popupMenu.setOnMenuItemClickListener(this)
             popupMenu.inflate(R.menu.menu_player)
             popupMenu.menu.findItem(R.id.action_toggle_favorite).isVisible = false
