@@ -102,12 +102,13 @@
             tools:ignore="ContentDescription" />
     </LinearLayout>
 
-    <!-- hairline of progress at the bottom of the pill -->
+    <!-- hairline of progress at the bottom of the pill (hidden; kept so the code that updates it still compiles) -->
     <com.google.android.material.progressindicator.LinearProgressIndicator
         android:id="@+id/progressBar"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_gravity="bottom"
+        android:visibility="gone"
         android:layout_marginStart="22dp"
         android:layout_marginEnd="22dp"
         android:layout_marginBottom="3dp"
