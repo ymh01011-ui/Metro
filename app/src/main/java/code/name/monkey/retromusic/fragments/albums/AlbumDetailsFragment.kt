@@ -5,6 +5,7 @@
  */
 package code.name.monkey.retromusic.fragments.albums
 
+import code.name.monkey.retromusic.views.GlassPopupMenu
 import android.app.ActivityOptions
 import android.text.SpannableStringBuilder
 import android.text.Spanned
@@ -2002,7 +2003,7 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
             isClickable = true
             isFocusable = true
             if (backgroundTypedValue.resourceId != 0) background = ContextCompat.getDrawable(requireContext(), backgroundTypedValue.resourceId)
-            setOnClickListener { toolbar.showOverflowMenu() }
+            setOnClickListener { GlassPopupMenu.showToolbarOverflow(toolbar, it) }
         }
 
         val rootLayout = binding.rootLayout as ViewGroup
