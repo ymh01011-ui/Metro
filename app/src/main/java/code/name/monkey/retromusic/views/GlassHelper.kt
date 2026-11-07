@@ -169,6 +169,29 @@ object GlassHelper {
     }
 
     /**
+     * Like [syncFill] but with rounded corners of [cornerDp] instead of a full pill: for cards
+     * (the "About" box). Same blur, film, tint, rim light and shadow as the pills.
+     */
+    fun syncRounded(host: FrameLayout, backdrop: ViewGroup, enabled: Boolean, cornerDp: Int): GlassLayer? {
+        val layer = syncFill(host, backdrop, enabled) ?: return null
+        val context = host.context
+        val corner = dp(context, cornerDp).toFloat()
+        layer.outlineProvider = object : ViewOutlineProvider() {
+            override fun getOutline(view: View, outline: Outline) {
+                outline.setRoundRect(
+                    0, 0, view.width, view.height,
+                    minOf(corner, minOf(view.width, view.height) / 2f)
+                )
+                outline.alpha = 1f
+            }
+        }
+        layer.findViewWithTag<View>(TAG_EDGE)?.background =
+            RimDrawable(0.75f * context.resources.displayMetrics.density, corner)
+        style(layer) // re-applies the rim tone to the new rounded rim
+        return layer
+    }
+
+    /**
      * A free-standing glass panel with rounded corners (not a pill), for popup menus. It lives in
      * its own window, so it blurs [backdrop] (the activity's decor view) using screen positions.
      * Same settings and same look (blur, colour, film, tint, rim light) as the bars.
