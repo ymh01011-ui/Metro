@@ -60,6 +60,12 @@ class GlassLayer(context: Context) : FrameLayout(context) {
     /** 1 = full film strength; below 1 = less veil (the search bar uses a lighter one) */
     var filmFactor = 1f
 
+    /**
+     * true for glass that lives in its own window (popup menus): the backdrop is then in another
+     * window, so positions are compared on the screen instead of inside the window.
+     */
+    var screenCoords = false
+
     /** true once the brightness behind the pill has been measured at least once */
     var sampled = false
         private set
@@ -125,7 +131,7 @@ class GlassLayer(context: Context) : FrameLayout(context) {
         if (now - lastSample < 300 || !isShown || alpha < 0.5f) return
         if (width < 8 || height < 8) return
         val window = findWindow() ?: return
-        getLocationInWindow(spot)
+        if (screenCoords) getLocationOnScreen(spot) else getLocationInWindow(spot)
         sampleRect.set(
             spot[0] + width / 8, spot[1] + height / 4,
             spot[0] + width - width / 8, spot[1] + height - height / 4
@@ -219,8 +225,13 @@ class GlassLayer(context: Context) : FrameLayout(context) {
             n.setPosition(0, 0, w, h)
             n.setRenderEffect(currentEffect())
 
-            getLocationInWindow(here)
-            root.getLocationInWindow(there)
+            if (screenCoords) {
+                getLocationOnScreen(here)
+                root.getLocationOnScreen(there)
+            } else {
+                getLocationInWindow(here)
+                root.getLocationInWindow(there)
+            }
             val recording = n.beginRecording(w, h)
             try {
                 if (baseColor != Color.TRANSPARENT) recording.drawColor(baseColor)
