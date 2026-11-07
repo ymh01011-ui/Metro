@@ -14,6 +14,7 @@
  */
 package code.name.monkey.retromusic.adapter.playlist
 
+import code.name.monkey.retromusic.views.GlassPopupMenu
 import android.graphics.Color
 import android.graphics.drawable.Drawable
 import android.view.LayoutInflater
@@ -180,7 +181,7 @@ class PlaylistAdapter(
                     toggleChecked(layoutPosition)
                     return@setOnClickListener
                 }
-                val popupMenu = PopupMenu(activity, view)
+                val popupMenu = GlassPopupMenu(activity, view)
                 popupMenu.inflate(R.menu.menu_item_playlist)
                 popupMenu.setOnMenuItemClickListener { item ->
                     PlaylistMenuHelper.handleMenuClick(activity, dataSet[layoutPosition], item)
