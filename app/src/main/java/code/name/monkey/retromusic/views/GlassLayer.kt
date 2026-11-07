@@ -1,6 +1,5 @@
 package code.name.monkey.retromusic.views
 
-import android.animation.ArgbEvaluator
 import android.animation.ValueAnimator
 import android.app.Activity
 import android.content.Context
@@ -95,12 +94,6 @@ class GlassLayer(context: Context) : FrameLayout(context) {
     val inkColor: Int?
         get() = if (!sampled) null else ColorUtils.blendARGB(Color.WHITE, DARK_INK, lightness)
 
-    /** Average colour of the page behind the pill (null until measured); the rim is tinted with it. */
-    var pageColor: Int? = null
-        private set
-
-    private var colorAnimator: ValueAnimator? = null
-
     /** called on every step of the glide (used by GlassHelper) */
     var onToneChanged: ((Float) -> Unit)? = null
 
@@ -181,39 +174,15 @@ class GlassLayer(context: Context) : FrameLayout(context) {
             b += Color.blue(p)
         }
         val n = pixels.size
-        val average = Color.rgb((r / n).toInt(), (g / n).toInt(), (b / n).toInt())
-        val luminance = ColorUtils.calculateLuminance(average)
+        val luminance = ColorUtils.calculateLuminance(
+            Color.rgb((r / n).toInt(), (g / n).toInt(), (b / n).toInt())
+        )
         val light = if (onLight) luminance > 0.30 else luminance > 0.45
         val first = !sampled
         sampled = true
-        glideColorTo(average, animate = !first)
         if (first || light != onLight) {
             onLight = light
             glideTo(if (light) 1f else 0f, animate = !first)
-        }
-    }
-
-    private fun glideColorTo(target: Int, animate: Boolean) {
-        val from = pageColor
-        if (from != null && animate) {
-            val distance = Math.abs(Color.red(from) - Color.red(target)) +
-                Math.abs(Color.green(from) - Color.green(target)) +
-                Math.abs(Color.blue(from) - Color.blue(target))
-            if (distance < 12) return
-        }
-        colorAnimator?.cancel()
-        if (!animate || from == null) {
-            pageColor = target
-            onToneChanged?.invoke(lightness)
-            return
-        }
-        colorAnimator = ValueAnimator.ofObject(ArgbEvaluator(), from, target).apply {
-            duration = 300
-            addUpdateListener {
-                pageColor = it.animatedValue as Int
-                onToneChanged?.invoke(lightness)
-            }
-            start()
         }
     }
 
@@ -282,7 +251,6 @@ class GlassLayer(context: Context) : FrameLayout(context) {
 
     override fun onDetachedFromWindow() {
         toneAnimator?.cancel()
-        colorAnimator?.cancel()
         super.onDetachedFromWindow()
     }
 
@@ -366,7 +334,7 @@ class GlassLayer(context: Context) : FrameLayout(context) {
     companion object {
         val DARK_INK: Int = Color.parseColor("#1C1B1F")
         /** strength (0..255) of the dark veil over a bright page */
-        private const val LIGHT_VEIL_ALPHA = 28
+        private const val LIGHT_VEIL_ALPHA = 16
         private const val SAMPLE_W = 32
         private const val SAMPLE_H = 8
     }
