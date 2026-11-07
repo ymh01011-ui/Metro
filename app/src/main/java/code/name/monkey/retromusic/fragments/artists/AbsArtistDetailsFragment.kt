@@ -1,5 +1,6 @@
 package code.name.monkey.retromusic.fragments.artists
 
+import code.name.monkey.retromusic.views.GlassPopupMenu
 import android.animation.ValueAnimator
 import android.graphics.Bitmap
 import android.graphics.Color
@@ -1163,7 +1164,7 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
             if (backgroundTypedValue.resourceId != 0) {
                 background = ContextCompat.getDrawable(requireContext(), backgroundTypedValue.resourceId)
             }
-            setOnClickListener { toolbar.showOverflowMenu() }
+            setOnClickListener { GlassPopupMenu.showToolbarOverflow(toolbar, it) }
         }
 
         val rootLayout = binding.rootLayout as android.view.ViewGroup
