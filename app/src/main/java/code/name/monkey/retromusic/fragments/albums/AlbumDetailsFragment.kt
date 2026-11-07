@@ -269,7 +269,7 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
 
     companion object {
         /** نصف قطر حواف كارت About (زوّده لو عايزها أدور) */
-        private const val ABOUT_CARD_CORNER_DP = 28
+        private const val ABOUT_CARD_CORNER_DP = 20
         // خليها false في الإصدار النهائي؛ لو حبيت تشوف رسائل التشخيص وقت التطوير رجّعها true
         private const val DEBUG_ANIMATED_ARTWORK = false
 
