@@ -317,8 +317,7 @@ object GlassHelper {
         )
         val themeLight = ColorUtils.calculateLuminance(surface) >= 0.5
         val tone = if (layer.sampled) layer.lightness else if (themeLight) 1f else 0f
-        (layer.findViewWithTag<View>(TAG_EDGE)?.background as? RimDrawable)
-            ?.setTone(tone, layer.pageColor)
+        (layer.findViewWithTag<View>(TAG_EDGE)?.background as? RimDrawable)?.setTone(tone)
         // the icon shown in the folded pill: the same ink as the text of the mini player
         layer.findViewWithTag<ImageView>(TAG_ICON)?.imageTintList = ColorStateList.valueOf(
             iconInk ?: ColorUtils.blendARGB(Color.WHITE, GlassLayer.DARK_INK, tone)
@@ -729,9 +728,6 @@ object GlassHelper {
  * thin rim that is bright on top, dim in the middle and lit again at the bottom (light catching
  * the glass). [setTone] glides it between the variant for dark pages (0) and bright pages (1).
  */
-/** how much of the page colour goes into the white and black of the rim */
-private const val RIM_TINT = 0.45f
-
 /** overall opacity of the rim */
 private const val RIM_OPACITY = 0.75f
 
@@ -751,13 +747,9 @@ private class RimDrawable(
     }
     private val rect = RectF()
 
-    private var tint: Int? = null
-
-    /** [value] glides dark page (0) to bright page (1); [pageColor] tints the white and black. */
-    fun setTone(value: Float, pageColor: Int? = null) {
-        if (value == tone && pageColor == tint) return
+    fun setTone(value: Float) {
+        if (value == tone) return
         tone = value
-        tint = pageColor
         rebuild()
         invalidateSelf()
     }
@@ -768,16 +760,13 @@ private class RimDrawable(
     private fun a(color: Int, alpha: Int) =
         ColorUtils.setAlphaComponent(color, (alpha * RIM_OPACITY).toInt())
 
-    private fun tinted(base: Int): Int =
-        tint?.let { ColorUtils.blendARGB(base, it, RIM_TINT) } ?: base
-
     private fun rebuild() {
         val b = bounds
         if (b.isEmpty) return
         val top = b.top.toFloat()
         val bottom = b.bottom.toFloat()
-        val white = tinted(Color.WHITE)
-        val black = tinted(Color.BLACK)
+        val white = Color.WHITE
+        val black = Color.BLACK
         sheen.shader = LinearGradient(
             0f, top, 0f, bottom,
             intArrayOf(
