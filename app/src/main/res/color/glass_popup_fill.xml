@@ -1,6 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Fill of the glass popup menus: the theme's surface colour, slightly see-through.
+<!-- Fill of the glass popup menus: the theme's surface colour, almost opaque. A popup is a
+     separate window, so it cannot blur the page behind it like the bottom bar does; it has
+     to be nearly solid or the text over a busy picture becomes unreadable.
      Raise android:alpha (max 1.0) for a more solid menu, lower it for a clearer one. -->
 <selector xmlns:android="http://schemas.android.com/apk/res/android">
-    <item android:alpha="0.82" android:color="?attr/colorSurface" />
+    <item android:alpha="0.94" android:color="?attr/colorSurface" />
 </selector>
