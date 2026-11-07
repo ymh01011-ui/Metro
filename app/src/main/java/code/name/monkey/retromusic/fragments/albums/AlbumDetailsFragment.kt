@@ -1822,7 +1822,7 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
         )
         for (button in buttons) {
             val host = button.parent as? FrameLayout ?: continue
-            val layer = GlassHelper.syncFill(host, backdrop, true) ?: continue
+            val layer = GlassHelper.syncFill(host, backdrop, true, raiseContent = false) ?: continue
             // syncFill بيستخدم لون الثيم كخلفية؛ هنا الصفحة لونها ديناميكي (لون الغلاف)
             layer.baseColor = backgroundColor
         }
@@ -1830,7 +1830,7 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
         // كارت About: زجاج حقيقي بحواف دائرية أكتر (كانت 12dp)
         val aboutHost = binding.fragmentAlbumContent.aboutCardGlass.parent as? FrameLayout
         if (aboutHost != null) {
-            GlassHelper.syncRounded(aboutHost, backdrop, true, ABOUT_CARD_CORNER_DP)
+            GlassHelper.syncRounded(aboutHost, backdrop, true, ABOUT_CARD_CORNER_DP, raiseContent = false)
                 ?.baseColor = backgroundColor
         }
     }
