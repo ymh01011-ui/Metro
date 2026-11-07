@@ -74,6 +74,7 @@ object ThemedFastScroller {
         val bodyColor = ColorUtils.setAlphaComponent(blended, 255)
         val arrowColor = ensureContrast(color, bodyColor)
 
+        absorbSideMargins(view)
         val fastScrollerBuilder = FastScrollerBuilder(view)
         // بعض الشاشات (زي شبكة الفنانين الدايرية) بتحط padding جانبي على الـ
         // RecyclerView، والمكتبة كانت هتزق الشكل لجوه بنفس المقدار. بنثبت
@@ -95,6 +96,27 @@ object ThemedFastScroller {
             popupText.setTextColor(textColor)
         }
         return fastScrollerBuilder.build()
+    }
+
+    /**
+     * الشكل بيتحط جوه الـ overlay بتاع الـ RecyclerView، فبيلزق في حافة الـ RecyclerView نفسه
+     * مش حافة الشاشة. لو الـ RecyclerView عليه margin جانبي (زي شبكات الفنانين والألبومات
+     * والبلاي ليست) الشكل بيفضل بعيد عن الحافة بنفس المقدار، ومينفعش يطلع برا حدود الـ
+     * RecyclerView (بيتقص). الحل: نحوّل الـ margin الجانبي لـ padding، فالـ RecyclerView يبقى
+     * بعرض الشاشة والمحتوى مكانه بالظبط (واللي فوق/تحت ما اتغيّرش).
+     */
+    private fun absorbSideMargins(view: ViewGroup) {
+        val lp = view.layoutParams as? ViewGroup.MarginLayoutParams ?: return
+        val left = lp.leftMargin
+        val right = lp.rightMargin
+        if (left == 0 && right == 0) return
+        view.setPadding(
+            view.paddingLeft + left, view.paddingTop,
+            view.paddingRight + right, view.paddingBottom
+        )
+        lp.leftMargin = 0
+        lp.rightMargin = 0
+        view.layoutParams = lp
     }
 
     private fun resolveThemeColor(context: Context, attr: Int, fallback: Int): Int {
