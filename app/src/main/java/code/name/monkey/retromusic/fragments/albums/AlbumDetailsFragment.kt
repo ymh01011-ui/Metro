@@ -5,7 +5,9 @@
  */
 package code.name.monkey.retromusic.fragments.albums
 
+import code.name.monkey.retromusic.views.GlassHelper
 import code.name.monkey.retromusic.views.GlassPopupMenu
+import android.widget.FrameLayout
 import android.app.ActivityOptions
 import android.text.SpannableStringBuilder
 import android.text.Spanned
@@ -266,6 +268,8 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
     private var currentFrameRatio: Float? = null
 
     companion object {
+        /** نصف قطر حواف كارت About (زوّده لو عايزها أدور) */
+        private const val ABOUT_CARD_CORNER_DP = 28
         // خليها false في الإصدار النهائي؛ لو حبيت تشوف رسائل التشخيص وقت التطوير رجّعها true
         private const val DEBUG_ANIMATED_ARTWORK = false
 
@@ -1768,19 +1772,20 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
         binding.fragmentAlbumContent.aboutTitle.setTextColor(fgColor)
         binding.fragmentAlbumContent.aboutText.setTextColor(secondaryFgColor)
         binding.fragmentAlbumContent.aboutMore.setTextColor(fgColor)
-        binding.fragmentAlbumContent.aboutCardGlass.cornerRadiusPx = 12f * resources.displayMetrics.density
-        binding.fragmentAlbumContent.aboutCardGlass.setBackdropColor(backgroundColor)
+        binding.fragmentAlbumContent.aboutCardGlass.visibility = View.GONE
         applyStatusBarAppearance(isLightBackground)
 
-        binding.fragmentAlbumContent.shuffleActionGlass.setBackdropColor(backgroundColor)
-        binding.fragmentAlbumContent.addActionGlass.setBackdropColor(backgroundColor)
+        binding.fragmentAlbumContent.shuffleActionGlass.visibility = View.GONE
+        binding.fragmentAlbumContent.addActionGlass.visibility = View.GONE
         binding.fragmentAlbumContent.shuffleAction.iconTint = ColorStateList.valueOf(fgColor)
         binding.fragmentAlbumContent.addAction.iconTint = ColorStateList.valueOf(fgColor)
         
-        binding.videoShuffleActionGlass?.setBackdropColor(backgroundColor)
-        binding.videoAddActionGlass?.setBackdropColor(backgroundColor)
+        binding.videoShuffleActionGlass?.visibility = View.GONE
+        binding.videoAddActionGlass?.visibility = View.GONE
         binding.videoShuffleAction?.iconTint = ColorStateList.valueOf(fgColor)
         binding.videoAddAction?.iconTint = ColorStateList.valueOf(fgColor)
+
+        applyRealGlassToActionCircles(backgroundColor)
 
         val playButtonBackground = if (isLightBackground) Color.BLACK else Color.WHITE
         val playButtonForeground = if (isLightBackground) Color.WHITE else Color.BLACK
@@ -1799,6 +1804,35 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
 
         if (::simpleSongAdapter.isInitialized) simpleSongAdapter.setDynamicTextColors(fgColor, secondaryFgColor)
         moreAlbumAdapter?.setDynamicTextColors(fgColor, secondaryFgColor)
+    }
+
+    /**
+     * يحوّل دوائر (Shuffle / Add) لزجاج حقيقي (GlassLayer) بدل LiquidGlassView.
+     * الزرار نفسه بيفضل فوق الزجاج، والـ host هو الـ FrameLayout اللي حاضنهم الاتنين.
+     * الـ backdrop لازم يكون view مش parent للدوائر (الدوائر جوه الـ NestedScrollView)،
+     * عشان كده بنستخدم الـ appBarLayout اللي sibling للـ scroll.
+     */
+    private fun applyRealGlassToActionCircles(backgroundColor: Int) {
+        val backdrop = binding.appBarLayout ?: return
+        val buttons = listOfNotNull(
+            binding.fragmentAlbumContent.shuffleAction,
+            binding.fragmentAlbumContent.addAction,
+            binding.videoShuffleAction,
+            binding.videoAddAction,
+        )
+        for (button in buttons) {
+            val host = button.parent as? FrameLayout ?: continue
+            val layer = GlassHelper.syncFill(host, backdrop, true) ?: continue
+            // syncFill بيستخدم لون الثيم كخلفية؛ هنا الصفحة لونها ديناميكي (لون الغلاف)
+            layer.baseColor = backgroundColor
+        }
+
+        // كارت About: زجاج حقيقي بحواف دائرية أكتر (كانت 12dp)
+        val aboutHost = binding.fragmentAlbumContent.aboutCardGlass.parent as? FrameLayout
+        if (aboutHost != null) {
+            GlassHelper.syncRounded(aboutHost, backdrop, true, ABOUT_CARD_CORNER_DP)
+                ?.baseColor = backgroundColor
+        }
     }
 
     private fun reapplyColorsIfReady() {
