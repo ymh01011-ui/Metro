@@ -18,6 +18,7 @@ import code.name.monkey.retromusic.views.GlassPopupMenu
 import android.content.res.ColorStateList
 import android.graphics.Color
 import android.graphics.Rect
+import android.graphics.drawable.ColorDrawable
 import android.os.Bundle
 import android.os.Parcelable
 import android.view.*
@@ -198,9 +199,23 @@ abstract class AbsRecyclerViewFragment<A : RecyclerView.Adapter<*>, LM : Recycle
     private fun applySearchGlass() {
         val b = _binding ?: return
         val layer = GlassHelper.syncFill(b.searchBar, b.recyclerView, PreferenceUtil.glassEnabled)
+        // the list has no background, so the blur is painted over this colour: it must be the
+        // colour the page really has, otherwise the bar looks tinted compared to the other glass
+        layer?.baseColor = pageColor(b.searchBar)
         b.searchBar.setCardBackgroundColor(if (layer != null) Color.TRANSPARENT else searchPillColor)
         layer?.onToneExtra = { tone -> applySearchInk(tone) }
         applySearchInk(if (layer != null && layer.sampled) layer.lightness else null)
+    }
+
+    /** The first opaque background colour above [from] (the page as the user actually sees it). */
+    private fun pageColor(from: View): Int {
+        var v: View? = from.parent as? View
+        while (v != null) {
+            val bg = v.background
+            if (bg is ColorDrawable && Color.alpha(bg.color) == 255) return bg.color
+            v = v.parent as? View
+        }
+        return MaterialColors.getColor(from, android.R.attr.colorBackground, Color.BLACK)
     }
 
     /** Text and icon follow the brightness of the page behind the glass (null = theme colours). */
