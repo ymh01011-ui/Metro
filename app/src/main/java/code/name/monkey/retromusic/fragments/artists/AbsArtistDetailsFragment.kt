@@ -72,7 +72,7 @@ import java.util.*
 private const val FADE_START_FRACTION = 0.42f
 private const val SEE_ALL_ALPHA = 0x99 // ~60%
 private const val TOOLBAR_ICON_ALPHA = 0xCC // ~80% - شفافية أقل من قبل للسهم ونقط المنيو
-private const val BIOGRAPHY_GLASS_CORNER_DP = 28 // كانت 12 - حواف أدور
+private const val BIOGRAPHY_GLASS_CORNER_DP = 20 // كانت 12، وبعدها 28 (كتير)
 private const val SONGS_PREVIEW_COUNT = 6
 // أول كام أغنية بتتبند فورًا مع بداية الدخول، والباقي بعد ما الأنيميشن يخلص (زي VISIBLE_SONGS_IMMEDIATE في صفحة الألبوم)
 private const val SONGS_IMMEDIATE = 5
