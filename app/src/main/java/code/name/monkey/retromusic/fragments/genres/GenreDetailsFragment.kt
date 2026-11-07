@@ -1,5 +1,6 @@
 package code.name.monkey.retromusic.fragments.genres
 
+import code.name.monkey.retromusic.views.GlassPopupMenu
 import android.content.res.ColorStateList
 import android.graphics.Bitmap
 import android.graphics.Color
@@ -703,7 +704,7 @@ class GenreDetailsFragment : AbsMainActivityFragment(R.layout.fragment_playlist_
             if (backgroundTypedValue.resourceId != 0) {
                 background = ContextCompat.getDrawable(requireContext(), backgroundTypedValue.resourceId)
             }
-            setOnClickListener { toolbar.showOverflowMenu() }
+            setOnClickListener { GlassPopupMenu.showToolbarOverflow(toolbar, it) }
         }
 
         val rootLayout = binding.rootLayout as ViewGroup
