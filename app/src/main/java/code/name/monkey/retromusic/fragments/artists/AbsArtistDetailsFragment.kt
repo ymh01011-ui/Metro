@@ -1,6 +1,8 @@
 package code.name.monkey.retromusic.fragments.artists
 
+import code.name.monkey.retromusic.views.GlassHelper
 import code.name.monkey.retromusic.views.GlassPopupMenu
+import android.widget.FrameLayout
 import android.animation.ValueAnimator
 import android.graphics.Bitmap
 import android.graphics.Color
@@ -70,7 +72,7 @@ import java.util.*
 private const val FADE_START_FRACTION = 0.42f
 private const val SEE_ALL_ALPHA = 0x99 // ~60%
 private const val TOOLBAR_ICON_ALPHA = 0xCC // ~80% - شفافية أقل من قبل للسهم ونقط المنيو
-private const val BIOGRAPHY_GLASS_CORNER_DP = 12f
+private const val BIOGRAPHY_GLASS_CORNER_DP = 28 // كانت 12 - حواف أدور
 private const val SONGS_PREVIEW_COUNT = 6
 // أول كام أغنية بتتبند فورًا مع بداية الدخول، والباقي بعد ما الأنيميشن يخلص (زي VISIBLE_SONGS_IMMEDIATE في صفحة الألبوم)
 private const val SONGS_IMMEDIATE = 5
@@ -1005,9 +1007,9 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
 
         binding.fragmentArtistContent.playAction.elevation = 0f
 
-        binding.fragmentArtistContent.infoActionGlass.setBackdropColor(backgroundColor)
-        binding.fragmentArtistContent.playActionGlass.setBackdropColor(backgroundColor)
-        binding.fragmentArtistContent.shuffleActionGlass.setBackdropColor(backgroundColor)
+        binding.fragmentArtistContent.infoActionGlass.visibility = View.GONE
+        binding.fragmentArtistContent.playActionGlass.visibility = View.GONE
+        binding.fragmentArtistContent.shuffleActionGlass.visibility = View.GONE
 
         binding.fragmentArtistContent.infoAction.iconTint =
             android.content.res.ColorStateList.valueOf(foregroundColor)
@@ -1016,14 +1018,36 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
         binding.fragmentArtistContent.playAction.imageTintList =
             android.content.res.ColorStateList.valueOf(foregroundColor)
 
-        binding.fragmentArtistContent.biographyCardGlass.cornerRadiusPx =
-            BIOGRAPHY_GLASS_CORNER_DP * resources.displayMetrics.density
-        binding.fragmentArtistContent.biographyCardGlass.setBackdropColor(backgroundColor)
+        binding.fragmentArtistContent.biographyCardGlass.visibility = View.GONE
+        applyRealGlass(backgroundColor)
 
         songAdapter.setDynamicTextColors(foregroundColor, secondaryForegroundColor)
         albumAdapter.setDynamicTextColors(foregroundColor, secondaryForegroundColor)
         singlesAdapter.setDynamicTextColors(foregroundColor, secondaryForegroundColor)
         appearsOnAdapter.setDynamicTextColors(foregroundColor, secondaryForegroundColor)
+    }
+
+    /**
+     * زجاج حقيقي (GlassLayer) للدوائر وكارت البيوجرافي بدل LiquidGlassView.
+     * الـ backdrop لازم يكون sibling مش parent، فبنستخدم appBarLayout.
+     */
+    private fun applyRealGlass(backgroundColor: Int) {
+        val backdrop = binding.appBarLayout ?: return
+        val circles = listOf<View>(
+            binding.fragmentArtistContent.infoAction,
+            binding.fragmentArtistContent.shuffleAction,
+            binding.fragmentArtistContent.playAction,
+        )
+        for (button in circles) {
+            val host = button.parent as? FrameLayout ?: continue
+            // syncFill بيرفع الـ elevation للزرار فوق الزجاج
+            GlassHelper.syncFill(host, backdrop, true, raiseContent = false)?.baseColor = backgroundColor
+        }
+        val bioHost = binding.fragmentArtistContent.biographyCardGlass.parent as? FrameLayout
+        if (bioHost != null) {
+            GlassHelper.syncRounded(bioHost, backdrop, true, BIOGRAPHY_GLASS_CORNER_DP, raiseContent = false)
+                ?.baseColor = backgroundColor
+        }
     }
 
     // صفحة تفاصيل فوق صفحة تفاصيل: نفس حركة Square بالظبط (AnimatedContent):
