@@ -66,6 +66,15 @@ class GlassLayer(context: Context) : FrameLayout(context) {
      */
     var screenCoords = false
 
+    /**
+     * true while this layer is faded in and out by its own alpha (popup menus). It then skips the
+     * offscreen copy a fade of a blurred view normally needs, and waits until it is fully shown
+     * before reading the brightness behind it, so neither costs a frame during the animation.
+     */
+    var cheapFade = false
+
+    override fun hasOverlappingRendering(): Boolean = !cheapFade
+
     /** true once the brightness behind the pill has been measured at least once */
     var sampled = false
         private set
@@ -128,7 +137,7 @@ class GlassLayer(context: Context) : FrameLayout(context) {
     private fun maybeSample() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O || sampling) return
         val now = SystemClock.uptimeMillis()
-        if (now - lastSample < 300 || !isShown || alpha < 0.5f) return
+        if (now - lastSample < 300 || !isShown || alpha < (if (cheapFade) 0.99f else 0.5f)) return
         if (width < 8 || height < 8) return
         val window = findWindow() ?: return
         if (screenCoords) getLocationOnScreen(spot) else getLocationInWindow(spot)
