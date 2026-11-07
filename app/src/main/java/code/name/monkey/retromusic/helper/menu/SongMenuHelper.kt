@@ -15,6 +15,7 @@
 
 package code.name.monkey.retromusic.helper.menu
 
+import code.name.monkey.retromusic.views.GlassPopupMenu
 import android.content.Intent
 import android.view.MenuItem
 import android.view.View
@@ -140,7 +141,7 @@ object SongMenuHelper : KoinComponent {
         abstract val song: Song
 
         override fun onClick(v: View) {
-            val popupMenu = PopupMenu(activity, v)
+            val popupMenu = GlassPopupMenu(activity, v)
             popupMenu.inflate(menuRes)
             popupMenu.setOnMenuItemClickListener(this)
             popupMenu.show()
