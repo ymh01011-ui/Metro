@@ -1,5 +1,6 @@
 package code.name.monkey.retromusic.adapter.backup
 
+import code.name.monkey.retromusic.views.GlassPopupMenu
 import android.annotation.SuppressLint
 import android.view.LayoutInflater
 import android.view.MenuItem
@@ -41,7 +42,7 @@ class BackupAdapter(
 
         init {
             binding.menu.setOnClickListener { view ->
-                val popupMenu = PopupMenu(activity, view)
+                val popupMenu = GlassPopupMenu(activity, view)
                 popupMenu.inflate(R.menu.menu_backup)
                 popupMenu.setOnMenuItemClickListener { menuItem ->
                     return@setOnMenuItemClickListener backupClickedListener.onBackupMenuClicked(
