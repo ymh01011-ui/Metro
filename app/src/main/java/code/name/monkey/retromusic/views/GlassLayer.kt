@@ -1,5 +1,6 @@
 package code.name.monkey.retromusic.views
 
+import android.animation.ArgbEvaluator
 import android.animation.ValueAnimator
 import android.app.Activity
 import android.content.Context
@@ -94,6 +95,12 @@ class GlassLayer(context: Context) : FrameLayout(context) {
     val inkColor: Int?
         get() = if (!sampled) null else ColorUtils.blendARGB(Color.WHITE, DARK_INK, lightness)
 
+    /** Average colour of the page behind the pill (null until measured); the rim is tinted with it. */
+    var pageColor: Int? = null
+        private set
+
+    private var colorAnimator: ValueAnimator? = null
+
     /** called on every step of the glide (used by GlassHelper) */
     var onToneChanged: ((Float) -> Unit)? = null
 
@@ -174,15 +181,83 @@ class GlassLayer(context: Context) : FrameLayout(context) {
             b += Color.blue(p)
         }
         val n = pixels.size
-        val luminance = ColorUtils.calculateLuminance(
-            Color.rgb((r / n).toInt(), (g / n).toInt(), (b / n).toInt())
-        )
+        val average = Color.rgb((r / n).toInt(), (g / n).toInt(), (b / n).toInt())
+        val luminance = ColorUtils.calculateLuminance(average)
         val light = if (onLight) luminance > 0.30 else luminance > 0.45
         val first = !sampled
         sampled = true
+        glideColorTo(average, animate = !first)
         if (first || light != onLight) {
             onLight = light
             glideTo(if (light) 1f else 0f, animate = !first)
+        }
+    }
+
+    private fun glideColorTo(target: Int, animate: Boolean) {
+        val from = pageColor
+        if (from != null && animate) {
+            val distance = Math.abs(Color.red(from) - Color.red(target)) +
+                Math.abs(Color.green(from) - Color.green(target)) +
+                Math.abs(Color.blue(from) - Color.blue(target))
+            if (distance < 12) return
+        }
+        colorAnimator?.cancel()
+        if (!animate || from == null) {
+            pageColor = target
+            onToneChanged?.invoke(lightness)
+            return
+        }
+        colorAnimator = ValueAnimator.ofObject(ArgbEvaluator(), from, target).apply {
+            duration = 300
+            addUpdateListener {
+                pageColor = it.animatedValue as Int
+                onToneChanged?.invoke(lightness)
+            }
+            start()
+        }
+    }
+
+    /**
+     * Measures the page at [area] (window coordinates) once, BEFORE this layer is shown, so a
+     * popup opens already in the right tone instead of jumping when the first regular
+     * measurement arrives. [done] is always called, at the latest after a short timeout.
+     */
+    fun prime(area: Rect, done: () -> Unit) {
+        val window = findWindow()
+        if (window == null || Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
+            done()
+            return
+        }
+        val decor = window.decorView
+        val rect = Rect(
+            area.left + area.width() / 8, area.top + area.height() / 4,
+            area.right - area.width() / 8, area.bottom - area.height() / 4
+        )
+        if (!rect.intersect(0, 0, decor.width, decor.height) || rect.width() < 4 || rect.height() < 4) {
+            done()
+            return
+        }
+        val bitmap = sampleBitmap
+            ?: Bitmap.createBitmap(SAMPLE_W, SAMPLE_H, Bitmap.Config.ARGB_8888).also { sampleBitmap = it }
+        var finished = false
+        lateinit var timeout: Runnable
+        val finish = {
+            if (!finished) {
+                finished = true
+                mainHandler.removeCallbacks(timeout)
+                done()
+            }
+        }
+        timeout = Runnable { finish() }
+        mainHandler.postDelayed(timeout, 120)
+        lastSample = SystemClock.uptimeMillis()
+        try {
+            PixelCopy.request(window, rect, bitmap, { result ->
+                if (!finished && result == PixelCopy.SUCCESS) onSampled(bitmap)
+                finish()
+            }, mainHandler)
+        } catch (e: Exception) {
+            finish()
         }
     }
 
@@ -207,6 +282,7 @@ class GlassLayer(context: Context) : FrameLayout(context) {
 
     override fun onDetachedFromWindow() {
         toneAnimator?.cancel()
+        colorAnimator?.cancel()
         super.onDetachedFromWindow()
     }
 
