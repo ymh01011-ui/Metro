@@ -13,6 +13,8 @@ import android.view.MenuInflater
 import android.view.MenuItem
 import android.view.View
 import android.view.ViewGroup
+import android.view.ViewTreeObserver
+import android.view.animation.DecelerateInterpolator
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.PopupWindow
@@ -184,17 +186,34 @@ private class GlassMenuWindow(
         popup = window
 
         // grows out of the corner next to the button
+        layer.cheapFade = true
         layer.alpha = 0f
-        layer.scaleX = 0.9f
-        layer.scaleY = 0.9f
+        layer.scaleX = 0.92f
+        layer.scaleY = 0.92f
         layer.pivotX = glassW.toFloat()
         layer.pivotY = if (placeBelow) 0f else glassH.toFloat()
+
+        // The first frame of a live-blur layer is the expensive one (the whole page is recorded
+        // and blurred). Let it be drawn while the panel is still invisible, and only then start
+        // the animation, so the animation itself never contains that hitch.
+        layer.viewTreeObserver.addOnPreDrawListener(object : ViewTreeObserver.OnPreDrawListener {
+            override fun onPreDraw(): Boolean {
+                if (layer.viewTreeObserver.isAlive) layer.viewTreeObserver.removeOnPreDrawListener(this)
+                layer.post {
+                    layer.animate()
+                        .alpha(1f).scaleX(1f).scaleY(1f)
+                        .setDuration(200)
+                        .setInterpolator(DecelerateInterpolator(1.5f))
+                        .start()
+                }
+                return true
+            }
+        })
         try {
             window.showAtLocation(decor, Gravity.NO_GRAVITY, x - pad, y - pad)
         } catch (e: Exception) {
             return false
         }
-        layer.animate().alpha(1f).scaleX(1f).scaleY(1f).setDuration(180).start()
         return true
     }
 
