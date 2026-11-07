@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.ContextWrapper
 import android.content.res.ColorStateList
 import android.graphics.Color
+import android.graphics.Rect
 import android.graphics.drawable.ColorDrawable
 import android.util.TypedValue
 import android.view.Gravity
@@ -193,26 +194,35 @@ private class GlassMenuWindow(
         layer.pivotX = glassW.toFloat()
         layer.pivotY = if (placeBelow) 0f else glassH.toFloat()
 
-        // The first frame of a live-blur layer is the expensive one (the whole page is recorded
-        // and blurred). Let it be drawn while the panel is still invisible, and only then start
-        // the animation, so the animation itself never contains that hitch.
-        layer.viewTreeObserver.addOnPreDrawListener(object : ViewTreeObserver.OnPreDrawListener {
-            override fun onPreDraw(): Boolean {
-                if (layer.viewTreeObserver.isAlive) layer.viewTreeObserver.removeOnPreDrawListener(this)
-                layer.post {
-                    layer.animate()
-                        .alpha(1f).scaleX(1f).scaleY(1f)
-                        .setDuration(200)
-                        .setInterpolator(DecelerateInterpolator(1.5f))
-                        .start()
+        val reveal = {
+            // The first frame of a live-blur layer is the expensive one (the whole page is
+            // recorded and blurred). Let it be drawn while the panel is still invisible, and
+            // only then start the animation, so the animation itself never contains that hitch.
+            layer.viewTreeObserver.addOnPreDrawListener(object : ViewTreeObserver.OnPreDrawListener {
+                override fun onPreDraw(): Boolean {
+                    if (layer.viewTreeObserver.isAlive) layer.viewTreeObserver.removeOnPreDrawListener(this)
+                    layer.post {
+                        layer.animate()
+                            .alpha(1f).scaleX(1f).scaleY(1f)
+                            .setDuration(200)
+                            .setInterpolator(DecelerateInterpolator(1.5f))
+                            .start()
+                    }
+                    return true
                 }
-                return true
+            })
+            try {
+                window.showAtLocation(decor, Gravity.NO_GRAVITY, x - pad, y - pad)
+            } catch (e: Exception) {
+                onDismiss?.invoke()
             }
-        })
-        try {
-            window.showAtLocation(decor, Gravity.NO_GRAVITY, x - pad, y - pad)
-        } catch (e: Exception) {
-            return false
+        }
+
+        // Measure the page where the panel will open BEFORE showing it, so it opens already in
+        // the right tone (ink, rim, dark veil) instead of jumping once the first regular
+        // measurement arrives. This takes a few milliseconds and has a short timeout.
+        layer.prime(Rect(x, y, x + glassW, y + glassH)) {
+            if (anchor.isAttachedToWindow) reveal() else onDismiss?.invoke()
         }
         return true
     }
