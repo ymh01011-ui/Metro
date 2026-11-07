@@ -29,6 +29,7 @@ import androidx.core.graphics.ColorUtils
 import androidx.core.text.toSpannable
 import androidx.core.view.isVisible
 import code.name.monkey.appthemehelper.ThemeStore
+import code.name.monkey.retromusic.views.GlassHelper
 import code.name.monkey.retromusic.views.GlassLayer
 import com.google.android.material.color.MaterialColors
 import code.name.monkey.retromusic.R
@@ -105,6 +106,8 @@ open class MiniPlayerFragment : AbsMusicServiceFragment(R.layout.fragment_mini_p
     private fun applyInk() {
         val forced = glassInk
         val ink = forced ?: textColorPrimary()
+        // the icon in the circle next to the mini player always has the same ink as this text
+        GlassHelper.setIconInk(ink)
         binding.miniPlayerTitle.setTextColor(ink)
         binding.miniPlayerArtist.setTextColor(
             if (forced != null) ColorUtils.setAlphaComponent(ink, 175) else textColorSecondary()
