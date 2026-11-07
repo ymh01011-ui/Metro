@@ -167,6 +167,49 @@ object GlassHelper {
         return layer
     }
 
+    /**
+     * A free-standing glass panel with rounded corners (not a pill), for popup menus. It lives in
+     * its own window, so it blurs [backdrop] (the activity's decor view) using screen positions.
+     * Same settings and same look (blur, colour, film, tint, rim light) as the bars.
+     */
+    fun createPopupLayer(context: Context, backdrop: ViewGroup, cornerDp: Int): GlassLayer {
+        val match = ViewGroup.LayoutParams.MATCH_PARENT
+        val density = context.resources.displayMetrics.density
+        val corner = dp(context, cornerDp).toFloat()
+
+        val layer = GlassLayer(context)
+        layer.tag = TAG_LAYER
+        layer.screenCoords = true
+        layer.outlineProvider = object : ViewOutlineProvider() {
+            override fun getOutline(view: View, outline: Outline) {
+                outline.setRoundRect(0, 0, view.width, view.height, corner)
+                outline.alpha = 1f
+            }
+        }
+        layer.clipToOutline = true
+        layer.elevation = dp(context, 6).toFloat()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            layer.outlineSpotShadowColor = Color.argb(70, 0, 0, 0)
+            layer.outlineAmbientShadowColor = Color.argb(30, 0, 0, 0)
+        }
+
+        val tintView = View(context)
+        tintView.tag = TAG_TINT
+        tintView.layoutParams = FrameLayout.LayoutParams(match, match)
+        val edgeView = View(context)
+        edgeView.tag = TAG_EDGE
+        edgeView.layoutParams = FrameLayout.LayoutParams(match, match)
+        edgeView.background = RimDrawable(0.75f * density, corner)
+        layer.addView(tintView)
+        layer.addView(edgeView)
+
+        layer.backdrop = backdrop
+        layer.baseColor = MaterialColors.getColor(context, android.R.attr.colorBackground, Color.BLACK)
+        layer.onToneChanged = { applyTone(layer) }
+        style(layer)
+        return layer
+    }
+
     /** Puts [icon] (the selected tab) in the pill; it fades in while the bar is folded. */
     fun setSelectedIcon(layer: GlassLayer?, icon: Drawable?) {
         val view = layer?.findViewWithTag<ImageView>(TAG_ICON) ?: return
@@ -670,7 +713,10 @@ object GlassHelper {
  * thin rim that is bright on top, dim in the middle and lit again at the bottom (light catching
  * the glass). [setTone] glides it between the variant for dark pages (0) and bright pages (1).
  */
-private class RimDrawable(private val strokePx: Float) : Drawable() {
+private class RimDrawable(
+    private val strokePx: Float,
+    private val cornerPx: Float = -1f,
+) : Drawable() {
     private var tone = 0f
     private val sheen = Paint(Paint.ANTI_ALIAS_FLAG)
     private val glow = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -742,7 +788,8 @@ private class RimDrawable(private val strokePx: Float) : Drawable() {
     override fun draw(canvas: Canvas) {
         val b = bounds
         if (b.isEmpty) return
-        val radius = minOf(b.width(), b.height()) / 2f
+        val radius = if (cornerPx > 0f) minOf(cornerPx, minOf(b.width(), b.height()) / 2f)
+        else minOf(b.width(), b.height()) / 2f
 
         rect.set(b)
         canvas.drawRoundRect(rect, radius, radius, sheen)
