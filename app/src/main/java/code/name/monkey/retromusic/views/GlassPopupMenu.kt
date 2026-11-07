@@ -227,8 +227,9 @@ private class GlassMenuWindow(
         }
         for (i in 0 until menu.size()) {
             val item = menu.getItem(i)
+            val itemTitle = item.title
             if (!item.isVisible || item.itemId == 0 || item.itemId in exclude ||
-                item.title.isNullOrEmpty()
+                itemTitle.isNullOrEmpty()
             ) continue
             val inSub = title != null
             val trailing: View? = when {
@@ -237,7 +238,7 @@ private class GlassMenuWindow(
                 item.isCheckable && item.isChecked -> tick()
                 else -> null
             }
-            column.addView(row(item.title, item.isEnabled, trailing, bold = false) { choose(item) })
+            column.addView(row(itemTitle, item.isEnabled, trailing, bold = false) { choose(item) })
         }
         applyInk()
     }
