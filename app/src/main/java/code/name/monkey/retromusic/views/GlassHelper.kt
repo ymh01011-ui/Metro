@@ -138,7 +138,12 @@ object GlassHelper {
      * (the list / scroll view under the bar), never one of its parents.
      * @return the pill, or null when [enabled] is false
      */
-    fun syncFill(host: FrameLayout, backdrop: ViewGroup, enabled: Boolean): GlassLayer? {
+    fun syncFill(
+        host: FrameLayout,
+        backdrop: ViewGroup,
+        enabled: Boolean,
+        raiseContent: Boolean = true,
+    ): GlassLayer? {
         var layer = layerOf(host)
         if (!enabled) {
             layer?.let { (it.parent as? ViewGroup)?.removeView(it) }
@@ -157,11 +162,27 @@ object GlassHelper {
         layer.baseColor = MaterialColors.getColor(
             host.context, android.R.attr.colorBackground, Color.BLACK
         )
-        // the pill has an elevation, so the bar's own content must sit above it
-        val lift = dp(host.context, 9).toFloat()
-        for (i in 0 until host.childCount) {
-            val child = host.getChildAt(i)
-            if (child !== layer) child.elevation = lift
+        if (raiseContent) {
+            // the pill has an elevation, so the bar's own content must sit above it
+            val lift = dp(host.context, 9).toFloat()
+            for (i in 0 until host.childCount) {
+                val child = host.getChildAt(i)
+                if (child !== layer) child.elevation = lift
+            }
+        } else {
+            // Flat glass (buttons, cards): no elevation anywhere. An elevated child that has its own
+            // background (a button, a card's content) casts a rectangular shadow around itself,
+            // which showed up as boxes around the glass. The pill stays at the bottom of the host
+            // and the content above it simply by child order.
+            layer.elevation = 0f
+            for (i in 0 until host.childCount) {
+                val child = host.getChildAt(i)
+                if (child !== layer) {
+                    child.elevation = 0f
+                    child.translationZ = 0f
+                    child.stateListAnimator = null
+                }
+            }
         }
         layer.isClickable = false
         style(layer)
@@ -172,8 +193,14 @@ object GlassHelper {
      * Like [syncFill] but with rounded corners of [cornerDp] instead of a full pill: for cards
      * (the "About" box). Same blur, film, tint, rim light and shadow as the pills.
      */
-    fun syncRounded(host: FrameLayout, backdrop: ViewGroup, enabled: Boolean, cornerDp: Int): GlassLayer? {
-        val layer = syncFill(host, backdrop, enabled) ?: return null
+    fun syncRounded(
+        host: FrameLayout,
+        backdrop: ViewGroup,
+        enabled: Boolean,
+        cornerDp: Int,
+        raiseContent: Boolean = true,
+    ): GlassLayer? {
+        val layer = syncFill(host, backdrop, enabled, raiseContent) ?: return null
         val context = host.context
         val corner = dp(context, cornerDp).toFloat()
         layer.outlineProvider = object : ViewOutlineProvider() {
