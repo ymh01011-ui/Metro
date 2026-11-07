@@ -14,6 +14,7 @@
  */
 package code.name.monkey.retromusic.fragments.base
 
+import code.name.monkey.retromusic.views.GlassPopupMenu
 import android.content.res.ColorStateList
 import android.graphics.Color
 import android.graphics.Rect
@@ -224,7 +225,7 @@ abstract class AbsRecyclerViewFragment<A : RecyclerView.Adapter<*>, LM : Recycle
 
         // ⋯ بيفتح PopupMenu متملي بنفس المنطق اللي كان بيملى toolbar.menu
         binding.moreButton.setOnClickListener { anchor ->
-            val popup = PopupMenu(requireContext(), anchor)
+            val popup = GlassPopupMenu(requireContext(), anchor)
             onCreateMenu(popup.menu, popup.menuInflater)
             popup.setOnMenuItemClickListener { item -> onMenuItemSelected(item) }
             popup.show()
