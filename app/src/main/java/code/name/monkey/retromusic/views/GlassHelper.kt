@@ -115,6 +115,7 @@ object GlassHelper {
             if (withIcon) {
                 val icon = ImageView(context)
                 icon.tag = TAG_ICON
+                iconViews[icon] = true
                 icon.scaleType = ImageView.ScaleType.FIT_CENTER
                 val pad = dp(context, 12)
                 icon.setPadding(pad, pad, pad, pad)
@@ -316,11 +317,22 @@ object GlassHelper {
         )
         val themeLight = ColorUtils.calculateLuminance(surface) >= 0.5
         val tone = if (layer.sampled) layer.lightness else if (themeLight) 1f else 0f
-        (layer.findViewWithTag<View>(TAG_EDGE)?.background as? RimDrawable)?.setTone(tone)
-        // the icon shown in the folded pill: white over a dark page, dark over a bright one
+        (layer.findViewWithTag<View>(TAG_EDGE)?.background as? RimDrawable)
+            ?.setTone(tone, layer.pageColor)
+        // the icon shown in the folded pill: the same ink as the text of the mini player
         layer.findViewWithTag<ImageView>(TAG_ICON)?.imageTintList = ColorStateList.valueOf(
-            ColorUtils.blendARGB(Color.WHITE, GlassLayer.DARK_INK, tone)
+            iconInk ?: ColorUtils.blendARGB(Color.WHITE, GlassLayer.DARK_INK, tone)
         )
+    }
+
+    private var iconInk: Int? = null
+    private val iconViews = java.util.WeakHashMap<ImageView, Boolean>()
+
+    /** The mini player tells the icon in the folded pill which ink its own text has right now. */
+    fun setIconInk(color: Int?) {
+        iconInk = color
+        if (color == null) return
+        for (view in iconViews.keys.toList()) view.imageTintList = ColorStateList.valueOf(color)
     }
 
     private fun tintColor(context: Context): Int = when (PreferenceUtil.glassTint) {
@@ -717,6 +729,12 @@ object GlassHelper {
  * thin rim that is bright on top, dim in the middle and lit again at the bottom (light catching
  * the glass). [setTone] glides it between the variant for dark pages (0) and bright pages (1).
  */
+/** how much of the page colour goes into the white and black of the rim */
+private const val RIM_TINT = 0.45f
+
+/** overall opacity of the rim */
+private const val RIM_OPACITY = 0.75f
+
 private class RimDrawable(
     private val strokePx: Float,
     private val cornerPx: Float = -1f,
@@ -733,24 +751,33 @@ private class RimDrawable(
     }
     private val rect = RectF()
 
-    fun setTone(value: Float) {
-        if (value == tone) return
+    private var tint: Int? = null
+
+    /** [value] glides dark page (0) to bright page (1); [pageColor] tints the white and black. */
+    fun setTone(value: Float, pageColor: Int? = null) {
+        if (value == tone && pageColor == tint) return
         tone = value
+        tint = pageColor
         rebuild()
         invalidateSelf()
     }
 
     private fun mix(dark: Int, light: Int) = ColorUtils.blendARGB(dark, light, tone)
 
-    private fun a(color: Int, alpha: Int) = ColorUtils.setAlphaComponent(color, alpha)
+    /** a bit see-through, so the rim never looks like a hard white or black line */
+    private fun a(color: Int, alpha: Int) =
+        ColorUtils.setAlphaComponent(color, (alpha * RIM_OPACITY).toInt())
+
+    private fun tinted(base: Int): Int =
+        tint?.let { ColorUtils.blendARGB(base, it, RIM_TINT) } ?: base
 
     private fun rebuild() {
         val b = bounds
         if (b.isEmpty) return
         val top = b.top.toFloat()
         val bottom = b.bottom.toFloat()
-        val white = Color.WHITE
-        val black = Color.BLACK
+        val white = tinted(Color.WHITE)
+        val black = tinted(Color.BLACK)
         sheen.shader = LinearGradient(
             0f, top, 0f, bottom,
             intArrayOf(
