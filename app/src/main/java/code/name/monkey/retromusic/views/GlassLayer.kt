@@ -261,6 +261,11 @@ class GlassLayer(context: Context) : FrameLayout(context) {
             canvas.restore()
         }
         if (live && filmColor != Color.TRANSPARENT) canvas.drawColor(filmColor)
+        // over a bright page the glass gets a touch darker so it stays readable; it follows
+        // `lightness`, so it fades in and out together with the ink colour
+        if (live && lightness > 0f) {
+            canvas.drawColor(Color.argb((lightness * LIGHT_VEIL_ALPHA).toInt(), 0, 0, 0))
+        }
 
         // the page behind keeps moving: draw again on the next frame
         if (live) postInvalidateOnAnimation()
@@ -284,6 +289,8 @@ class GlassLayer(context: Context) : FrameLayout(context) {
 
     companion object {
         val DARK_INK: Int = Color.parseColor("#1C1B1F")
+        /** strength (0..255) of the dark veil over a bright page */
+        private const val LIGHT_VEIL_ALPHA = 28
         private const val SAMPLE_W = 32
         private const val SAMPLE_H = 8
     }
