@@ -214,7 +214,7 @@ object GlassHelper {
     fun setSelectedIcon(layer: GlassLayer?, icon: Drawable?) {
         val view = layer?.findViewWithTag<ImageView>(TAG_ICON) ?: return
         view.setImageDrawable(icon?.constantState?.newDrawable()?.mutate() ?: icon)
-        view.imageTintList = ColorStateList.valueOf(ThemeStore.accentColor(layer.context))
+        applyTone(layer)
     }
 
     private fun createLayer(
@@ -317,6 +317,10 @@ object GlassHelper {
         val themeLight = ColorUtils.calculateLuminance(surface) >= 0.5
         val tone = if (layer.sampled) layer.lightness else if (themeLight) 1f else 0f
         (layer.findViewWithTag<View>(TAG_EDGE)?.background as? RimDrawable)?.setTone(tone)
+        // the icon shown in the folded pill: white over a dark page, dark over a bright one
+        layer.findViewWithTag<ImageView>(TAG_ICON)?.imageTintList = ColorStateList.valueOf(
+            ColorUtils.blendARGB(Color.WHITE, GlassLayer.DARK_INK, tone)
+        )
     }
 
     private fun tintColor(context: Context): Int = when (PreferenceUtil.glassTint) {
