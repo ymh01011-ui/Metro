@@ -16,6 +16,7 @@ package code.name.monkey.retromusic.fragments.home
 
 import android.content.res.ColorStateList
 import android.graphics.Color
+import android.graphics.drawable.ColorDrawable
 import android.os.Bundle
 import android.view.*
 import android.widget.TextView
@@ -225,9 +226,22 @@ class HomeFragment :
     private fun applySearchGlass() {
         val b = _binding ?: return
         val layer = GlassHelper.syncFill(b.searchBar, b.container, PreferenceUtil.glassEnabled)
+        // paint the blur over the colour the page really has, so the bar is not tinted
+        layer?.baseColor = pageColor(b.searchBar)
         b.searchBar.setCardBackgroundColor(if (layer != null) Color.TRANSPARENT else searchPillColor)
         layer?.onToneExtra = { tone -> applySearchInk(tone) }
         applySearchInk(if (layer != null && layer.sampled) layer.lightness else null)
+    }
+
+    /** The first opaque background colour above [from] (the page as the user actually sees it). */
+    private fun pageColor(from: View): Int {
+        var v: View? = from.parent as? View
+        while (v != null) {
+            val bg = v.background
+            if (bg is ColorDrawable && Color.alpha(bg.color) == 255) return bg.color
+            v = v.parent as? View
+        }
+        return MaterialColors.getColor(from, android.R.attr.colorBackground, Color.BLACK)
     }
 
     /** Text and icon follow the brightness of the page behind the glass (null = theme colours). */
