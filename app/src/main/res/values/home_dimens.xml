@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Left/right edge shared by every element of the home page.
+         Equals the search bar's start/end margin in fragment_home.xml (19dp). -->
+    <dimen name="home_content_margin">19dp</dimen>
+    <!-- Tile grid padding = home_content_margin minus the 8dp margin around each tile. -->
+    <dimen name="home_tiles_padding">11dp</dimen>
+    <!-- The 24dp chevron glyph is drawn 8dp inside its box, so the box sits 8dp closer to the edge. -->
+    <dimen name="home_chevron_end_padding">11dp</dimen>
+    <!-- Old sections (Favorites ...) start their titles 16dp in; this brings them to 19dp. -->
+    <dimen name="home_legacy_start_padding">3dp</dimen>
+</resources>
