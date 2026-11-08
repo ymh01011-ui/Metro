@@ -66,6 +66,9 @@ import code.name.monkey.retromusic.adapter.HomeRecentSongsAdapter
 import code.name.monkey.retromusic.databinding.ItemHomeTileBinding
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 
+/** Tile corner radius as a share of the tile width (matches the mock-up). */
+private const val TILE_CORNER_RATIO = 0.17f
+
 class HomeFragment :
     AbsMainActivityFragment(R.layout.fragment_home), IScrollHelper {
 
@@ -117,34 +120,50 @@ class HomeFragment :
         }
     }
 
-    /** Paints one square tile: gradient, rounded clip, thin outline, icon, rings and title. */
+    /** Paints one square tile: gradient, rounded clip, thin outline, soft glow, icon and title. */
     private fun bindTile(tile: ItemHomeTileBinding, style: HomeTileStyle, onClick: () -> Unit) {
         val density = resources.displayMetrics.density
-        val radius = 20f * density
 
-        tile.root.background =
-            GradientDrawable(GradientDrawable.Orientation.TL_BR, style.gradient).apply {
-                cornerRadius = radius
-            }
-        // clip the cropped icon / rings / ripple to the rounded corners
+        val fill = GradientDrawable(GradientDrawable.Orientation.TL_BR, style.gradient)
+        val strokeShape = GradientDrawable()
+        strokeShape.setShape(GradientDrawable.RECTANGLE)
+        strokeShape.setColor(Color.TRANSPARENT)
+        strokeShape.setStroke(
+            (1.2f * density).toInt().coerceAtLeast(1),
+            ColorUtils.setAlphaComponent(style.ink, 110)
+        )
+        tile.root.background = fill
+        tile.tileStroke.background = strokeShape
+
+        // soft, light glow behind the icon (kept subtle on purpose)
+        val glow = GradientDrawable(
+            GradientDrawable.Orientation.TOP_BOTTOM,
+            intArrayOf(
+                ColorUtils.setAlphaComponent(style.ink, 105),
+                ColorUtils.setAlphaComponent(style.ink, 0)
+            )
+        )
+        glow.setGradientType(GradientDrawable.RADIAL_GRADIENT)
+        glow.setGradientRadius(62f * density)
+        glow.setGradientCenter(0.5f, 0.5f)
+        tile.tileGlow.background = glow
+
+        // corner radius is a fixed share of the tile width, so it matches the mock on any screen
         tile.root.outlineProvider = object : ViewOutlineProvider() {
             override fun getOutline(view: View, outline: Outline) {
-                outline.setRoundRect(0, 0, view.width, view.height, radius)
+                outline.setRoundRect(0, 0, view.width, view.height, view.width * TILE_CORNER_RATIO)
             }
         }
         tile.root.clipToOutline = true
-
-        tile.tileStroke.background = GradientDrawable().apply {
-            shape = GradientDrawable.RECTANGLE
-            cornerRadius = radius
-            setColor(Color.TRANSPARENT)
-            setStroke((1.2f * density).toInt().coerceAtLeast(1), ColorUtils.setAlphaComponent(style.ink, 80))
+        tile.root.addOnLayoutChangeListener { v, left, _, right, _, _, _, _, _ ->
+            val radius = (right - left) * TILE_CORNER_RATIO
+            fill.setCornerRadius(radius)
+            strokeShape.setCornerRadius(radius)
+            v.invalidateOutline()
         }
 
-        val ink = ColorStateList.valueOf(style.ink)
         tile.tileIcon.setImageResource(style.icon)
-        tile.tileIcon.imageTintList = ink
-        tile.tileRings.imageTintList = ink
+        tile.tileIcon.imageTintList = ColorStateList.valueOf(style.ink)
         tile.tileTitle.setText(style.title)
         tile.root.contentDescription = getString(style.title)
         tile.root.setOnClickListener { onClick() }
