@@ -1,5 +1,6 @@
 package code.name.monkey.retromusic.fragments.other
 
+import android.graphics.Color
 import android.graphics.Outline
 import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
@@ -53,10 +54,15 @@ class ListeningStatsFragment : AbsMainActivityFragment(R.layout.fragment_listeni
         val density = resources.displayMetrics.density
         val radius = 24f * density
 
-        // hero card uses the same gradient as the home tile
+        // hero card uses the same gradient (and light / dark look) as the home tile
+        val dark = HomeTileStyles.isDark(binding.root)
+        val style = HomeTileStyles.STATS
         binding.heroCard.background =
-            GradientDrawable(GradientDrawable.Orientation.TL_BR, HomeTileStyles.STATS.gradient)
+            GradientDrawable(GradientDrawable.Orientation.TL_BR, style.gradientFor(dark))
                 .apply { setCornerRadius(radius) }
+        val textColor = if (dark) style.inkFor(true) else Color.WHITE
+        binding.heroValue.setTextColor(textColor)
+        binding.heroLabel.setTextColor(ColorUtils.setAlphaComponent(textColor, 204))
         binding.heroCard.outlineProvider = object : ViewOutlineProvider() {
             override fun getOutline(view: View, outline: Outline) {
                 outline.setRoundRect(0, 0, view.width, view.height, radius)
