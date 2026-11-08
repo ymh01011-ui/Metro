@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="tile_history">History</string>
+    <string name="tile_most_played">Most played</string>
+    <string name="tile_favorite">Favorite</string>
+    <string name="tile_for_you_now">For You Now</string>
+    <string name="tile_rediscover">Rediscover</string>
+    <string name="tile_listening_stats">Listening stats</string>
+
+    <string name="home_recently_added">Recently added</string>
+    <string name="home_pinned">Pinned</string>
+    <string name="home_pin_add">Pin to home</string>
+    <string name="home_pin_albums">Albums</string>
+    <string name="home_pin_artists">Artists</string>
+    <string name="home_unpin">Unpin</string>
+    <string name="home_unpin_message">Remove this item from Pinned?</string>
+
+    <string name="stats_total_time">Total listening time</string>
+    <string name="stats_total_plays">Total plays</string>
+    <string name="stats_songs_played">Songs played</string>
+    <string name="stats_of_library">of %1$d in your library</string>
+    <string name="stats_top_song">Top song</string>
+    <string name="stats_top_artist">Top artist</string>
+    <string name="stats_top_album">Top album</string>
+    <string name="stats_empty">Play some songs and your stats will show up here.</string>
+    <string name="stats_duration_hm">%1$d h %2$d min</string>
+    <string name="stats_duration_m">%1$d min</string>
+    <plurals name="stats_plays">
+        <item quantity="one">%1$d play</item>
+        <item quantity="other">%1$d plays</item>
+    </plurals>
+</resources>
