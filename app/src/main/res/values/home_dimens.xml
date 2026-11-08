@@ -1,7 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Left/right edge shared by every element of the home page.
-         Equals the search bar's start/end margin in fragment_home.xml (19dp). -->
+    <!-- ===== Horizontal: one edge line for everything, = search bar margin in fragment_home.xml ===== -->
     <dimen name="home_content_margin">19dp</dimen>
     <!-- Tile grid padding = home_content_margin minus the 8dp margin around each tile. -->
     <dimen name="home_tiles_padding">11dp</dimen>
@@ -9,4 +8,17 @@
     <dimen name="home_chevron_end_padding">11dp</dimen>
     <!-- Old sections (Favorites ...) start their titles 16dp in; this brings them to 19dp. -->
     <dimen name="home_legacy_start_padding">3dp</dimen>
+
+    <!-- ===== Vertical rhythm, measured from the Favorites section =====
+         heading centre -> top of its content ........ ~35dp  (24dp half header + ~12dp)
+         bottom of a section -> next heading centre .. ~45dp -->
+    <!-- Space between the search bar and the first tile row (was 8dp). -->
+    <dimen name="home_tiles_top_padding">16dp</dimen>
+    <!-- Extra space under a 48dp header before the content (Recently added gets it from its rows). -->
+    <dimen name="home_header_content_gap">12dp</dimen>
+    <!-- Section tops. They are smaller than 45dp because each block already has its own slack:
+         tiles 8dp (margin below the 2nd row), Recently added 11.5dp (centred rows). -->
+    <dimen name="home_gap_after_tiles">13dp</dimen>
+    <dimen name="home_gap_after_recent">10dp</dimen>
+    <dimen name="home_gap_after_pinned">16dp</dimen>
 </resources>
