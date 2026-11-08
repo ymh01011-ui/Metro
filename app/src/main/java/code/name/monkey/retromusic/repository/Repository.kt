@@ -88,6 +88,7 @@ interface Repository {
     suspend fun upsertSongInHistory(currentSong: Song)
     suspend fun favoritePlaylistSongs(): List<SongEntity>
     suspend fun recentSongs(): List<Song>
+    suspend fun latestAddedSongs(limit: Int): List<Song>
     suspend fun topPlayedSongs(): List<Song>
     suspend fun upsertSongInPlayCount(playCountEntity: PlayCountEntity)
     suspend fun deleteSongInPlayCount(playCountEntity: PlayCountEntity)
@@ -258,6 +259,9 @@ class RealRepository(
         roomRepository.favoritePlaylistSongs(context.getString(R.string.favorites))
 
     override suspend fun recentSongs(): List<Song> = lastAddedRepository.recentSongs()
+
+    override suspend fun latestAddedSongs(limit: Int): List<Song> =
+        lastAddedRepository.latestSongs(limit)
 
     override suspend fun topPlayedSongs(): List<Song> = topPlayedRepository.topTracks()
 
