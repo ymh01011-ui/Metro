@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Stops the resource shrinker from replacing the home tile icons with an empty <x/> stub. -->
+<resources xmlns:tools="http://schemas.android.com/tools"
+    tools:keep="@drawable/ic_tile_*,@drawable/ic_home_*,@drawable/bg_tile_*" />
