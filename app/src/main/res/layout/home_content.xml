@@ -15,16 +15,16 @@
         android:id="@+id/tilesGrid"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:paddingStart="11dp"
+        android:paddingStart="3dp"
         android:paddingTop="8dp"
-        android:paddingEnd="11dp">
+        android:paddingEnd="3dp">
 
         <include
             android:id="@+id/tileHistory"
             layout="@layout/item_home_tile"
             android:layout_width="0dp"
             android:layout_height="0dp"
-            android:layout_margin="5dp"
+            android:layout_margin="8dp"
             app:layout_constraintDimensionRatio="H,1:1"
             app:layout_constraintHorizontal_weight="1"
             app:layout_constraintStart_toStartOf="parent"
@@ -36,7 +36,7 @@
             layout="@layout/item_home_tile"
             android:layout_width="0dp"
             android:layout_height="0dp"
-            android:layout_margin="5dp"
+            android:layout_margin="8dp"
             app:layout_constraintDimensionRatio="H,1:1"
             app:layout_constraintHorizontal_weight="1"
             app:layout_constraintStart_toEndOf="@id/tileHistory"
@@ -48,7 +48,7 @@
             layout="@layout/item_home_tile"
             android:layout_width="0dp"
             android:layout_height="0dp"
-            android:layout_margin="5dp"
+            android:layout_margin="8dp"
             app:layout_constraintDimensionRatio="H,1:1"
             app:layout_constraintHorizontal_weight="1"
             app:layout_constraintStart_toEndOf="@id/tileMostPlayed"
@@ -60,7 +60,8 @@
             layout="@layout/item_home_tile"
             android:layout_width="0dp"
             android:layout_height="0dp"
-            android:layout_margin="5dp"
+            android:layout_margin="8dp"
+            android:layout_marginTop="16dp"
             app:layout_constraintDimensionRatio="H,1:1"
             app:layout_constraintHorizontal_weight="1"
             app:layout_constraintStart_toStartOf="parent"
@@ -72,7 +73,8 @@
             layout="@layout/item_home_tile"
             android:layout_width="0dp"
             android:layout_height="0dp"
-            android:layout_margin="5dp"
+            android:layout_margin="8dp"
+            android:layout_marginTop="16dp"
             app:layout_constraintDimensionRatio="H,1:1"
             app:layout_constraintHorizontal_weight="1"
             app:layout_constraintStart_toEndOf="@id/tileForYouNow"
@@ -84,7 +86,8 @@
             layout="@layout/item_home_tile"
             android:layout_width="0dp"
             android:layout_height="0dp"
-            android:layout_margin="5dp"
+            android:layout_margin="8dp"
+            android:layout_marginTop="16dp"
             app:layout_constraintDimensionRatio="H,1:1"
             app:layout_constraintHorizontal_weight="1"
             app:layout_constraintStart_toEndOf="@id/tileRediscover"
@@ -111,17 +114,17 @@
             android:focusable="true"
             android:gravity="center_vertical"
             android:orientation="horizontal"
-            android:paddingStart="20dp"
+            android:paddingStart="16dp"
             android:paddingEnd="16dp">
 
             <TextView
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:fontFamily="sans-serif-medium"
+                android:textStyle="bold"
                 android:text="@string/home_recently_added"
                 android:textColor="?android:attr/textColorPrimary"
-                android:textSize="20sp" />
+                android:textSize="22sp" />
 
             <ImageView
                 android:layout_width="24dp"
@@ -153,13 +156,13 @@
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:fontFamily="sans-serif-medium"
-            android:paddingStart="20dp"
+            android:textStyle="bold"
+            android:paddingStart="16dp"
             android:paddingEnd="16dp"
             android:paddingBottom="10dp"
             android:text="@string/home_pinned"
             android:textColor="?android:attr/textColorPrimary"
-            android:textSize="20sp" />
+            android:textSize="22sp" />
 
         <androidx.recyclerview.widget.RecyclerView
             android:id="@+id/pinnedRecyclerView"
@@ -168,8 +171,8 @@
             android:clipToPadding="false"
             android:nestedScrollingEnabled="false"
             android:overScrollMode="never"
-            android:paddingStart="16dp"
-            android:paddingEnd="16dp" />
+            android:paddingStart="8dp"
+            android:paddingEnd="8dp" />
     </LinearLayout>
 
     <!-- Existing home sections (top artists/albums, recent artists/albums, favourites) -->
