@@ -27,6 +27,10 @@ import code.name.monkey.retromusic.util.PreferenceUtil
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import java.util.Calendar
+import kotlin.math.abs
+import kotlin.math.ln
+import kotlin.math.min
 
 interface Repository {
 
@@ -60,6 +64,9 @@ interface Repository {
     suspend fun recentAlbumsHome(): Home
     suspend fun favoritePlaylistHome(): Home
     suspend fun suggestions(): List<Song>
+    suspend fun forYouNowSongs(): List<Song>
+    suspend fun rediscoverSongs(): List<Song>
+    suspend fun listeningStats(): ListeningStats
     suspend fun genresHome(): Home
     suspend fun playlists(): Home
     suspend fun homeSections(): List<Home>
@@ -288,6 +295,105 @@ class RealRepository(
         return NotPlayedPlaylist().songs().shuffled().takeIf {
             it.size > 9
         } ?: emptyList()
+    }
+
+    // ---- home tiles: For You Now / Rediscover / Listening stats -------------------------------
+
+    /**
+     * Songs that fit "right now": how often you play them, how close their last play is to the
+     * current hour of the day, and whether the artist is one you were just listening to.
+     * (The play-count table only keeps the LAST play time per song, so time-of-day is an
+     * approximation, not a full habit model.)
+     */
+    override suspend fun forYouNowSongs(): List<Song> {
+        val library = songRepository.songs().associateBy { it.id }
+        if (library.isEmpty()) return emptyList()
+        val now = System.currentTimeMillis()
+        val nowHour = hourOf(now)
+        val played = roomRepository.playCountSongs().filter { library.containsKey(it.id) }
+        val recentArtists = roomRepository.historySongs().take(5).map { it.artistName }.toSet()
+        val maxLog = ln(1.0 + (played.maxOfOrNull { it.playCount } ?: 1))
+
+        val ranked = played
+            .filter { now - it.timePlayed > TEN_MINUTES }   // don't repeat what just played
+            .map { e ->
+                val plays = if (maxLog > 0) ln(1.0 + e.playCount) / maxLog else 0.0
+                val hourGap = circularHourGap(hourOf(e.timePlayed), nowHour)
+                val timeFit = (1.0 - hourGap / 4.0).coerceAtLeast(0.0)
+                val artistFit = if (e.artistName in recentArtists) 1.0 else 0.0
+                e.id to (0.45 * plays + 0.35 * timeFit + 0.20 * artistFit)
+            }
+            .sortedByDescending { it.second }
+            .mapNotNull { library[it.first] }
+            .take(40)
+
+        if (ranked.size >= 20) return ranked
+        val used = ranked.map { it.id }.toHashSet()
+        return ranked + library.values.filter { it.id !in used }.shuffled().take(40 - ranked.size)
+    }
+
+    /** Songs you played a lot but not for a while (14+ days), oldest love first. */
+    override suspend fun rediscoverSongs(): List<Song> {
+        val library = songRepository.songs().associateBy { it.id }
+        if (library.isEmpty()) return emptyList()
+        val now = System.currentTimeMillis()
+        val played = roomRepository.playCountSongs().filter { library.containsKey(it.id) }
+
+        val ranked = played
+            .map { e -> e to (now - e.timePlayed) / ONE_DAY.toDouble() }
+            .filter { it.second >= 14.0 }
+            .sortedByDescending { (e, days) -> ln(1.0 + e.playCount) * min(days / 30.0, 6.0) }
+            .mapNotNull { library[it.first.id] }
+            .take(50)
+
+        if (ranked.size >= 20) return ranked
+        val used = ranked.map { it.id }.toHashSet()
+        val playedIds = played.map { it.id }.toHashSet()
+        val neverPlayed = library.values
+            .filter { it.id !in used && it.id !in playedIds }
+            .shuffled()
+            .take(50 - ranked.size)
+        return ranked + neverPlayed
+    }
+
+    override suspend fun listeningStats(): ListeningStats {
+        val libraryIds = songRepository.songs().map { it.id }.toHashSet()
+        val played = roomRepository.playCountSongs().filter { it.id in libraryIds && it.playCount > 0 }
+
+        val topSong = played.maxByOrNull { it.playCount }
+        val topArtist = played.groupBy { it.artistName }
+            .mapValues { entry -> entry.value.sumOf { it.playCount } }
+            .maxByOrNull { it.value }
+        val topAlbum = played.groupBy { it.albumId to it.albumName }
+            .mapValues { entry -> entry.value.sumOf { it.playCount } }
+            .maxByOrNull { it.value }
+
+        return ListeningStats(
+            totalPlays = played.sumOf { it.playCount },
+            totalListeningMillis = played.sumOf { it.playCount.toLong() * it.duration },
+            songsPlayed = played.size,
+            librarySongs = libraryIds.size,
+            topSongTitle = topSong?.title,
+            topSongArtist = topSong?.artistName,
+            topSongPlays = topSong?.playCount ?: 0,
+            topArtistName = topArtist?.key,
+            topArtistPlays = topArtist?.value ?: 0,
+            topAlbumName = topAlbum?.key?.second,
+            topAlbumPlays = topAlbum?.value ?: 0
+        )
+    }
+
+    private fun hourOf(millis: Long): Int =
+        Calendar.getInstance().apply { timeInMillis = millis }.get(Calendar.HOUR_OF_DAY)
+
+    private fun circularHourGap(a: Int, b: Int): Int {
+        val d = abs(a - b)
+        return min(d, 24 - d)
+    }
+
+    private companion object {
+        const val TEN_MINUTES = 10L * 60 * 1000
+        const val ONE_DAY = 24L * 60 * 60 * 1000
     }
 
     override suspend fun genresHome(): Home {
