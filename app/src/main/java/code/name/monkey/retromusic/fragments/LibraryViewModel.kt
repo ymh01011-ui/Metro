@@ -47,6 +47,7 @@ class LibraryViewModel(
     private val _paletteColor = MutableLiveData<Int>()
     private val home = MutableLiveData<List<Home>>()
     private val suggestions = MutableLiveData<List<Song>>()
+    private val recentlyAdded = MutableLiveData<List<Song>>()
     private val albums = MutableLiveData<List<Album>>()
     private val songs = MutableLiveData<List<Song>>()
     private val artists = MutableLiveData<List<Artist>>()
@@ -64,6 +65,7 @@ class LibraryViewModel(
 
     private fun loadLibraryContent() = viewModelScope.launch(IO) {
         fetchHomeSections()
+        fetchRecentlyAdded()
         fetchSuggestions()
         fetchSongs()
         fetchAlbums()
@@ -87,6 +89,8 @@ class LibraryViewModel(
     fun getHome(): LiveData<List<Home>> = home
 
     fun getSuggestions(): LiveData<List<Song>> = suggestions
+
+    fun getRecentlyAdded(): LiveData<List<Song>> = recentlyAdded
 
     fun getFabMargin(): LiveData<Int> = fabMargin
 
@@ -131,6 +135,10 @@ class LibraryViewModel(
         home.postValue(repository.homeSections())
     }
 
+    private suspend fun fetchRecentlyAdded() {
+        recentlyAdded.postValue(repository.recentSongs().take(30))
+    }
+
     private suspend fun fetchSuggestions() {
         suggestions.postValue(repository.suggestions())
     }
@@ -146,7 +154,10 @@ class LibraryViewModel(
             Songs -> fetchSongs()
             Albums -> fetchAlbums()
             Artists -> fetchArtists()
-            HomeSections -> fetchHomeSections()
+            HomeSections -> {
+                fetchHomeSections()
+                fetchRecentlyAdded()
+            }
             Playlists -> fetchPlaylists()
             Genres -> fetchGenres()
             Suggestions -> fetchSuggestions()
@@ -288,6 +299,18 @@ class LibraryViewModel(
                 emit(repository.recentAlbums())
             }
         }
+    }
+
+    fun forYouNowSongs(): LiveData<List<Song>> = liveData(IO) {
+        emit(repository.forYouNowSongs())
+    }
+
+    fun rediscoverSongs(): LiveData<List<Song>> = liveData(IO) {
+        emit(repository.rediscoverSongs())
+    }
+
+    fun listeningStats(): LiveData<ListeningStats> = liveData(IO) {
+        emit(repository.listeningStats())
     }
 
     fun artist(artistId: Long): LiveData<Artist> = liveData(IO) {
