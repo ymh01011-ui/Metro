@@ -97,6 +97,12 @@
     </fragment>
 
     <fragment
+        android:id="@+id/listeningStatsFragment"
+        android:name="code.name.monkey.retromusic.fragments.other.ListeningStatsFragment"
+        android:label="ListeningStatsFragment"
+        tools:layout="@layout/fragment_listening_stats" />
+
+    <fragment
         android:id="@+id/action_search"
         android:name="code.name.monkey.retromusic.fragments.search.SearchFragment"
         android:label="SearchFragment"
