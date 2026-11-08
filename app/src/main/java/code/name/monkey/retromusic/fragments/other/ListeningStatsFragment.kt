@@ -56,7 +56,7 @@ class ListeningStatsFragment : AbsMainActivityFragment(R.layout.fragment_listeni
         // hero card uses the same gradient as the home tile
         binding.heroCard.background =
             GradientDrawable(GradientDrawable.Orientation.TL_BR, HomeTileStyles.STATS.gradient)
-                .apply { cornerRadius = radius }
+                .apply { setCornerRadius(radius) }
         binding.heroCard.outlineProvider = object : ViewOutlineProvider() {
             override fun getOutline(view: View, outline: Outline) {
                 outline.setRoundRect(0, 0, view.width, view.height, radius)
