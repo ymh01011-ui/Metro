@@ -93,6 +93,8 @@ class DetailListFragment : AbsMainActivityFragment(R.layout.fragment_playlist_de
             }
             LAST_ADDED_PLAYLIST -> lastAddedSongs()
             TOP_PLAYED_PLAYLIST -> topPlayed()
+            FOR_YOU_NOW_PLAYLIST -> forYouNow()
+            REDISCOVER_PLAYLIST -> rediscover()
         }
 
         binding.appBarLayout.statusBarForeground =
@@ -129,6 +131,40 @@ class DetailListFragment : AbsMainActivityFragment(R.layout.fragment_playlist_de
         }
         libraryViewModel.playCountSongs().observe(viewLifecycleOwner) { songs ->
             songAdapter.swapDataSet(songs)
+        }
+    }
+
+    private fun forYouNow() {
+        binding.toolbar.setTitle(R.string.tile_for_you_now)
+        val songAdapter = ShuffleButtonSongAdapter(
+            requireActivity(),
+            mutableListOf(),
+            R.layout.item_list
+        )
+        binding.recyclerView.apply {
+            adapter = songAdapter
+            layoutManager = linearLayoutManager()
+        }
+        libraryViewModel.forYouNowSongs().observe(viewLifecycleOwner) { songs ->
+            songAdapter.swapDataSet(songs)
+            binding.empty.isVisible = songs.isEmpty()
+        }
+    }
+
+    private fun rediscover() {
+        binding.toolbar.setTitle(R.string.tile_rediscover)
+        val songAdapter = ShuffleButtonSongAdapter(
+            requireActivity(),
+            mutableListOf(),
+            R.layout.item_list
+        )
+        binding.recyclerView.apply {
+            adapter = songAdapter
+            layoutManager = linearLayoutManager()
+        }
+        libraryViewModel.rediscoverSongs().observe(viewLifecycleOwner) { songs ->
+            songAdapter.swapDataSet(songs)
+            binding.empty.isVisible = songs.isEmpty()
         }
     }
 
