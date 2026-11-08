@@ -6,8 +6,8 @@ import code.name.monkey.retromusic.R
 
 /**
  * Look of one square tile on the home screen.
- * [gradient] runs top-left to bottom-right (light to dark), [ink] is the colour of the icon
- * and of the thin outline. Colours are kept muted so the white title always stays readable.
+ * [gradient] runs top-left to bottom-right (light to dark), [ink] is the colour of the icon,
+ * of the thin outline and of the soft glow behind the icon.
  */
 class HomeTileStyle(
     @StringRes val title: Int,
@@ -18,45 +18,45 @@ class HomeTileStyle(
 
 object HomeTileStyles {
 
-    // cool cyan -> teal: the past, calm
+    // bright cyan -> deep teal-blue: the past, calm
     val HISTORY = HomeTileStyle(
         R.string.tile_history, R.drawable.ic_tile_history,
-        intArrayOf(0xFF2A7F9E.toInt(), 0xFF1B6B7E.toInt(), 0xFF12505C.toInt()),
-        0xFFA8E6F2.toInt()
+        intArrayOf(0xFF27B5D6.toInt(), 0xFF1584AE.toInt(), 0xFF0B5A80.toInt()),
+        0xFFC9F4FF.toInt()
     )
 
-    // coral -> burnt orange: heat, energy
+    // vivid coral -> burnt orange: heat, energy
     val MOST_PLAYED = HomeTileStyle(
         R.string.tile_most_played, R.drawable.ic_tile_flame,
-        intArrayOf(0xFFB8483A.toInt(), 0xFFA5532A.toInt(), 0xFF7A3A1F.toInt()),
-        0xFFFFC2A3.toInt()
+        intArrayOf(0xFFFF7A56.toInt(), 0xFFE84F2B.toInt(), 0xFFA83418.toInt()),
+        0xFFFFD2BF.toInt()
     )
 
     // electric blue -> violet -> magenta (taken from the reference artwork)
     val FAVORITE = HomeTileStyle(
         R.string.tile_favorite, R.drawable.ic_tile_heart,
-        intArrayOf(0xFF2B5BD7.toInt(), 0xFF6A36C9.toInt(), 0xFFA82BA8.toInt()),
-        0xFFF3C8FF.toInt()
+        intArrayOf(0xFF2F6BFF.toInt(), 0xFF7C3FE8.toInt(), 0xFFC12BD0.toInt()),
+        0xFFF6D3FF.toInt()
     )
 
-    // emerald: "right now"
+    // fresh emerald: "right now"
     val FOR_YOU_NOW = HomeTileStyle(
         R.string.tile_for_you_now, R.drawable.ic_tile_radar,
-        intArrayOf(0xFF1F8A5B.toInt(), 0xFF19734D.toInt(), 0xFF0F5238.toInt()),
-        0xFFB6F2D0.toInt()
+        intArrayOf(0xFF25CD90.toInt(), 0xFF129B69.toInt(), 0xFF0A6A49.toInt()),
+        0xFFC8FFE3.toInt()
     )
 
-    // rose -> brown, like the vinyl card in the reference
+    // rose -> plum, like the vinyl card in the reference
     val REDISCOVER = HomeTileStyle(
         R.string.tile_rediscover, R.drawable.ic_tile_vinyl,
-        intArrayOf(0xFF8C4A62.toInt(), 0xFF6E3A4B.toInt(), 0xFF4A2A2E.toInt()),
-        0xFFF5B3C6.toInt()
+        intArrayOf(0xFFE0618F.toInt(), 0xFFAF3F6E.toInt(), 0xFF70264A.toInt()),
+        0xFFFFC9DC.toInt()
     )
 
     // golden amber
     val STATS = HomeTileStyle(
         R.string.tile_listening_stats, R.drawable.ic_tile_bars,
-        intArrayOf(0xFFB07A12.toInt(), 0xFF94650F.toInt(), 0xFF6B4609.toInt()),
-        0xFFFFE29A.toInt()
+        intArrayOf(0xFFFFB327.toInt(), 0xFFDB8A07.toInt(), 0xFF9A5A04.toInt()),
+        0xFFFFEBB0.toInt()
     )
 }
