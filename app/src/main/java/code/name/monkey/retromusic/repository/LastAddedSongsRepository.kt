@@ -27,6 +27,9 @@ import code.name.monkey.retromusic.util.PreferenceUtil
 interface LastAddedRepository {
     fun recentSongs(): List<Song>
 
+    /** Newest songs on the device, regardless of the "last added" cutoff setting. */
+    fun latestSongs(limit: Int): List<Song>
+
     fun recentAlbums(): List<Album>
 
     fun recentArtists(): List<Artist>
@@ -39,6 +42,15 @@ class RealLastAddedRepository(
 ) : LastAddedRepository {
     override fun recentSongs(): List<Song> {
         return songRepository.songs(makeLastAddedCursor())
+    }
+
+    override fun latestSongs(limit: Int): List<Song> {
+        val cursor = songRepository.makeSongCursor(
+            null,
+            null,
+            MediaStore.Audio.Media.DATE_ADDED + " DESC"
+        )
+        return songRepository.songs(cursor).take(limit)
     }
 
     override fun recentAlbums(): List<Album> {
