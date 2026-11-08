@@ -11,13 +11,26 @@ class HomeBinding(
     val appBarLayout = homeBinding.appBarLayout
     val searchBar = homeBinding.searchBar
     val menuButton = homeBinding.menuButton
-    val bannerImage = homeBinding.imageLayout.bannerImage
-    val userImage = homeBinding.imageLayout.userImage
-    val lastAdded = homeBinding.homeContent.absPlaylists.lastAdded
-    val topPlayed = homeBinding.homeContent.absPlaylists.topPlayed
-    val actionShuffle = homeBinding.homeContent.absPlaylists.actionShuffle
-    val history = homeBinding.homeContent.absPlaylists.history
-    val recyclerView = homeBinding.homeContent.recyclerView
-    val titleWelcome = homeBinding.imageLayout.titleWelcome
-    val suggestions = homeBinding.homeContent.suggestions
+
+    private val content = homeBinding.homeContent
+
+    // the six square tiles
+    val tileHistory = content.tileHistory
+    val tileMostPlayed = content.tileMostPlayed
+    val tileFavorite = content.tileFavorite
+    val tileForYouNow = content.tileForYouNow
+    val tileRediscover = content.tileRediscover
+    val tileStats = content.tileStats
+
+    // Recently added
+    val recentSection = content.recentSection
+    val recentHeader = content.recentHeader
+    val recentRecyclerView = content.recentRecyclerView
+
+    // Pinned
+    val pinnedSection = content.pinnedSection
+    val pinnedRecyclerView = content.pinnedRecyclerView
+
+    // existing home sections
+    val recyclerView = content.recyclerView
 }
