@@ -58,6 +58,13 @@ import code.name.monkey.retromusic.util.PreferenceUtil.userName
 import com.bumptech.glide.Glide
 import com.google.android.material.transition.MaterialFadeThrough
 import com.google.android.material.transition.MaterialSharedAxis
+import android.graphics.Outline
+import android.graphics.drawable.GradientDrawable
+import androidx.recyclerview.widget.GridLayoutManager
+import code.name.monkey.retromusic.adapter.HomePinnedAdapter
+import code.name.monkey.retromusic.adapter.HomeRecentSongsAdapter
+import code.name.monkey.retromusic.databinding.ItemHomeTileBinding
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
 
 class HomeFragment :
     AbsMainActivityFragment(R.layout.fragment_home), IScrollHelper {
@@ -65,104 +72,223 @@ class HomeFragment :
     private var _binding: HomeBinding? = null
     private val binding get() = _binding!!
 
+    private var recentAdapter: HomeRecentSongsAdapter? = null
+    private var pinnedAdapter: HomePinnedAdapter? = null
+
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
         val homeBinding = FragmentHomeBinding.bind(view)
         _binding = HomeBinding(homeBinding)
-        setupListeners()
-        binding.titleWelcome.text = String.format("%s", userName)
 
         enterTransition = MaterialFadeThrough().addTarget(binding.contentContainer)
         reenterTransition = MaterialFadeThrough().addTarget(binding.contentContainer)
 
         checkForMargins()
 
+        setupTiles()
+        setupRecentlyAdded()
+        setupPinned()
+
         val homeAdapter = HomeAdapter(mainActivity)
         binding.recyclerView.apply {
             layoutManager = LinearLayoutManager(mainActivity)
             adapter = homeAdapter
         }
-        libraryViewModel.getSuggestions().observe(viewLifecycleOwner) {
-            loadSuggestions(it)
-        }
         libraryViewModel.getHome().observe(viewLifecycleOwner) {
             homeAdapter.swapData(it)
         }
 
-        loadProfile()
         setupSearchBar()
-        colorButtons()
         postponeEnterTransition()
         view.doOnPreDraw { startPostponedEnterTransition() }
-        view.doOnLayout {
-            adjustPlaylistButtons()
+    }
+
+    // ---------------------------------------------------------------- tiles
+
+    private fun setupTiles() {
+        bindTile(binding.tileHistory, HomeTileStyles.HISTORY) { openDetail(HISTORY_PLAYLIST) }
+        bindTile(binding.tileMostPlayed, HomeTileStyles.MOST_PLAYED) { openDetail(TOP_PLAYED_PLAYLIST) }
+        bindTile(binding.tileFavorite, HomeTileStyles.FAVORITE) { openDetail(FAVOURITES, xAxis = true) }
+        bindTile(binding.tileForYouNow, HomeTileStyles.FOR_YOU_NOW) { openDetail(FOR_YOU_NOW_PLAYLIST) }
+        bindTile(binding.tileRediscover, HomeTileStyles.REDISCOVER) { openDetail(REDISCOVER_PLAYLIST) }
+        bindTile(binding.tileStats, HomeTileStyles.STATS) {
+            findNavController().navigate(R.id.listeningStatsFragment)
+            setSharedAxisYTransitions()
         }
     }
 
-    private fun adjustPlaylistButtons() {
-        val buttons =
-            listOf(binding.history, binding.lastAdded, binding.topPlayed, binding.actionShuffle)
-        buttons.maxOf { it.lineCount }.let { maxLineCount ->
-            buttons.forEach { button ->
-                // Set the highest line count to every button for consistency
-                button.setLines(maxLineCount)
+    /** Paints one square tile: gradient, rounded clip, thin outline, icon, rings and title. */
+    private fun bindTile(tile: ItemHomeTileBinding, style: HomeTileStyle, onClick: () -> Unit) {
+        val density = resources.displayMetrics.density
+        val radius = 20f * density
+
+        tile.root.background =
+            GradientDrawable(GradientDrawable.Orientation.TL_BR, style.gradient).apply {
+                cornerRadius = radius
+            }
+        // clip the cropped icon / rings / ripple to the rounded corners
+        tile.root.outlineProvider = object : ViewOutlineProvider() {
+            override fun getOutline(view: View, outline: Outline) {
+                outline.setRoundRect(0, 0, view.width, view.height, radius)
             }
         }
+        tile.root.clipToOutline = true
+
+        tile.tileStroke.background = GradientDrawable().apply {
+            shape = GradientDrawable.RECTANGLE
+            cornerRadius = radius
+            setColor(Color.TRANSPARENT)
+            setStroke((1.2f * density).toInt().coerceAtLeast(1), ColorUtils.setAlphaComponent(style.ink, 80))
+        }
+
+        val ink = ColorStateList.valueOf(style.ink)
+        tile.tileIcon.setImageResource(style.icon)
+        tile.tileIcon.imageTintList = ink
+        tile.tileRings.imageTintList = ink
+        tile.tileTitle.setText(style.title)
+        tile.root.contentDescription = getString(style.title)
+        tile.root.setOnClickListener { onClick() }
     }
 
-    private fun setupListeners() {
-        binding.bannerImage?.setOnClickListener {
-            findNavController().navigate(
-                R.id.user_info_fragment, null, null, FragmentNavigatorExtras(
-                    binding.userImage to "user_image"
-                )
-            )
-            reenterTransition = null
-        }
+    private fun openDetail(type: Int, xAxis: Boolean = false) {
+        findNavController().navigate(
+            R.id.detailListFragment,
+            bundleOf(EXTRA_PLAYLIST_TYPE to type)
+        )
+        if (xAxis) setSharedAxisXTransitions() else setSharedAxisYTransitions()
+    }
 
-        binding.lastAdded.setOnClickListener {
-            findNavController().navigate(
-                R.id.detailListFragment,
-                bundleOf(EXTRA_PLAYLIST_TYPE to LAST_ADDED_PLAYLIST)
-            )
-            setSharedAxisYTransitions()
-        }
+    // ------------------------------------------------------- recently added
 
-        binding.topPlayed.setOnClickListener {
-            findNavController().navigate(
-                R.id.detailListFragment,
-                bundleOf(EXTRA_PLAYLIST_TYPE to TOP_PLAYED_PLAYLIST)
-            )
-            setSharedAxisYTransitions()
+    private fun setupRecentlyAdded() {
+        val adapter = HomeRecentSongsAdapter(mainActivity)
+        recentAdapter = adapter
+        binding.recentRecyclerView.apply {
+            layoutManager =
+                GridLayoutManager(requireContext(), 3, GridLayoutManager.HORIZONTAL, false)
+            this.adapter = adapter
         }
-
-        binding.actionShuffle.setOnClickListener {
-            libraryViewModel.shuffleSongs()
-        }
-
-        binding.history.setOnClickListener {
-            findNavController().navigate(
-                R.id.detailListFragment,
-                bundleOf(EXTRA_PLAYLIST_TYPE to HISTORY_PLAYLIST)
-            )
-            setSharedAxisYTransitions()
-        }
-
-        binding.userImage.setOnClickListener {
-            findNavController().navigate(
-                R.id.user_info_fragment, null, null, FragmentNavigatorExtras(
-                    binding.userImage to "user_image"
-                )
-            )
-        }
-        // Reload suggestions
-        binding.suggestions.refreshButton.setOnClickListener {
-            libraryViewModel.forceReload(
-                ReloadType.Suggestions
-            )
+        binding.recentHeader.setOnClickListener { openDetail(LAST_ADDED_PLAYLIST) }
+        libraryViewModel.getRecentlyAdded().observe(viewLifecycleOwner) { songs ->
+            binding.recentSection.isVisible = songs.isNotEmpty()
+            adapter.swapData(songs)
         }
     }
 
+    // --------------------------------------------------------------- pinned
+
+    private fun setupPinned() {
+        val screenBg =
+            MaterialColors.getColor(binding.root, com.google.android.material.R.attr.colorSurface)
+        val addTileColor =
+            ColorUtils.compositeColors(ColorUtil.withAlpha(accentColor(), 0.12f), screenBg)
+
+        val adapter = HomePinnedAdapter(
+            addTileColor = addTileColor,
+            addIconColor = accentColor(),
+            onClick = { openPinned(it) },
+            onLongClick = { confirmUnpin(it) }
+        )
+        pinnedAdapter = adapter
+        binding.pinnedRecyclerView.apply {
+            layoutManager = LinearLayoutManager(requireContext(), LinearLayoutManager.HORIZONTAL, false)
+            this.adapter = adapter
+        }
+        // re-draw once the albums / artists are loaded (and whenever they reload)
+        libraryViewModel.getAlbums().observe(viewLifecycleOwner) { renderPinned() }
+        libraryViewModel.getArtists().observe(viewLifecycleOwner) { renderPinned() }
+        renderPinned()
+    }
+
+    private fun renderPinned() {
+        val ctx = context ?: return
+        val albums = libraryViewModel.getAlbums().value.orEmpty().associateBy { it.id }
+        val artists = libraryViewModel.getArtists().value.orEmpty().associateBy { it.id }
+        val items = PinnedStore.get(ctx).mapNotNull { pin ->
+            when (pin.type) {
+                PinnedStore.Type.ALBUM -> albums[pin.id]?.let { HomePinnedAdapter.Item.AlbumItem(it) }
+                PinnedStore.Type.ARTIST -> artists[pin.id]?.let { HomePinnedAdapter.Item.ArtistItem(it) }
+            }
+        }
+        pinnedAdapter?.swapData(items)
+    }
+
+    private fun openPinned(item: HomePinnedAdapter.Item) {
+        when (item) {
+            is HomePinnedAdapter.Item.AlbumItem -> findNavController().navigate(
+                R.id.albumDetailsFragment,
+                bundleOf(EXTRA_ALBUM_ID to item.album.id)
+            )
+            is HomePinnedAdapter.Item.ArtistItem -> {
+                exitTransition = null
+                reenterTransition = null
+                findNavController().navigate(
+                    R.id.artistDetailsFragment,
+                    bundleOf(EXTRA_ARTIST_ID to item.artist.id),
+                    navOptions
+                )
+            }
+            HomePinnedAdapter.Item.Add -> showAddPinDialog()
+        }
+    }
+
+    private fun confirmUnpin(item: HomePinnedAdapter.Item) {
+        val ctx = requireContext()
+        val (type, id) = when (item) {
+            is HomePinnedAdapter.Item.AlbumItem -> PinnedStore.Type.ALBUM to item.album.id
+            is HomePinnedAdapter.Item.ArtistItem -> PinnedStore.Type.ARTIST to item.artist.id
+            HomePinnedAdapter.Item.Add -> return
+        }
+        MaterialAlertDialogBuilder(ctx)
+            .setMessage(R.string.home_unpin_message)
+            .setPositiveButton(R.string.home_unpin) { _, _ ->
+                PinnedStore.remove(ctx, type, id)
+                renderPinned()
+            }
+            .setNegativeButton(android.R.string.cancel, null)
+            .show()
+    }
+
+    private fun showAddPinDialog() {
+        MaterialAlertDialogBuilder(requireContext())
+            .setTitle(R.string.home_pin_add)
+            .setItems(
+                arrayOf(getString(R.string.home_pin_albums), getString(R.string.home_pin_artists))
+            ) { _, which -> if (which == 0) pickAlbumToPin() else pickArtistToPin() }
+            .show()
+    }
+
+    private fun pickAlbumToPin() {
+        val ctx = requireContext()
+        val albums = libraryViewModel.getAlbums().value.orEmpty()
+            .filterNot { PinnedStore.contains(ctx, PinnedStore.Type.ALBUM, it.id) }
+            .sortedBy { it.title.lowercase() }
+        if (albums.isEmpty()) return
+        MaterialAlertDialogBuilder(ctx)
+            .setTitle(R.string.home_pin_albums)
+            .setItems(albums.map { it.title }.toTypedArray()) { _, i ->
+                PinnedStore.add(ctx, PinnedStore.Type.ALBUM, albums[i].id)
+                renderPinned()
+            }
+            .show()
+    }
+
+    private fun pickArtistToPin() {
+        val ctx = requireContext()
+        val artists = libraryViewModel.getArtists().value.orEmpty()
+            .filterNot { PinnedStore.contains(ctx, PinnedStore.Type.ARTIST, it.id) }
+            .sortedBy { it.name.lowercase() }
+        if (artists.isEmpty()) return
+        MaterialAlertDialogBuilder(ctx)
+            .setTitle(R.string.home_pin_artists)
+            .setItems(artists.map { it.name }.toTypedArray()) { _, i ->
+                PinnedStore.add(ctx, PinnedStore.Type.ARTIST, artists[i].id)
+                renderPinned()
+            }
+            .show()
+    }
+
+    // ------------------------------------------------- search bar (unchanged)
     private fun setupSearchBar() {
         val bar = binding.searchBar
         val scroll = binding.container
@@ -258,26 +384,6 @@ class HomeFragment :
         b.menuButton.imageTintList = ink?.let { ColorStateList.valueOf(it) }
     }
 
-    private fun loadProfile() {
-        binding.bannerImage?.let {
-            Glide.with(requireContext())
-                .load(RetroGlideExtension.getBannerModel())
-                .profileBannerOptions(RetroGlideExtension.getBannerModel())
-                .into(it)
-        }
-        Glide.with(requireActivity())
-            .load(RetroGlideExtension.getUserModel())
-            .userProfileOptions(RetroGlideExtension.getUserModel(), requireContext())
-            .into(binding.userImage)
-    }
-
-    fun colorButtons() {
-        binding.history.elevatedAccentColor()
-        binding.lastAdded.elevatedAccentColor()
-        binding.topPlayed.elevatedAccentColor()
-        binding.actionShuffle.elevatedAccentColor()
-    }
-
     private fun checkForMargins() {
         if (mainActivity.isBottomNavVisible) {
             binding.recyclerView.updateLayoutParams<ViewGroup.MarginLayoutParams> {
@@ -312,50 +418,6 @@ class HomeFragment :
         reenterTransition = MaterialSharedAxis(MaterialSharedAxis.Y, false)
     }
 
-    private fun loadSuggestions(songs: List<Song>) {
-        if (!PreferenceUtil.homeSuggestions || songs.isEmpty()) {
-            binding.suggestions.root.isVisible = false
-            return
-        }
-        val images = listOf(
-            binding.suggestions.image1,
-            binding.suggestions.image2,
-            binding.suggestions.image3,
-            binding.suggestions.image4,
-            binding.suggestions.image5,
-            binding.suggestions.image6,
-            binding.suggestions.image7,
-            binding.suggestions.image8
-        )
-        val color = accentColor()
-        binding.suggestions.message.apply {
-            setTextColor(color)
-            setOnClickListener {
-                it.isClickable = false
-                it.postDelayed({ it.isClickable = true }, 500)
-                MusicPlayerRemote.playNext(songs.subList(0, 8))
-                if (!MusicPlayerRemote.isPlaying) {
-                    MusicPlayerRemote.playNextSong()
-                }
-            }
-        }
-        binding.suggestions.card6.setCardBackgroundColor(ColorUtil.withAlpha(color, 0.12f))
-        images.forEachIndexed { index, imageView ->
-            imageView.setOnClickListener {
-                it.isClickable = false
-                it.postDelayed({ it.isClickable = true }, 500)
-                MusicPlayerRemote.playNext(songs[index])
-                if (!MusicPlayerRemote.isPlaying) {
-                    MusicPlayerRemote.playNextSong()
-                }
-            }
-            Glide.with(this)
-                .load(RetroGlideExtension.getSongModel(songs[index]))
-                .songCoverOptions(songs[index])
-                .into(imageView)
-        }
-    }
-
     companion object {
 
         const val TAG: String = "BannerHomeFragment"
@@ -371,11 +433,14 @@ class HomeFragment :
         checkForMargins()
         applySearchGlass()
         libraryViewModel.forceReload(ReloadType.HomeSections)
+        renderPinned()
         exitTransition = null
     }
 
     override fun onDestroyView() {
         super.onDestroyView()
+        recentAdapter = null
+        pinnedAdapter = null
         _binding = null
     }
 }
