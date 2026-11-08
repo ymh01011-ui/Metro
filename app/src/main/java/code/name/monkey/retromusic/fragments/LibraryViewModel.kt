@@ -136,7 +136,7 @@ class LibraryViewModel(
     }
 
     private suspend fun fetchRecentlyAdded() {
-        recentlyAdded.postValue(repository.recentSongs().take(30))
+        recentlyAdded.postValue(repository.latestAddedSongs(30))
     }
 
     private suspend fun fetchSuggestions() {
