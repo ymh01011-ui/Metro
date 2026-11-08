@@ -1,17 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?><!--
-  ~ Copyright (c) 2019 Hemanth Savarala.
-  ~
-  ~ Licensed under the GNU General Public License v3
-  ~
-  ~ This is free software: you can redistribute it and/or modify it under
-  ~ the terms of the GNU General Public License as published by
-  ~  the Free Software Foundation either version 3 of the License, or (at your option) any later version.
-  ~
-  ~ This software is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
-  ~ without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-  ~ See the GNU General Public License for more details.
+  ~ Home content: 3x2 square tiles, Recently added, Pinned, then the existing home sections.
   -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
@@ -20,18 +11,173 @@
     android:focusableInTouchMode="true"
     android:orientation="vertical">
 
-    <include
-        android:id="@+id/abs_playlists"
-        layout="@layout/abs_playlists" />
+    <androidx.constraintlayout.widget.ConstraintLayout
+        android:id="@+id/tilesGrid"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:paddingStart="11dp"
+        android:paddingTop="8dp"
+        android:paddingEnd="11dp">
 
+        <include
+            android:id="@+id/tileHistory"
+            layout="@layout/item_home_tile"
+            android:layout_width="0dp"
+            android:layout_height="0dp"
+            android:layout_margin="5dp"
+            app:layout_constraintDimensionRatio="H,1:1"
+            app:layout_constraintHorizontal_weight="1"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintEnd_toStartOf="@id/tileMostPlayed"
+            app:layout_constraintTop_toTopOf="parent" />
+
+        <include
+            android:id="@+id/tileMostPlayed"
+            layout="@layout/item_home_tile"
+            android:layout_width="0dp"
+            android:layout_height="0dp"
+            android:layout_margin="5dp"
+            app:layout_constraintDimensionRatio="H,1:1"
+            app:layout_constraintHorizontal_weight="1"
+            app:layout_constraintStart_toEndOf="@id/tileHistory"
+            app:layout_constraintEnd_toStartOf="@id/tileFavorite"
+            app:layout_constraintTop_toTopOf="parent" />
+
+        <include
+            android:id="@+id/tileFavorite"
+            layout="@layout/item_home_tile"
+            android:layout_width="0dp"
+            android:layout_height="0dp"
+            android:layout_margin="5dp"
+            app:layout_constraintDimensionRatio="H,1:1"
+            app:layout_constraintHorizontal_weight="1"
+            app:layout_constraintStart_toEndOf="@id/tileMostPlayed"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintTop_toTopOf="parent" />
+
+        <include
+            android:id="@+id/tileForYouNow"
+            layout="@layout/item_home_tile"
+            android:layout_width="0dp"
+            android:layout_height="0dp"
+            android:layout_margin="5dp"
+            app:layout_constraintDimensionRatio="H,1:1"
+            app:layout_constraintHorizontal_weight="1"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintEnd_toStartOf="@id/tileRediscover"
+            app:layout_constraintTop_toBottomOf="@id/tileHistory" />
+
+        <include
+            android:id="@+id/tileRediscover"
+            layout="@layout/item_home_tile"
+            android:layout_width="0dp"
+            android:layout_height="0dp"
+            android:layout_margin="5dp"
+            app:layout_constraintDimensionRatio="H,1:1"
+            app:layout_constraintHorizontal_weight="1"
+            app:layout_constraintStart_toEndOf="@id/tileForYouNow"
+            app:layout_constraintEnd_toStartOf="@id/tileStats"
+            app:layout_constraintTop_toBottomOf="@id/tileMostPlayed" />
+
+        <include
+            android:id="@+id/tileStats"
+            layout="@layout/item_home_tile"
+            android:layout_width="0dp"
+            android:layout_height="0dp"
+            android:layout_margin="5dp"
+            app:layout_constraintDimensionRatio="H,1:1"
+            app:layout_constraintHorizontal_weight="1"
+            app:layout_constraintStart_toEndOf="@id/tileRediscover"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintTop_toBottomOf="@id/tileFavorite" />
+    </androidx.constraintlayout.widget.ConstraintLayout>
+
+    <!-- Recently added: columns of 3 songs, scrolls sideways -->
+    <LinearLayout
+        android:id="@+id/recentSection"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="22dp"
+        android:orientation="vertical"
+        android:visibility="gone"
+        tools:visibility="visible">
+
+        <LinearLayout
+            android:id="@+id/recentHeader"
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:background="?attr/selectableItemBackground"
+            android:clickable="true"
+            android:focusable="true"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingStart="20dp"
+            android:paddingEnd="16dp">
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:fontFamily="sans-serif-medium"
+                android:text="@string/home_recently_added"
+                android:textColor="?android:attr/textColorPrimary"
+                android:textSize="20sp" />
+
+            <ImageView
+                android:layout_width="24dp"
+                android:layout_height="24dp"
+                android:importantForAccessibility="no"
+                android:src="@drawable/ic_home_chevron_right"
+                app:tint="?android:attr/textColorSecondary" />
+        </LinearLayout>
+
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/recentRecyclerView"
+            android:layout_width="match_parent"
+            android:layout_height="168dp"
+            android:clipToPadding="false"
+            android:nestedScrollingEnabled="false"
+            android:overScrollMode="never"
+            android:paddingStart="8dp"
+            android:paddingEnd="8dp" />
+    </LinearLayout>
+
+    <!-- Pinned: albums (rounded squares) and artists (circles) -->
+    <LinearLayout
+        android:id="@+id/pinnedSection"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="18dp"
+        android:orientation="vertical">
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:fontFamily="sans-serif-medium"
+            android:paddingStart="20dp"
+            android:paddingEnd="16dp"
+            android:paddingBottom="10dp"
+            android:text="@string/home_pinned"
+            android:textColor="?android:attr/textColorPrimary"
+            android:textSize="20sp" />
+
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/pinnedRecyclerView"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:clipToPadding="false"
+            android:nestedScrollingEnabled="false"
+            android:overScrollMode="never"
+            android:paddingStart="16dp"
+            android:paddingEnd="16dp" />
+    </LinearLayout>
+
+    <!-- Existing home sections (top artists/albums, recent artists/albums, favourites) -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
         android:orientation="vertical">
-
-        <include
-            android:id="@+id/suggestions"
-            layout="@layout/item_suggestions" />
 
         <code.name.monkey.retromusic.views.insets.InsetsRecyclerView
             android:id="@+id/recyclerView"
