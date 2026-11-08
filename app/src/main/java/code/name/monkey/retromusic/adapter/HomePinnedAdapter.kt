@@ -45,11 +45,10 @@ class HomePinnedAdapter(
         val view = LayoutInflater.from(parent.context)
             .inflate(R.layout.item_home_pinned, parent, false)
         val d = parent.resources.displayMetrics.density
-        val width = if (parent.width > 0) parent.width else parent.resources.displayMetrics.widthPixels
-        // three per screen: screen - side paddings (2 x 16dp) - two gaps (2 x 10dp)
-        val size = ((width - 32 * d - 20 * d) / 3f).toInt()
+        // same size and spacing as the album cards in the "Favorites" row below
+        val size = (CARD_SIZE_DP * d).toInt()
         view.layoutParams = RecyclerView.LayoutParams(size, size).apply {
-            marginEnd = (10 * d).toInt()
+            marginEnd = (CARD_GAP_DP * d).toInt()
         }
         return ViewHolder(view)
     }
@@ -59,7 +58,7 @@ class HomePinnedAdapter(
         val d = holder.itemView.resources.displayMetrics.density
         val size = holder.itemView.layoutParams.width.toFloat()
 
-        holder.card.radius = if (item is Item.ArtistItem) size / 2f else 20 * d
+        holder.card.radius = if (item is Item.ArtistItem) size / 2f else CORNER_DP * d
         holder.card.setCardBackgroundColor(if (item is Item.Add) addTileColor else 0)
         holder.addIcon.visibility = if (item is Item.Add) View.VISIBLE else View.GONE
         holder.addIcon.imageTintList = ColorStateList.valueOf(addIconColor)
@@ -94,6 +93,13 @@ class HomePinnedAdapter(
     }
 
     override fun getItemCount(): Int = items.size
+
+    private companion object {
+        // measured from the Favorites row: 156dp cards with a 16dp gap
+        const val CARD_SIZE_DP = 156
+        const val CARD_GAP_DP = 16
+        const val CORNER_DP = 18
+    }
 
     class ViewHolder(view: View) : RecyclerView.ViewHolder(view) {
         val card: MaterialCardView = view as MaterialCardView
