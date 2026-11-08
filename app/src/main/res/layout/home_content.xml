@@ -18,7 +18,7 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:paddingStart="@dimen/home_tiles_padding"
-        android:paddingTop="8dp"
+        android:paddingTop="@dimen/home_tiles_top_padding"
         android:paddingEnd="@dimen/home_tiles_padding">
 
         <include
@@ -108,7 +108,7 @@
         android:id="@+id/recentSection"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="16dp"
+        android:layout_marginTop="@dimen/home_gap_after_tiles"
         android:orientation="vertical"
         android:visibility="gone"
         tools:visibility="visible">
@@ -158,7 +158,7 @@
         android:id="@+id/pinnedSection"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="14dp"
+        android:layout_marginTop="@dimen/home_gap_after_recent"
         android:orientation="vertical">
 
         <TextView
@@ -176,6 +176,7 @@
             android:id="@+id/pinnedRecyclerView"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:layout_marginTop="@dimen/home_header_content_gap"
             android:clipToPadding="false"
             android:nestedScrollingEnabled="false"
             android:overScrollMode="never"
@@ -187,7 +188,7 @@
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="16dp"
+        android:layout_marginTop="@dimen/home_gap_after_pinned"
         android:orientation="vertical">
 
         <code.name.monkey.retromusic.views.insets.InsetsRecyclerView
