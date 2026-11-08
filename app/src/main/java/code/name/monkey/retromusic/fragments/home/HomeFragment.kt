@@ -123,14 +123,16 @@ class HomeFragment :
     /** Paints one square tile: gradient, rounded clip, thin outline, soft glow, icon and title. */
     private fun bindTile(tile: ItemHomeTileBinding, style: HomeTileStyle, onClick: () -> Unit) {
         val density = resources.displayMetrics.density
+        val dark = HomeTileStyles.isDark(tile.root)
+        val ink = style.inkFor(dark)
 
-        val fill = GradientDrawable(GradientDrawable.Orientation.TL_BR, style.gradient)
+        val fill = GradientDrawable(GradientDrawable.Orientation.TL_BR, style.gradientFor(dark))
         val strokeShape = GradientDrawable()
         strokeShape.setShape(GradientDrawable.RECTANGLE)
         strokeShape.setColor(Color.TRANSPARENT)
         strokeShape.setStroke(
             (1.2f * density).toInt().coerceAtLeast(1),
-            ColorUtils.setAlphaComponent(style.ink, 110)
+            ColorUtils.setAlphaComponent(ink, if (dark) 75 else 110)
         )
         tile.root.background = fill
         tile.tileStroke.background = strokeShape
@@ -139,8 +141,8 @@ class HomeFragment :
         val glow = GradientDrawable(
             GradientDrawable.Orientation.TOP_BOTTOM,
             intArrayOf(
-                ColorUtils.setAlphaComponent(style.ink, 105),
-                ColorUtils.setAlphaComponent(style.ink, 0)
+                ColorUtils.setAlphaComponent(ink, if (dark) 38 else 105),
+                ColorUtils.setAlphaComponent(ink, 0)
             )
         )
         glow.setGradientType(GradientDrawable.RADIAL_GRADIENT)
@@ -163,8 +165,9 @@ class HomeFragment :
         }
 
         tile.tileIcon.setImageResource(style.icon)
-        tile.tileIcon.imageTintList = ColorStateList.valueOf(style.ink)
+        tile.tileIcon.imageTintList = ColorStateList.valueOf(ink)
         tile.tileTitle.setText(style.title)
+        tile.tileTitle.setTextColor(if (dark) ink else Color.WHITE)
         tile.root.contentDescription = getString(style.title)
         tile.root.setOnClickListener { onClick() }
     }
