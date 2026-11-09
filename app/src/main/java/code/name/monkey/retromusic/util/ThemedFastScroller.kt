@@ -35,6 +35,7 @@ import android.view.View
 import android.view.ViewGroup
 import androidx.annotation.RequiresApi
 import androidx.core.graphics.ColorUtils
+import androidx.recyclerview.widget.RecyclerView
 import code.name.monkey.appthemehelper.ThemeStore.Companion.accentColor
 import code.name.monkey.appthemehelper.util.ColorUtil.isColorLight
 import code.name.monkey.appthemehelper.util.MaterialValueHelper.getPrimaryTextColor
@@ -42,6 +43,7 @@ import code.name.monkey.retromusic.views.PopupBackground
 import me.zhanghai.android.fastscroll.FastScroller
 import me.zhanghai.android.fastscroll.FastScrollerBuilder
 import me.zhanghai.android.fastscroll.PopupStyles
+import java.util.WeakHashMap
 import kotlin.math.ceil
 
 object ThemedFastScroller {
@@ -85,7 +87,9 @@ object ThemedFastScroller {
         // ThumbDrawable تحت). ألوانه بتتحسب من الثيم وقت الإنشاء - عشان كده
         // اتعمل بالكود بدل ملف XML ثابت (afs_custom_thumb.xml بقى مش مستخدم
         // وتقدر تمسحه).
-        fastScrollerBuilder.setThumbDrawable(ThumbDrawable(context, view, background, bodyColor, arrowColor))
+        val thumbDrawable = ThumbDrawable(context, view, background, bodyColor, arrowColor)
+        fastScrollerBuilder.setThumbDrawable(thumbDrawable)
+        hookScroll(view, thumbDrawable)
         // الخط الأبيض الشفاف اللي كان ظاهر تحت الشكل هو الـ track الافتراضي
         // للمكتبة، فبنستبدله بـ drawable شفاف تمامًا. لازم مقاسه يبقى 0 مش
         // سالب (ColorDrawable بيرجع -1 والمكتبة بترمي IllegalArgumentException).
@@ -117,6 +121,26 @@ object ThemedFastScroller {
         lp.leftMargin = 0
         lp.rightMargin = 0
         view.layoutParams = lp
+    }
+
+    private val scrollHooks = WeakHashMap<RecyclerView, RecyclerView.OnScrollListener>()
+
+    /**
+     * الزجاج بيترسم تاني كل فريم طول ما الشكل ظاهر (alpha > 0)، بس الحلقة دي بتقف لما الشكل يختفي،
+     * ولما يظهر تاني (بحركة بتتنفذ على الـ RenderThread) الـ view مابيتعملهوش invalidate، فالشكل
+     * كان بيفضل بصورة بلور قديمة متجمدة. فبنربط الرسم بسكرول الـ RecyclerView: أي سكرول يرسم الشكل
+     * من جديد، فالبلور دايماً بيمشي مع المحتوى.
+     */
+    private fun hookScroll(view: ViewGroup, drawable: ThumbDrawable) {
+        val recycler = view as? RecyclerView ?: return
+        scrollHooks.remove(recycler)?.let { recycler.removeOnScrollListener(it) }
+        val listener = object : RecyclerView.OnScrollListener() {
+            override fun onScrolled(recyclerView: RecyclerView, dx: Int, dy: Int) {
+                drawable.refresh()
+            }
+        }
+        recycler.addOnScrollListener(listener)
+        scrollHooks[recycler] = listener
     }
 
     private fun resolveThemeColor(context: Context, attr: Int, fallback: Int): Int {
@@ -205,6 +229,9 @@ object ThemedFastScroller {
 
         override fun getIntrinsicWidth() = widthPx
         override fun getIntrinsicHeight() = heightPx
+
+        /** يرسم الشكل تاني (البلور بيتحسب من المحتوى الحالي). */
+        fun refresh() = invalidateSelf()
 
         private fun buildPath(path: Path, inset: Float) {
             val left = bounds.left + inset
@@ -334,7 +361,10 @@ object ThemedFastScroller {
 
             // مكان أول بكسل في الـ node جوه الـ backdrop. الشكل جوه الـ overlay بتاع الـ
             // backdrop، فإحداثياته (left/top + translation) هي إحداثيات الـ backdrop نفسها.
-            val originX = thumb.left + thumb.translationX + bounds.left - margin
+            // translationX مش بنقراه: المكتبة بتحرّك الشكل أفقياً بس عشان تخفيه/تظهره، وبحركة
+            // بتتنفذ على الـ RenderThread، فالقيمة اللي بنقراها وقت الحركة بتبقى قديمة وبتخلّي
+            // البلور ياخد من مكان غلط. الشكل بيتبلّر دايماً من مكانه الأصلي (الحافة اليمين).
+            val originX = (thumb.left + bounds.left - margin).toFloat()
             val originY = thumb.top + thumb.translationY + bounds.top - margin
 
             val rec = n.beginRecording(w, h)
