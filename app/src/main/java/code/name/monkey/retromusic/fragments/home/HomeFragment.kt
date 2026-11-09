@@ -379,6 +379,8 @@ class HomeFragment :
         val layer = GlassHelper.syncFill(b.searchBar, b.container, PreferenceUtil.glassEnabled)
         // paint the blur over the colour the page really has, so the bar is not tinted
         layer?.baseColor = pageColor(b.searchBar)
+        // blur only what is under the bar (nothing from the cards just above it leaks in)
+        layer?.contained = true
         b.searchBar.setCardBackgroundColor(if (layer != null) Color.TRANSPARENT else searchPillColor)
         layer?.onToneExtra = { tone -> applySearchInk(tone) }
         applySearchInk(if (layer != null && layer.sampled) layer.lightness else null)
