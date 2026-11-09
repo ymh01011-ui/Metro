@@ -48,6 +48,7 @@ import code.name.monkey.retromusic.extensions.dip
 import code.name.monkey.retromusic.extensions.textColorSecondary
 import code.name.monkey.retromusic.views.GlassHelper
 import code.name.monkey.retromusic.views.GlassLayer
+import code.name.monkey.retromusic.views.SearchBarIcon
 import code.name.monkey.retromusic.util.PreferenceUtil
 import code.name.monkey.retromusic.interfaces.IScrollHelper
 import code.name.monkey.retromusic.util.ThemedFastScroller.create
@@ -166,6 +167,7 @@ abstract class AbsRecyclerViewFragment<A : RecyclerView.Adapter<*>, LM : Recycle
             screenBg
         )
         searchPillColor = pillColor
+        SearchBarIcon.attach(bar, binding.menuButton, binding.searchText)
         applySearchGlass()
 
         ViewCompat.setOnApplyWindowInsetsListener(requireView()) { _, insets ->
@@ -227,6 +229,7 @@ abstract class AbsRecyclerViewFragment<A : RecyclerView.Adapter<*>, LM : Recycle
             if (ink != null) ColorUtils.setAlphaComponent(ink, 200) else textColorSecondary()
         )
         b.menuButton.imageTintList = ink?.let { ColorStateList.valueOf(it) }
+        SearchBarIcon.tint(b.searchBar, ink ?: textColorSecondary())
     }
 
     private fun setUpHeaderRow() {
