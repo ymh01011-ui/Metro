@@ -18,6 +18,7 @@ import android.content.res.ColorStateList
 import android.graphics.Color
 import android.graphics.drawable.ColorDrawable
 import android.os.Bundle
+import android.os.SystemClock
 import android.view.*
 import android.widget.TextView
 import code.name.monkey.retromusic.views.GlassHelper
@@ -79,6 +80,10 @@ class HomeFragment :
     private var recentAdapter: HomeRecentSongsAdapter? = null
     private var pinnedAdapter: HomePinnedAdapter? = null
 
+    // these live on the fragment, which stays on the back stack while another screen is open
+    private var savedScrollY = 0
+    private var lastHomeReload = 0L
+
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
         val homeBinding = FragmentHomeBinding.bind(view)
@@ -100,6 +105,7 @@ class HomeFragment :
         }
         libraryViewModel.getHome().observe(viewLifecycleOwner) {
             homeAdapter.swapData(it)
+            restoreScroll()
         }
 
         setupSearchBar()
@@ -195,6 +201,7 @@ class HomeFragment :
         libraryViewModel.getRecentlyAdded().observe(viewLifecycleOwner) { songs ->
             binding.recentSection.isVisible = songs.isNotEmpty()
             adapter.swapData(songs)
+            restoreScroll()
         }
     }
 
@@ -454,9 +461,28 @@ class HomeFragment :
 
         const val TAG: String = "BannerHomeFragment"
 
+        /** Minimum time between two library reloads triggered by coming back to the page. */
+        private const val HOME_RELOAD_INTERVAL = 30_000L
+
         @JvmStatic
         fun newInstance(): HomeFragment {
             return HomeFragment()
+        }
+    }
+
+    /** After coming back from another screen: scroll to where the page was, once the content is tall enough again. */
+    private fun restoreScroll() {
+        val target = savedScrollY
+        if (target <= 0) return
+        val b = _binding ?: return
+        b.container.post {
+            val current = _binding ?: return@post
+            val content = current.container.getChildAt(0) ?: return@post
+            if (content.height - current.container.height >= target) {
+                current.container.scrollTo(0, target)
+                current.searchBar.translationY = 0f
+                savedScrollY = 0
+            }
         }
     }
 
@@ -464,12 +490,19 @@ class HomeFragment :
         super.onResume()
         checkForMargins()
         applySearchGlass()
-        libraryViewModel.forceReload(ReloadType.HomeSections)
+        // the sections only change when something is played or added, so don't query the library
+        // again every time the page comes back from another screen (that made returning slow)
+        val now = SystemClock.elapsedRealtime()
+        if (now - lastHomeReload > HOME_RELOAD_INTERVAL) {
+            lastHomeReload = now
+            libraryViewModel.forceReload(ReloadType.HomeSections)
+        }
         renderPinned()
         exitTransition = null
     }
 
     override fun onDestroyView() {
+        savedScrollY = _binding?.container?.scrollY ?: 0
         super.onDestroyView()
         recentAdapter = null
         pinnedAdapter = null
