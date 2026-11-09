@@ -145,7 +145,8 @@
         <androidx.recyclerview.widget.RecyclerView
             android:id="@+id/recentRecyclerView"
             android:layout_width="match_parent"
-            android:layout_height="204dp"
+            android:layout_height="@dimen/home_recent_list_height"
+            android:layout_marginTop="@dimen/home_recent_content_gap"
             android:clipToPadding="false"
             android:nestedScrollingEnabled="false"
             android:overScrollMode="never"
