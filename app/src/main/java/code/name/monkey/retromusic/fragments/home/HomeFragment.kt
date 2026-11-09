@@ -336,7 +336,8 @@ class HomeFragment :
         fun hideRange() = (statusBarTop + barMargin + barHeight).toFloat()
         val snap = Runnable {
             val target = if (bar.translationY < -hideRange() / 2f) -hideRange() else 0f
-            bar.animate().translationY(target).setDuration(150).start()
+            // the (empty) update listener keeps this on the UI thread, so the glass sees the bar's real position
+            bar.animate().translationY(target).setDuration(150).setUpdateListener { }.start()
         }
         scroll.setOnScrollChangeListener(
             NestedScrollView.OnScrollChangeListener { _, _, scrollY, _, oldScrollY ->
@@ -432,7 +433,7 @@ class HomeFragment :
 
     override fun scrollToTop() {
         binding.container.scrollTo(0, 0)
-        binding.searchBar.animate().translationY(0f).setDuration(150).start()
+        binding.searchBar.animate().translationY(0f).setDuration(150).setUpdateListener { }.start()
     }
 
     fun setSharedAxisXTransitions() {
