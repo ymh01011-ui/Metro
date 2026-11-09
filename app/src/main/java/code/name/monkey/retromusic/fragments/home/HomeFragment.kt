@@ -21,6 +21,7 @@ import android.os.Bundle
 import android.view.*
 import android.widget.TextView
 import code.name.monkey.retromusic.views.GlassHelper
+import code.name.monkey.retromusic.views.SearchBarIcon
 import code.name.monkey.retromusic.views.GlassLayer
 import androidx.coordinatorlayout.widget.CoordinatorLayout
 import androidx.core.graphics.ColorUtils
@@ -352,6 +353,7 @@ class HomeFragment :
         val screenBg = MaterialColors.getColor(bar, com.google.android.material.R.attr.colorSurface)
         searchPillColor =
             ColorUtils.compositeColors(ColorUtil.withAlpha(accentColor(), 0.12f), screenBg)
+        SearchBarIcon.attach(bar, binding.menuButton, bar.findViewById(R.id.searchText))
         applySearchGlass()
 
         // Tap anywhere on the pill -> search (same destination the old search icon used)
@@ -404,6 +406,11 @@ class HomeFragment :
             )
         )
         b.menuButton.imageTintList = ink?.let { ColorStateList.valueOf(it) }
+        // the magnifier follows the same ink; without glass it uses the secondary text colour
+        SearchBarIcon.tint(
+            b.searchBar,
+            ink ?: MaterialColors.getColor(b.searchBar, android.R.attr.textColorSecondary, Color.GRAY)
+        )
     }
 
     private fun checkForMargins() {
