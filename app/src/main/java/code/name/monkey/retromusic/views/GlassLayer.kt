@@ -61,6 +61,14 @@ class GlassLayer(context: Context) : FrameLayout(context) {
     var filmFactor = 1f
 
     /**
+     * true = the blur reads only the area right under the pill and mirrors its edges, so nothing
+     * from the page just above or below the pill leaks into it (used by the search bar).
+     * false = a border of 3x the blur strength around the pill is read as well, so the pill's own
+     * edges have real neighbours (bottom bar, mini player, popups).
+     */
+    var contained = false
+
+    /**
      * true for glass that lives in its own window (popup menus): the backdrop is then in another
      * window, so positions are compared on the screen instead of inside the window.
      */
@@ -114,6 +122,7 @@ class GlassLayer(context: Context) : FrameLayout(context) {
     private var effect: RenderEffect? = null
     private var effectSigma = -1f
     private var effectSaturation = -1f
+    private var effectMode: Shader.TileMode? = null
     private val here = IntArray(2)
     private val there = IntArray(2)
 
@@ -270,7 +279,7 @@ class GlassLayer(context: Context) : FrameLayout(context) {
             width > 0 && height > 0
         ) {
             // extra border so the blur has real neighbours at the pill's edges
-            val margin = ceil(blurSigmaPx * 3f).toInt()
+            val margin = if (contained) 0 else ceil(blurSigmaPx * 3f).toInt()
             val w = width + 2 * margin
             val h = height + 2 * margin
 
@@ -319,14 +328,16 @@ class GlassLayer(context: Context) : FrameLayout(context) {
     private fun currentEffect(): RenderEffect {
         val sigma = blurSigmaPx.coerceAtLeast(0.5f)
         var current = effect
-        if (current == null || effectSigma != sigma || effectSaturation != saturation) {
-            val blur = RenderEffect.createBlurEffect(sigma, sigma, Shader.TileMode.CLAMP)
+        val mode = if (contained) Shader.TileMode.MIRROR else Shader.TileMode.CLAMP
+        if (current == null || effectSigma != sigma || effectSaturation != saturation || effectMode != mode) {
+            val blur = RenderEffect.createBlurEffect(sigma, sigma, mode)
             val colours = ColorMatrix()
             colours.setSaturation(saturation)
             current = RenderEffect.createColorFilterEffect(ColorMatrixColorFilter(colours), blur)
             effect = current
             effectSigma = sigma
             effectSaturation = saturation
+            effectMode = mode
         }
         return current
     }
