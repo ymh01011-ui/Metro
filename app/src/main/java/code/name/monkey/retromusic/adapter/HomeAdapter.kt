@@ -132,6 +132,8 @@ class HomeAdapter(private val activity: AppCompatActivity) :
 
     @SuppressLint("NotifyDataSetChanged")
     fun swapData(sections: List<Home>) {
+        // same sections again (e.g. a reload when coming back to the page): nothing to redraw
+        if (sections == list) return
         list = sections
         notifyDataSetChanged()
     }
