@@ -19,6 +19,12 @@
     <!-- Section tops. They are smaller than 45dp because each block already has its own slack:
          tiles 8dp (margin below the 2nd row), Recently added 11.5dp (centred rows). -->
     <dimen name="home_gap_after_tiles">13dp</dimen>
-    <dimen name="home_gap_after_recent">10dp</dimen>
+    <dimen name="home_gap_after_recent">13dp</dimen>
     <dimen name="home_gap_after_pinned">16dp</dimen>
+
+    <!-- Recently added: 3 rows. Row height was 68dp; 62dp is tighter. The 3dp under the header and
+         the larger gap after the list keep the 35dp / 45dp rhythm now that rows have less slack. -->
+    <dimen name="home_recent_row_height">62dp</dimen>
+    <dimen name="home_recent_list_height">186dp</dimen>
+    <dimen name="home_recent_content_gap">3dp</dimen>
 </resources>
