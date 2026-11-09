@@ -205,6 +205,8 @@ abstract class AbsRecyclerViewFragment<A : RecyclerView.Adapter<*>, LM : Recycle
         // the list has no background, so the blur is painted over this colour: it must be the
         // colour the page really has, otherwise the bar looks tinted compared to the other glass
         layer?.baseColor = pageColor(b.searchBar)
+        // blur only what is under the bar (nothing from the cards just above it leaks in)
+        layer?.contained = true
         b.searchBar.setCardBackgroundColor(if (layer != null) Color.TRANSPARENT else searchPillColor)
         layer?.onToneExtra = { tone -> applySearchInk(tone) }
         applySearchInk(if (layer != null && layer.sampled) layer.lightness else null)
