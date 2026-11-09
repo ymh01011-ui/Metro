@@ -126,7 +126,8 @@ abstract class AbsRecyclerViewFragment<A : RecyclerView.Adapter<*>, LM : Recycle
     private val snapSearchBar = Runnable {
         val bar = _binding?.searchBar ?: return@Runnable
         val target = if (bar.translationY < -hideRange() / 2f) -hideRange() else 0f
-        bar.animate().translationY(target).setDuration(150).start()
+        // the (empty) update listener keeps this on the UI thread, so the glass sees the bar's real position
+        bar.animate().translationY(target).setDuration(150).setUpdateListener { }.start()
     }
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
@@ -407,7 +408,7 @@ abstract class AbsRecyclerViewFragment<A : RecyclerView.Adapter<*>, LM : Recycle
 
     override fun scrollToTop() {
         recyclerView.scrollToPosition(0)
-        binding.searchBar.animate().translationY(0f).setDuration(150).start()
+        binding.searchBar.animate().translationY(0f).setDuration(150).setUpdateListener { }.start()
         recyclerView.post { updateRowPosition() }
     }
 
