@@ -29,6 +29,8 @@ interface LastAddedRepository {
 
     /** Newest songs on the device, regardless of the "last added" cutoff setting. */
     fun latestSongs(limit: Int): List<Song>
+    fun latestAlbums(limit: Int): List<Album>
+    fun latestArtists(limit: Int): List<Artist>
 
     fun recentAlbums(): List<Album>
 
@@ -51,6 +53,18 @@ class RealLastAddedRepository(
             MediaStore.Audio.Media.DATE_ADDED + " DESC"
         )
         return songRepository.songs(cursor).take(limit)
+    }
+
+    override fun latestAlbums(limit: Int): List<Album> {
+        return albumRepository.splitIntoAlbums(latestSongs(limit), sorted = false)
+    }
+
+    override fun latestArtists(limit: Int): List<Artist> {
+        return if (PreferenceUtil.multiArtistsEnabled) {
+            artistRepository.splitIntoMultiArtists(latestSongs(limit))
+        } else {
+            artistRepository.splitIntoArtists(latestAlbums(limit))
+        }
     }
 
     override fun recentAlbums(): List<Album> {
