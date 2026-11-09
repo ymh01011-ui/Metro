@@ -41,6 +41,10 @@ interface TopPlayedRepository {
     fun topAlbums(): List<Album>
 
     fun topArtists(): List<Artist>
+
+    /** Albums / artists of [songs] in the same order (used when the old play-count store is empty). */
+    fun albumsFromSongs(songs: List<Song>): List<Album>
+    fun artistsFromSongs(songs: List<Song>): List<Artist>
 }
 
 class RealTopPlayedRepository(
@@ -86,6 +90,14 @@ class RealTopPlayedRepository(
 
     override fun topArtists(): List<Artist> {
         return artistRepository.splitIntoArtists(topAlbums())
+    }
+
+    override fun albumsFromSongs(songs: List<Song>): List<Album> {
+        return albumRepository.splitIntoAlbums(songs, sorted = false)
+    }
+
+    override fun artistsFromSongs(songs: List<Song>): List<Artist> {
+        return artistRepository.splitIntoArtists(albumsFromSongs(songs))
     }
 
 
