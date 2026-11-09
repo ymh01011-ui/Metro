@@ -157,13 +157,32 @@ class RealRepository(
     override suspend fun artistBiography(artistName: String): String? =
         LastFmBiographyFetcher.fetchBiography(context, artistName)
 
-    override suspend fun recentArtists(): List<Artist> = lastAddedRepository.recentArtists()
+    // The home sections and their detail screens used to disappear when the old stores were empty:
+    // "recent" only looks inside the "last added" period setting, and "top" uses the old play-count
+    // store (it starts again from zero after a reinstall). When they are empty, fall back to the
+    // newest songs on the device / the Room play counts.
+    override suspend fun recentArtists(): List<Artist> =
+        lastAddedRepository.recentArtists().ifEmpty { lastAddedRepository.latestArtists(200) }
 
-    override suspend fun recentAlbums(): List<Album> = lastAddedRepository.recentAlbums()
+    override suspend fun recentAlbums(): List<Album> =
+        lastAddedRepository.recentAlbums().ifEmpty { lastAddedRepository.latestAlbums(200) }
 
-    override suspend fun topArtists(): List<Artist> = topPlayedRepository.topArtists()
+    override suspend fun topArtists(): List<Artist> =
+        topPlayedRepository.topArtists()
+            .ifEmpty { topPlayedRepository.artistsFromSongs(playedSongsByCount()) }
 
-    override suspend fun topAlbums(): List<Album> = topPlayedRepository.topAlbums()
+    override suspend fun topAlbums(): List<Album> =
+        topPlayedRepository.topAlbums()
+            .ifEmpty { topPlayedRepository.albumsFromSongs(playedSongsByCount()) }
+
+    /** Songs you played, most played first (Room play counts), limited to what is still on the device. */
+    private suspend fun playedSongsByCount(): List<Song> {
+        val library = songRepository.songs().associateBy { it.id }
+        return roomRepository.playCountSongs()
+            .sortedByDescending { it.playCount }
+            .mapNotNull { library[it.id] }
+            .take(100)
+    }
 
     override suspend fun fetchLegacyPlaylist(): List<Playlist> = playlistRepository.playlists()
 
@@ -411,22 +430,22 @@ class RealRepository(
     }
 
     override suspend fun recentArtistsHome(): Home {
-        val artists = lastAddedRepository.recentArtists().take(5)
+        val artists = recentArtists().take(5)
         return Home(artists, RECENT_ARTISTS, R.string.recent_artists)
     }
 
     override suspend fun recentAlbumsHome(): Home {
-        val albums = lastAddedRepository.recentAlbums().take(5)
+        val albums = recentAlbums().take(5)
         return Home(albums, RECENT_ALBUMS, R.string.recent_albums)
     }
 
     override suspend fun topAlbumsHome(): Home {
-        val albums = topPlayedRepository.topAlbums().take(5)
+        val albums = topAlbums().take(5)
         return Home(albums, TOP_ALBUMS, R.string.top_albums)
     }
 
     override suspend fun topArtistsHome(): Home {
-        val artists = topPlayedRepository.topArtists().take(5)
+        val artists = topArtists().take(5)
         return Home(artists, TOP_ARTISTS, R.string.top_artists)
     }
 
