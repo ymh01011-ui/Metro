@@ -57,6 +57,13 @@ class DetailListFragment : AbsMainActivityFragment(R.layout.fragment_playlist_de
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        if (arguments?.getBoolean(EXTRA_SLIDE_NAV, false) == true) {
+            // opened from the home page with the slide animation (NavOptions): a transition here
+            // would make the framework skip that animation, so this page adds none of its own
+            enterTransition = null
+            returnTransition = null
+            return
+        }
         when (args.type) {
             TOP_ARTISTS,
             RECENT_ARTISTS,
