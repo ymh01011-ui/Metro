@@ -42,3 +42,6 @@ const val LAST_ADDED_PLAYLIST = 9
 const val TOP_PLAYED_PLAYLIST = 10
 const val FOR_YOU_NOW_PLAYLIST = 11
 const val REDISCOVER_PLAYLIST = 12
+
+/** Argument telling a screen it was opened with the slide animation (so it must not add its own transitions). */
+const val EXTRA_SLIDE_NAV = "slide_nav"
