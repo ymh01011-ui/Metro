@@ -20,6 +20,8 @@ import android.graphics.drawable.ColorDrawable
 import android.os.Bundle
 import android.os.SystemClock
 import android.view.*
+import android.view.animation.Animation
+import android.view.animation.AnimationUtils
 import android.widget.TextView
 import code.name.monkey.retromusic.views.GlassHelper
 import code.name.monkey.retromusic.views.SearchBarIcon
@@ -36,6 +38,7 @@ import androidx.core.view.updateLayoutParams
 import androidx.core.view.updatePadding
 import androidx.core.widget.NestedScrollView
 import com.google.android.material.color.MaterialColors
+import androidx.navigation.NavOptions
 import androidx.navigation.fragment.FragmentNavigatorExtras
 import androidx.navigation.fragment.findNavController
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -82,6 +85,7 @@ class HomeFragment :
 
     // these live on the fragment, which stays on the back stack while another screen is open
     private var savedScrollY = 0
+    private var openedFromHome = false
     private var lastHomeReload = 0L
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
@@ -91,6 +95,14 @@ class HomeFragment :
 
         enterTransition = MaterialFadeThrough().addTarget(binding.contentContainer)
         reenterTransition = MaterialFadeThrough().addTarget(binding.contentContainer)
+        // coming back from a page opened with slideTo(): the slide-in animation (onCreateAnimation)
+        // must not be replaced by the Fade Through transition
+        if (openedFromHome) {
+            reenterTransition = null
+        }
+        // no system scrollbar (the thin translucent line on the right edge) while scrolling
+        binding.container.isVerticalScrollBarEnabled = false
+        binding.recyclerView.isVerticalScrollBarEnabled = false
 
         checkForMargins()
 
@@ -115,15 +127,41 @@ class HomeFragment :
 
     // ---------------------------------------------------------------- tiles
 
+    /**
+     * Opens [destination] with the same slide animation as Artists -> Artist details:
+     * view animations from NavOptions, and no Transition-framework transition on this page
+     * (a transition on either side makes the framework skip the view animation).
+     */
+    fun slideTo(destination: Int, args: Bundle? = null) {
+        exitTransition = null
+        reenterTransition = null
+        openedFromHome = true
+        suppressNextReload = true
+        findNavController().navigate(destination, args, slideNavOptions)
+    }
+
+    override fun onCreateAnimation(transit: Int, enter: Boolean, nextAnim: Int): Animation? {
+        if (openedFromHome) {
+            return if (enter) {
+                // back from the opened page
+                openedFromHome = false
+                AnimationUtils.loadAnimation(requireContext(), R.anim.nav_slide_in_left)
+            } else {
+                // opening a page: this one slides out to the left
+                AnimationUtils.loadAnimation(requireContext(), R.anim.nav_slide_out_left)
+            }
+        }
+        return super.onCreateAnimation(transit, enter, nextAnim)
+    }
+
     private fun setupTiles() {
         bindTile(binding.tileHistory, HomeTileStyles.HISTORY) { openDetail(HISTORY_PLAYLIST) }
         bindTile(binding.tileMostPlayed, HomeTileStyles.MOST_PLAYED) { openDetail(TOP_PLAYED_PLAYLIST) }
-        bindTile(binding.tileFavorite, HomeTileStyles.FAVORITE) { openDetail(FAVOURITES, xAxis = true) }
+        bindTile(binding.tileFavorite, HomeTileStyles.FAVORITE) { openDetail(FAVOURITES) }
         bindTile(binding.tileForYouNow, HomeTileStyles.FOR_YOU_NOW) { openDetail(FOR_YOU_NOW_PLAYLIST) }
         bindTile(binding.tileRediscover, HomeTileStyles.REDISCOVER) { openDetail(REDISCOVER_PLAYLIST) }
         bindTile(binding.tileStats, HomeTileStyles.STATS) {
-            findNavController().navigate(R.id.listeningStatsFragment)
-            setSharedAxisYTransitions()
+            slideTo(R.id.listeningStatsFragment)
         }
     }
 
@@ -179,12 +217,8 @@ class HomeFragment :
         tile.root.setOnClickListener { onClick() }
     }
 
-    private fun openDetail(type: Int, xAxis: Boolean = false) {
-        findNavController().navigate(
-            R.id.detailListFragment,
-            bundleOf(EXTRA_PLAYLIST_TYPE to type)
-        )
-        if (xAxis) setSharedAxisXTransitions() else setSharedAxisYTransitions()
+    private fun openDetail(type: Int) {
+        slideTo(R.id.detailListFragment, bundleOf(EXTRA_PLAYLIST_TYPE to type, EXTRA_SLIDE_NAV to true))
     }
 
     // ------------------------------------------------------- recently added
@@ -245,19 +279,10 @@ class HomeFragment :
 
     private fun openPinned(item: HomePinnedAdapter.Item) {
         when (item) {
-            is HomePinnedAdapter.Item.AlbumItem -> findNavController().navigate(
-                R.id.albumDetailsFragment,
-                bundleOf(EXTRA_ALBUM_ID to item.album.id)
-            )
-            is HomePinnedAdapter.Item.ArtistItem -> {
-                exitTransition = null
-                reenterTransition = null
-                findNavController().navigate(
-                    R.id.artistDetailsFragment,
-                    bundleOf(EXTRA_ARTIST_ID to item.artist.id),
-                    navOptions
-                )
-            }
+            is HomePinnedAdapter.Item.AlbumItem ->
+                slideTo(R.id.albumDetailsFragment, bundleOf(EXTRA_ALBUM_ID to item.album.id))
+            is HomePinnedAdapter.Item.ArtistItem ->
+                slideTo(R.id.artistDetailsFragment, bundleOf(EXTRA_ARTIST_ID to item.artist.id))
             HomePinnedAdapter.Item.Add -> showAddPinDialog()
         }
     }
@@ -464,6 +489,18 @@ class HomeFragment :
         /** Minimum time between two library reloads triggered by coming back to the page. */
         private const val HOME_RELOAD_INTERVAL = 30_000L
 
+        // true from the moment we open a page until we are back; lives in the companion so it
+        // survives if the fragment instance is rebuilt while the other page is open
+        private var suppressNextReload = false
+
+        private val slideNavOptions: NavOptions
+            get() = NavOptions.Builder()
+                .setEnterAnim(R.anim.nav_slide_in_right)
+                .setExitAnim(R.anim.nav_slide_out_left)
+                .setPopEnterAnim(R.anim.nav_slide_in_left)
+                .setPopExitAnim(R.anim.nav_slide_out_right)
+                .build()
+
         @JvmStatic
         fun newInstance(): HomeFragment {
             return HomeFragment()
@@ -492,10 +529,16 @@ class HomeFragment :
         applySearchGlass()
         // the sections only change when something is played or added, so don't query the library
         // again every time the page comes back from another screen (that made returning slow)
-        val now = SystemClock.elapsedRealtime()
-        if (now - lastHomeReload > HOME_RELOAD_INTERVAL) {
-            lastHomeReload = now
-            libraryViewModel.forceReload(ReloadType.HomeSections)
+        if (suppressNextReload) {
+            // back from a page we opened ourselves: nothing changed, and reloading right now
+            // would compete with the return animation
+            suppressNextReload = false
+        } else {
+            val now = SystemClock.elapsedRealtime()
+            if (now - lastHomeReload > HOME_RELOAD_INTERVAL) {
+                lastHomeReload = now
+                libraryViewModel.forceReload(ReloadType.HomeSections)
+            }
         }
         renderPinned()
         exitTransition = null
