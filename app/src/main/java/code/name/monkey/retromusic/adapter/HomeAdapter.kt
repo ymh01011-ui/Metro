@@ -72,10 +72,9 @@ class HomeAdapter(private val activity: AppCompatActivity) :
                 val viewHolder = holder as AlbumViewHolder
                 viewHolder.bindView(home)
                 viewHolder.clickableArea.setOnClickListener {
-                    it.findFragment<HomeFragment>().setSharedAxisXTransitions()
-                    activity.findNavController(R.id.fragment_container).navigate(
+                    it.findFragment<HomeFragment>().slideTo(
                         R.id.detailListFragment,
-                        bundleOf("type" to RECENT_ALBUMS)
+                        bundleOf("type" to RECENT_ALBUMS, EXTRA_SLIDE_NAV to true)
                     )
                 }
             }
@@ -83,10 +82,9 @@ class HomeAdapter(private val activity: AppCompatActivity) :
                 val viewHolder = holder as AlbumViewHolder
                 viewHolder.bindView(home)
                 viewHolder.clickableArea.setOnClickListener {
-                    it.findFragment<HomeFragment>().setSharedAxisXTransitions()
-                    activity.findNavController(R.id.fragment_container).navigate(
+                    it.findFragment<HomeFragment>().slideTo(
                         R.id.detailListFragment,
-                        bundleOf("type" to TOP_ALBUMS)
+                        bundleOf("type" to TOP_ALBUMS, EXTRA_SLIDE_NAV to true)
                     )
                 }
             }
@@ -94,10 +92,9 @@ class HomeAdapter(private val activity: AppCompatActivity) :
                 val viewHolder = holder as ArtistViewHolder
                 viewHolder.bindView(home)
                 viewHolder.clickableArea.setOnClickListener {
-                    it.findFragment<HomeFragment>().setSharedAxisXTransitions()
-                    activity.findNavController(R.id.fragment_container).navigate(
+                    it.findFragment<HomeFragment>().slideTo(
                         R.id.detailListFragment,
-                        bundleOf("type" to RECENT_ARTISTS)
+                        bundleOf("type" to RECENT_ARTISTS, EXTRA_SLIDE_NAV to true)
                     )
                 }
             }
@@ -105,10 +102,9 @@ class HomeAdapter(private val activity: AppCompatActivity) :
                 val viewHolder = holder as ArtistViewHolder
                 viewHolder.bindView(home)
                 viewHolder.clickableArea.setOnClickListener {
-                    it.findFragment<HomeFragment>().setSharedAxisXTransitions()
-                    activity.findNavController(R.id.fragment_container).navigate(
+                    it.findFragment<HomeFragment>().slideTo(
                         R.id.detailListFragment,
-                        bundleOf("type" to TOP_ARTISTS)
+                        bundleOf("type" to TOP_ARTISTS, EXTRA_SLIDE_NAV to true)
                     )
                 }
             }
@@ -116,10 +112,9 @@ class HomeAdapter(private val activity: AppCompatActivity) :
                 val viewHolder = holder as PlaylistViewHolder
                 viewHolder.bindView(home)
                 viewHolder.clickableArea.setOnClickListener {
-                    it.findFragment<HomeFragment>().setSharedAxisXTransitions()
-                    activity.findNavController(R.id.fragment_container).navigate(
+                    it.findFragment<HomeFragment>().slideTo(
                         R.id.detailListFragment,
-                        bundleOf("type" to FAVOURITES)
+                        bundleOf("type" to FAVOURITES, EXTRA_SLIDE_NAV to true)
                     )
                 }
             }
@@ -194,48 +189,20 @@ class HomeAdapter(private val activity: AppCompatActivity) :
     private fun linearLayoutManager() =
         LinearLayoutManager(activity, LinearLayoutManager.HORIZONTAL, false)
 
+    // HomeAdapter isn't a Fragment, so we reach the host (HomeFragment) through the view.
+    // HomeFragment.slideTo() clears its transitions and opens the page with the slide NavOptions.
     override fun onArtist(artistId: Long, view: View) {
-        // HomeAdapter مش Fragment، فبنوصل للـ Fragment المضيف (HomeFragment)
-        // عن طريق الـ view - نفس الباترن المستخدم فوق (setSharedAxisXTransitions)
-        // - عشان نلغي أي Transition-Framework transition قبل الـ navigate().
-        view.findFragment<HomeFragment>().apply {
-            exitTransition = null
-            reenterTransition = null
-        }
-
-        val navOptions = NavOptions.Builder()
-            .setEnterAnim(R.anim.nav_slide_in_right)
-            .setExitAnim(R.anim.nav_slide_out_left)
-            .setPopEnterAnim(R.anim.nav_slide_in_left)
-            .setPopExitAnim(R.anim.nav_slide_out_right)
-            .build()
-
-        activity.findNavController(R.id.fragment_container).navigate(
-            R.id.artistDetailsFragment,
-            bundleOf(EXTRA_ARTIST_ID to artistId),
-            navOptions
-        )
+        view.findFragment<HomeFragment>()
+            .slideTo(R.id.artistDetailsFragment, bundleOf(EXTRA_ARTIST_ID to artistId))
     }
 
     override fun onMultiArtist(artistName: String, view: View) {
-        activity.findNavController(R.id.fragment_container).navigate(
-            R.id.multiArtistDetailsFragment,
-            bundleOf(EXTRA_ARTIST_NAME to artistName),
-            null,
-            FragmentNavigatorExtras(
-                view to artistName
-            )
-        )
+        view.findFragment<HomeFragment>()
+            .slideTo(R.id.multiArtistDetailsFragment, bundleOf(EXTRA_ARTIST_NAME to artistName))
     }
 
     override fun onAlbumClick(albumId: Long, view: View) {
-        activity.findNavController(R.id.fragment_container).navigate(
-            R.id.albumDetailsFragment,
-            bundleOf(EXTRA_ALBUM_ID to albumId),
-            null,
-            FragmentNavigatorExtras(
-                view to albumId.toString()
-            )
-        )
+        view.findFragment<HomeFragment>()
+            .slideTo(R.id.albumDetailsFragment, bundleOf(EXTRA_ALBUM_ID to albumId))
     }
 }
