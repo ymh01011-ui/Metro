@@ -27,6 +27,7 @@ class HomeRecentSongsAdapter(
 
     @SuppressLint("NotifyDataSetChanged")
     fun swapData(data: List<Song>) {
+        if (data == songs) return
         songs = data
         notifyDataSetChanged()
     }
