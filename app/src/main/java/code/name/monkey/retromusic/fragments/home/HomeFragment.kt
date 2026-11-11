@@ -80,13 +80,33 @@ class HomeFragment :
     private var _binding: HomeBinding? = null
     private val binding get() = _binding!!
 
+    private var homeAdapter: HomeAdapter? = null
     private var recentAdapter: HomeRecentSongsAdapter? = null
     private var pinnedAdapter: HomePinnedAdapter? = null
+    private var lastPinnedKeys: List<String>? = null
+
+    // The page is built ONCE and its view is kept while another page is open on top of it. When
+    // we come back the very same view is handed back (scroll position, inner lists, images ...),
+    // so nothing is inflated or reloaded and the return is instant.
+    private var cachedRoot: View? = null
+    private var pageBuilt = false
 
     // these live on the fragment, which stays on the back stack while another screen is open
-    private var savedScrollY = 0
     private var openedFromHome = false
     private var lastHomeReload = 0L
+
+    override fun onCreateView(
+        inflater: LayoutInflater,
+        container: ViewGroup?,
+        savedInstanceState: Bundle?
+    ): View? {
+        cachedRoot?.let { cached ->
+            // still attached if we were re-opened while the old exit animation runs
+            (cached.parent as? ViewGroup)?.removeView(cached)
+            return cached
+        }
+        return super.onCreateView(inflater, container, savedInstanceState)?.also { cachedRoot = it }
+    }
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
@@ -100,29 +120,45 @@ class HomeFragment :
         if (openedFromHome) {
             reenterTransition = null
         }
-        // no system scrollbar (the thin translucent line on the right edge) while scrolling
-        binding.container.isVerticalScrollBarEnabled = false
-        binding.recyclerView.isVerticalScrollBarEnabled = false
 
         checkForMargins()
 
-        setupTiles()
-        setupRecentlyAdded()
-        setupPinned()
+        if (!pageBuilt) {
+            // first time only: everything below survives while other pages are open
+            pageBuilt = true
+            // no system scrollbar (the thin translucent line on the right edge) while scrolling
+            binding.container.isVerticalScrollBarEnabled = false
+            binding.recyclerView.isVerticalScrollBarEnabled = false
 
-        val homeAdapter = HomeAdapter(mainActivity)
-        binding.recyclerView.apply {
-            layoutManager = LinearLayoutManager(mainActivity)
-            adapter = homeAdapter
-        }
-        libraryViewModel.getHome().observe(viewLifecycleOwner) {
-            homeAdapter.swapData(it)
-            restoreScroll()
-        }
+            setupTiles()
+            setupRecentlyAdded()
+            setupPinned()
 
-        setupSearchBar()
+            val sections = HomeAdapter(mainActivity)
+            homeAdapter = sections
+            binding.recyclerView.apply {
+                layoutManager = LinearLayoutManager(mainActivity)
+                adapter = sections
+            }
+            setupSearchBar()
+        }
+        // observers belong to the view's lifecycle, so they are registered every time. The
+        // adapters ignore data identical to what they already show, so nothing is redrawn.
+        observeData()
+
         postponeEnterTransition()
         view.doOnPreDraw { startPostponedEnterTransition() }
+    }
+
+    private fun observeData() {
+        libraryViewModel.getHome().observe(viewLifecycleOwner) { homeAdapter?.swapData(it) }
+        libraryViewModel.getRecentlyAdded().observe(viewLifecycleOwner) { songs ->
+            binding.recentSection.isVisible = songs.isNotEmpty()
+            recentAdapter?.swapData(songs)
+        }
+        // re-draw Pinned once the albums / artists are loaded (and whenever they reload)
+        libraryViewModel.getAlbums().observe(viewLifecycleOwner) { renderPinned() }
+        libraryViewModel.getArtists().observe(viewLifecycleOwner) { renderPinned() }
     }
 
     // ---------------------------------------------------------------- tiles
@@ -232,11 +268,6 @@ class HomeFragment :
             this.adapter = adapter
         }
         binding.recentHeader.setOnClickListener { openDetail(LAST_ADDED_PLAYLIST) }
-        libraryViewModel.getRecentlyAdded().observe(viewLifecycleOwner) { songs ->
-            binding.recentSection.isVisible = songs.isNotEmpty()
-            adapter.swapData(songs)
-            restoreScroll()
-        }
     }
 
     // --------------------------------------------------------------- pinned
@@ -258,9 +289,6 @@ class HomeFragment :
             layoutManager = LinearLayoutManager(requireContext(), LinearLayoutManager.HORIZONTAL, false)
             this.adapter = adapter
         }
-        // re-draw once the albums / artists are loaded (and whenever they reload)
-        libraryViewModel.getAlbums().observe(viewLifecycleOwner) { renderPinned() }
-        libraryViewModel.getArtists().observe(viewLifecycleOwner) { renderPinned() }
         renderPinned()
     }
 
@@ -274,6 +302,16 @@ class HomeFragment :
                 PinnedStore.Type.ARTIST -> artists[pin.id]?.let { HomePinnedAdapter.Item.ArtistItem(it) }
             }
         }
+        // same pins as already shown: nothing to redraw
+        val keys = items.map {
+            when (it) {
+                is HomePinnedAdapter.Item.AlbumItem -> "a" + it.album.id
+                is HomePinnedAdapter.Item.ArtistItem -> "r" + it.artist.id
+                HomePinnedAdapter.Item.Add -> "+"
+            }
+        }
+        if (keys == lastPinnedKeys) return
+        lastPinnedKeys = keys
         pinnedAdapter?.swapData(items)
     }
 
@@ -507,22 +545,6 @@ class HomeFragment :
         }
     }
 
-    /** After coming back from another screen: scroll to where the page was, once the content is tall enough again. */
-    private fun restoreScroll() {
-        val target = savedScrollY
-        if (target <= 0) return
-        val b = _binding ?: return
-        b.container.post {
-            val current = _binding ?: return@post
-            val content = current.container.getChildAt(0) ?: return@post
-            if (content.height - current.container.height >= target) {
-                current.container.scrollTo(0, target)
-                current.searchBar.translationY = 0f
-                savedScrollY = 0
-            }
-        }
-    }
-
     override fun onResume() {
         super.onResume()
         checkForMargins()
@@ -545,10 +567,18 @@ class HomeFragment :
     }
 
     override fun onDestroyView() {
-        savedScrollY = _binding?.container?.scrollY ?: 0
         super.onDestroyView()
+        // the views and adapters stay alive (see onCreateView); only the binding is dropped
+        _binding = null
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        cachedRoot = null
+        pageBuilt = false
+        homeAdapter = null
         recentAdapter = null
         pinnedAdapter = null
-        _binding = null
+        lastPinnedKeys = null
     }
 }
