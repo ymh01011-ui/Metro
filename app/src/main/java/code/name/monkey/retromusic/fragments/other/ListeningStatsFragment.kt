@@ -8,10 +8,13 @@ import android.view.Menu
 import android.view.MenuInflater
 import android.view.MenuItem
 import android.view.View
+import android.view.animation.Animation
+import android.view.animation.AnimationUtils
 import android.view.ViewOutlineProvider
 import androidx.core.graphics.ColorUtils
 import androidx.core.view.doOnPreDraw
 import androidx.core.view.isVisible
+import androidx.lifecycle.LiveData
 import androidx.navigation.fragment.findNavController
 import code.name.monkey.appthemehelper.util.ColorUtil
 import code.name.monkey.retromusic.R
@@ -21,6 +24,7 @@ import code.name.monkey.retromusic.extensions.accentColor
 import code.name.monkey.retromusic.fragments.base.AbsMainActivityFragment
 import code.name.monkey.retromusic.fragments.home.HomeTileStyles
 import code.name.monkey.retromusic.model.ListeningStats
+import code.name.monkey.retromusic.util.ensureSharedPageGround
 import com.google.android.material.color.MaterialColors
 import com.google.android.material.transition.MaterialSharedAxis
 
@@ -32,7 +36,12 @@ class ListeningStatsFragment : AbsMainActivityFragment(R.layout.fragment_listeni
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
+        enterSettled = false
+        settledCallbacks.clear()
         _binding = FragmentListeningStatsBinding.bind(view)
+        // the shared ground behind all detail pages (same as the artist / album pages)
+        ensureSharedPageGround()
+        view.postDelayed({ markEnterSettled() }, ENTER_SETTLE_FALLBACK_MS)
         postponeEnterTransition()
         view.doOnPreDraw { startPostponedEnterTransition() }
 
@@ -41,7 +50,8 @@ class ListeningStatsFragment : AbsMainActivityFragment(R.layout.fragment_listeni
         binding.toolbar.setNavigationOnClickListener { findNavController().navigateUp() }
 
         styleCards()
-        libraryViewModel.listeningStats().observe(viewLifecycleOwner) { bindStats(it) }
+        // the numbers are computed in the background right away, but drawn after the slide-in
+        libraryViewModel.listeningStats().observeWhenSettled { bindStats(it) }
     }
 
     private fun styleCards() {
@@ -123,8 +133,56 @@ class ListeningStatsFragment : AbsMainActivityFragment(R.layout.fragment_listeni
         return false
     }
 
+    // ---- enter animation bookkeeping (same pattern as the artist page) --------------------------
+
+    private var enterSettled = false
+    private val settledCallbacks = mutableListOf<() -> Unit>()
+
+    private fun runWhenEnterSettled(block: () -> Unit) {
+        if (_binding == null) return
+        if (enterSettled) block() else settledCallbacks.add(block)
+    }
+
+    private fun markEnterSettled() {
+        if (enterSettled || _binding == null) return
+        enterSettled = true
+        val pending = settledCallbacks.toList()
+        settledCallbacks.clear()
+        fun runNext(index: Int) {
+            val root = view ?: return
+            if (_binding == null || index >= pending.size) return
+            pending[index]()
+            root.postOnAnimation { runNext(index + 1) }
+        }
+        view?.postOnAnimation { runNext(0) }
+    }
+
+    private fun <T> LiveData<T>.observeWhenSettled(block: (T) -> Unit) {
+        observe(viewLifecycleOwner) { value -> runWhenEnterSettled { block(value) } }
+    }
+
+    override fun onCreateAnimation(transit: Int, enter: Boolean, nextAnim: Int): Animation? {
+        val anim = super.onCreateAnimation(transit, enter, nextAnim)
+            ?: if (enter && nextAnim != 0 &&
+                runCatching { resources.getResourceTypeName(nextAnim) == "anim" }.getOrDefault(false)
+            ) {
+                runCatching { AnimationUtils.loadAnimation(requireContext(), nextAnim) }.getOrNull()
+            } else null
+        if (enter && anim != null && !enterSettled) {
+            anim.setAnimationListener(object : Animation.AnimationListener {
+                override fun onAnimationStart(animation: Animation?) {}
+                override fun onAnimationRepeat(animation: Animation?) {}
+                override fun onAnimationEnd(animation: Animation?) {
+                    markEnterSettled()
+                }
+            })
+        }
+        return anim
+    }
+
     override fun onDestroyView() {
         super.onDestroyView()
+        settledCallbacks.clear()
         _binding = null
     }
 
@@ -132,3 +190,5 @@ class ListeningStatsFragment : AbsMainActivityFragment(R.layout.fragment_listeni
         const val DASH = "—"
     }
 }
+
+private const val ENTER_SETTLE_FALLBACK_MS = 700L
