@@ -21,6 +21,7 @@ import android.view.ViewGroup
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.widget.AppCompatTextView
 import androidx.core.os.bundleOf
+import androidx.core.view.updatePadding
 import androidx.fragment.app.findFragment
 import androidx.navigation.NavOptions
 import androidx.navigation.findNavController
@@ -175,6 +176,15 @@ class HomeAdapter(private val activity: AppCompatActivity) :
         val recyclerView: RecyclerView = itemView.findViewById(R.id.recyclerView)
         val title: AppCompatTextView = itemView.findViewById(R.id.title)
         val clickableArea: ViewGroup = itemView.findViewById(R.id.clickable_area)
+
+        init {
+            // In section_recycler_view the cards start 8dp to the left of the title. Shift them so
+            // the cards, the titles and the search bar all share the same left edge.
+            recyclerView.clipToPadding = false
+            recyclerView.updatePadding(
+                left = recyclerView.paddingLeft + (8 * itemView.resources.displayMetrics.density).toInt()
+            )
+        }
     }
 
     private fun artistsAdapter(artists: List<Artist>) =
