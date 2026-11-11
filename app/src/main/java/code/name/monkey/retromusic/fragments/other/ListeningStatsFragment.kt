@@ -24,7 +24,7 @@ import code.name.monkey.retromusic.extensions.accentColor
 import code.name.monkey.retromusic.fragments.base.AbsMainActivityFragment
 import code.name.monkey.retromusic.fragments.home.HomeTileStyles
 import code.name.monkey.retromusic.model.ListeningStats
-import code.name.monkey.retromusic.util.ensureSharedPageGround
+import code.name.monkey.retromusic.util.pageBackgroundColor
 import com.google.android.material.color.MaterialColors
 import com.google.android.material.transition.MaterialSharedAxis
 
@@ -39,8 +39,8 @@ class ListeningStatsFragment : AbsMainActivityFragment(R.layout.fragment_listeni
         enterSettled = false
         settledCallbacks.clear()
         _binding = FragmentListeningStatsBinding.bind(view)
-        // the shared ground behind all detail pages (same as the artist / album pages)
-        ensureSharedPageGround()
+        // slides in over the home page: give it the page colour the rest of the app draws on
+        if (view.background == null) view.setBackgroundColor(pageBackgroundColor())
         view.postDelayed({ markEnterSettled() }, ENTER_SETTLE_FALLBACK_MS)
         postponeEnterTransition()
         view.doOnPreDraw { startPostponedEnterTransition() }
