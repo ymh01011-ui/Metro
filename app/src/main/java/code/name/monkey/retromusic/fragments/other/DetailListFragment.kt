@@ -83,6 +83,15 @@ class DetailListFragment : AbsMainActivityFragment(R.layout.fragment_playlist_de
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
+        if (arguments?.getBoolean(EXTRA_SLIDE_NAV, false) == true && view.background == null) {
+            // this page slides in over the home page: without its own solid background the home
+            // page shows through it for a moment
+            view.setBackgroundColor(
+                com.google.android.material.color.MaterialColors.getColor(
+                    view, android.R.attr.colorBackground, android.graphics.Color.BLACK
+                )
+            )
+        }
         _binding = FragmentPlaylistDetailBinding.bind(view)
         postponeEnterTransition()
         view.doOnPreDraw { startPostponedEnterTransition() }
