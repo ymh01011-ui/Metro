@@ -103,6 +103,16 @@ class HomeFragment :
         cachedRoot?.let { cached ->
             // still attached if we were re-opened while the old exit animation runs
             (cached.parent as? ViewGroup)?.removeView(cached)
+            // a view that was shown before can be left half faded / moved by a transition that
+            // did not finish: start again from a clean state
+            for (v in listOfNotNull(cached, cached.findViewById<View>(R.id.contentContainer))) {
+                v.alpha = 1f
+                v.visibility = View.VISIBLE
+                v.translationX = 0f
+                v.translationY = 0f
+                v.scaleX = 1f
+                v.scaleY = 1f
+            }
             return cached
         }
         return super.onCreateView(inflater, container, savedInstanceState)?.also { cachedRoot = it }
@@ -113,12 +123,21 @@ class HomeFragment :
         val homeBinding = FragmentHomeBinding.bind(view)
         _binding = HomeBinding(homeBinding)
 
-        enterTransition = MaterialFadeThrough().addTarget(binding.contentContainer)
-        reenterTransition = MaterialFadeThrough().addTarget(binding.contentContainer)
-        // coming back from a page opened with slideTo(): the slide-in animation (onCreateAnimation)
-        // must not be replaced by the Fade Through transition
-        if (openedFromHome) {
+        if (pageBuilt) {
+            // The view is being shown again. A Fade Through on a kept view can leave it faded out
+            // (an empty page after coming back from another tab), so no transitions of our own;
+            // the slide animation (onCreateAnimation) and the other page's transition do the work.
+            enterTransition = null
             reenterTransition = null
+            exitTransition = null
+        } else {
+            enterTransition = MaterialFadeThrough().addTarget(binding.contentContainer)
+            reenterTransition = MaterialFadeThrough().addTarget(binding.contentContainer)
+            // coming back from a page opened with slideTo(): the slide-in animation
+            // (onCreateAnimation) must not be replaced by the Fade Through transition
+            if (openedFromHome) {
+                reenterTransition = null
+            }
         }
 
         checkForMargins()
