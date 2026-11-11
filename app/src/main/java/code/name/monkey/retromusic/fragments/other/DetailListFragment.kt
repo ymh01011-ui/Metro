@@ -20,9 +20,12 @@ import android.view.Menu
 import android.view.MenuInflater
 import android.view.MenuItem
 import android.view.View
+import android.view.animation.Animation
+import android.view.animation.AnimationUtils
 import androidx.core.os.bundleOf
 import androidx.core.view.doOnPreDraw
 import androidx.core.view.isVisible
+import androidx.lifecycle.LiveData
 import androidx.navigation.NavOptions
 import androidx.navigation.fragment.FragmentNavigatorExtras
 import androidx.navigation.fragment.findNavController
@@ -42,6 +45,7 @@ import code.name.monkey.retromusic.interfaces.IAlbumClickListener
 import code.name.monkey.retromusic.interfaces.IArtistClickListener
 import code.name.monkey.retromusic.model.Album
 import code.name.monkey.retromusic.model.Artist
+import code.name.monkey.retromusic.util.ensureSharedPageGround
 import code.name.monkey.retromusic.util.RetroUtil
 import com.google.android.material.shape.MaterialShapeDrawable
 import com.google.android.material.snackbar.Snackbar
@@ -83,16 +87,20 @@ class DetailListFragment : AbsMainActivityFragment(R.layout.fragment_playlist_de
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
-        if (arguments?.getBoolean(EXTRA_SLIDE_NAV, false) == true && view.background == null) {
-            // this page slides in over the home page: without its own solid background the home
-            // page shows through it for a moment
-            view.setBackgroundColor(
-                com.google.android.material.color.MaterialColors.getColor(
-                    view, android.R.attr.colorBackground, android.graphics.Color.BLACK
-                )
-            )
-        }
+        // Opened from the home page with the slide animation: same approach as the artist page.
+        // The page stays postponed until its first frame is ready, and the heavy part (filling the
+        // list) waits until the enter animation has finished.
+        val slide = arguments?.getBoolean(EXTRA_SLIDE_NAV, false) == true
+        enterSettled = !slide
+        settledCallbacks.clear()
         _binding = FragmentPlaylistDetailBinding.bind(view)
+        if (slide) {
+            // the shared ground behind all detail pages (the real fix for the home page showing
+            // through while the compact bar is on - the artist/album pages do the same)
+            ensureSharedPageGround()
+            // safety net in case the animation never reports that it ended
+            view.postDelayed({ markEnterSettled() }, ENTER_SETTLE_FALLBACK_MS)
+        }
         postponeEnterTransition()
         view.doOnPreDraw { startPostponedEnterTransition() }
         mainActivity.setSupportActionBar(binding.toolbar)
@@ -129,7 +137,7 @@ class DetailListFragment : AbsMainActivityFragment(R.layout.fragment_playlist_de
             layoutManager = linearLayoutManager()
             scheduleLayoutAnimation()
         }
-        libraryViewModel.recentSongs().observe(viewLifecycleOwner) { songs ->
+        libraryViewModel.recentSongs().observeWhenSettled { songs ->
             songAdapter.swapDataSet(songs)
         }
     }
@@ -145,7 +153,7 @@ class DetailListFragment : AbsMainActivityFragment(R.layout.fragment_playlist_de
             adapter = songAdapter
             layoutManager = linearLayoutManager()
         }
-        libraryViewModel.playCountSongs().observe(viewLifecycleOwner) { songs ->
+        libraryViewModel.playCountSongs().observeWhenSettled { songs ->
             songAdapter.swapDataSet(songs)
         }
     }
@@ -161,7 +169,7 @@ class DetailListFragment : AbsMainActivityFragment(R.layout.fragment_playlist_de
             adapter = songAdapter
             layoutManager = linearLayoutManager()
         }
-        libraryViewModel.forYouNowSongs().observe(viewLifecycleOwner) { songs ->
+        libraryViewModel.forYouNowSongs().observeWhenSettled { songs ->
             songAdapter.swapDataSet(songs)
             binding.empty.isVisible = songs.isEmpty()
         }
@@ -178,7 +186,7 @@ class DetailListFragment : AbsMainActivityFragment(R.layout.fragment_playlist_de
             adapter = songAdapter
             layoutManager = linearLayoutManager()
         }
-        libraryViewModel.rediscoverSongs().observe(viewLifecycleOwner) { songs ->
+        libraryViewModel.rediscoverSongs().observeWhenSettled { songs ->
             songAdapter.swapDataSet(songs)
             binding.empty.isVisible = songs.isEmpty()
         }
@@ -197,7 +205,7 @@ class DetailListFragment : AbsMainActivityFragment(R.layout.fragment_playlist_de
             layoutManager = linearLayoutManager()
         }
 
-        libraryViewModel.observableHistorySongs().observe(viewLifecycleOwner) {
+        libraryViewModel.observableHistorySongs().observeWhenSettled {
             songAdapter.swapDataSet(it)
             binding.empty.isVisible = it.isEmpty()
         }
@@ -215,7 +223,7 @@ class DetailListFragment : AbsMainActivityFragment(R.layout.fragment_playlist_de
             adapter = songAdapter
             layoutManager = linearLayoutManager()
         }
-        libraryViewModel.favorites().observe(viewLifecycleOwner) { songEntities ->
+        libraryViewModel.favorites().observeWhenSettled { songEntities ->
             val songs = songEntities.map { songEntity -> songEntity.toSong() }
             songAdapter.swapDataSet(songs)
         }
@@ -229,7 +237,7 @@ class DetailListFragment : AbsMainActivityFragment(R.layout.fragment_playlist_de
             adapter = artistAdapter
             layoutManager = gridLayoutManager()
         }
-        libraryViewModel.artists(type).observe(viewLifecycleOwner) { artists ->
+        libraryViewModel.artists(type).observeWhenSettled { artists ->
             artistAdapter.swapDataSet(artists)
         }
     }
@@ -241,7 +249,7 @@ class DetailListFragment : AbsMainActivityFragment(R.layout.fragment_playlist_de
             adapter = albumAdapter
             layoutManager = gridLayoutManager()
         }
-        libraryViewModel.albums(type).observe(viewLifecycleOwner) { albums ->
+        libraryViewModel.albums(type).observeWhenSettled { albums ->
             albumAdapter.swapDataSet(albums)
         }
     }
@@ -303,8 +311,60 @@ class DetailListFragment : AbsMainActivityFragment(R.layout.fragment_playlist_de
         )
     }
 
+    // ---- enter animation bookkeeping (same pattern as the artist page) --------------------------
+
+    // true = nothing to wait for (page not opened with the slide animation)
+    private var enterSettled = true
+    private val settledCallbacks = mutableListOf<() -> Unit>()
+
+    private fun runWhenEnterSettled(block: () -> Unit) {
+        if (_binding == null) return
+        if (enterSettled) block() else settledCallbacks.add(block)
+    }
+
+    // runs the waiting work, one step per frame so no single frame is heavy
+    private fun markEnterSettled() {
+        if (enterSettled || _binding == null) return
+        enterSettled = true
+        val pending = settledCallbacks.toList()
+        settledCallbacks.clear()
+        fun runNext(index: Int) {
+            val root = view ?: return
+            if (_binding == null || index >= pending.size) return
+            pending[index]()
+            root.postOnAnimation { runNext(index + 1) }
+        }
+        view?.postOnAnimation { runNext(0) }
+    }
+
+    /** Observes like [observe], but applies the data only after the enter animation has finished. */
+    private fun <T> LiveData<T>.observeWhenSettled(block: (T) -> Unit) {
+        observe(viewLifecycleOwner) { value -> runWhenEnterSettled { block(value) } }
+    }
+
+    // we hold the end of the enter animation (the one from NavOptions) without changing it
+    override fun onCreateAnimation(transit: Int, enter: Boolean, nextAnim: Int): Animation? {
+        val anim = super.onCreateAnimation(transit, enter, nextAnim)
+            ?: if (enter && nextAnim != 0 &&
+                runCatching { resources.getResourceTypeName(nextAnim) == "anim" }.getOrDefault(false)
+            ) {
+                runCatching { AnimationUtils.loadAnimation(requireContext(), nextAnim) }.getOrNull()
+            } else null
+        if (enter && anim != null && !enterSettled) {
+            anim.setAnimationListener(object : Animation.AnimationListener {
+                override fun onAnimationStart(animation: Animation?) {}
+                override fun onAnimationRepeat(animation: Animation?) {}
+                override fun onAnimationEnd(animation: Animation?) {
+                    markEnterSettled()
+                }
+            })
+        }
+        return anim
+    }
+
     override fun onDestroyView() {
         super.onDestroyView()
+        settledCallbacks.clear()
         _binding = null
     }
 
@@ -341,3 +401,5 @@ class DetailListFragment : AbsMainActivityFragment(R.layout.fragment_playlist_de
         return false
     }
 }
+
+private const val ENTER_SETTLE_FALLBACK_MS = 700L
