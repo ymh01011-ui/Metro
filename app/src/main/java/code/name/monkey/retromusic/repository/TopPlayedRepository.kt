@@ -89,7 +89,12 @@ class RealTopPlayedRepository(
     }
 
     override fun topArtists(): List<Artist> {
-        return artistRepository.splitIntoArtists(topAlbums())
+        // with "multiple artists" on, "A, B" counts as two artists (same as the Artists page)
+        return if (PreferenceUtil.multiArtistsEnabled) {
+            artistRepository.splitIntoMultiArtists(topTracks())
+        } else {
+            artistRepository.splitIntoArtists(topAlbums())
+        }
     }
 
     override fun albumsFromSongs(songs: List<Song>): List<Album> {
@@ -97,7 +102,11 @@ class RealTopPlayedRepository(
     }
 
     override fun artistsFromSongs(songs: List<Song>): List<Artist> {
-        return artistRepository.splitIntoArtists(albumsFromSongs(songs))
+        return if (PreferenceUtil.multiArtistsEnabled) {
+            artistRepository.splitIntoMultiArtists(songs)
+        } else {
+            artistRepository.splitIntoArtists(albumsFromSongs(songs))
+        }
     }
 
 
