@@ -45,7 +45,7 @@ import code.name.monkey.retromusic.interfaces.IAlbumClickListener
 import code.name.monkey.retromusic.interfaces.IArtistClickListener
 import code.name.monkey.retromusic.model.Album
 import code.name.monkey.retromusic.model.Artist
-import code.name.monkey.retromusic.util.ensureSharedPageGround
+import code.name.monkey.retromusic.util.pageBackgroundColor
 import code.name.monkey.retromusic.util.RetroUtil
 import com.google.android.material.shape.MaterialShapeDrawable
 import com.google.android.material.snackbar.Snackbar
@@ -95,9 +95,9 @@ class DetailListFragment : AbsMainActivityFragment(R.layout.fragment_playlist_de
         settledCallbacks.clear()
         _binding = FragmentPlaylistDetailBinding.bind(view)
         if (slide) {
-            // the shared ground behind all detail pages (the real fix for the home page showing
-            // through while the compact bar is on - the artist/album pages do the same)
-            ensureSharedPageGround()
+            // this page slides in over the home page: it gets the page colour the rest of the app
+            // draws on, so the home page can't show through it
+            if (view.background == null) view.setBackgroundColor(pageBackgroundColor())
             // safety net in case the animation never reports that it ended
             view.postDelayed({ markEnterSettled() }, ENTER_SETTLE_FALLBACK_MS)
         }
