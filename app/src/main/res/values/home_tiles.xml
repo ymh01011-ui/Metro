@@ -12,8 +12,13 @@
     <string name="home_pin_add">Pin to home</string>
     <string name="home_pin_albums">Albums</string>
     <string name="home_pin_artists">Artists</string>
+    <string name="home_pin_playlists">Playlists</string>
     <string name="home_unpin">Unpin</string>
     <string name="home_unpin_message">Remove this item from Pinned?</string>
+    <plurals name="home_playlist_songs">
+        <item quantity="one">%1$d song</item>
+        <item quantity="other">%1$d songs</item>
+    </plurals>
 
     <string name="stats_total_time">Total listening time</string>
     <string name="stats_total_plays">Total plays</string>
