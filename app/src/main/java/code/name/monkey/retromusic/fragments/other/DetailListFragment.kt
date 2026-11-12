@@ -21,7 +21,9 @@ import android.view.MenuInflater
 import android.view.MenuItem
 import android.view.View
 import android.view.animation.Animation
+import android.view.animation.AlphaAnimation
 import android.view.animation.AnimationUtils
+import android.view.animation.LayoutAnimationController
 import androidx.core.os.bundleOf
 import androidx.core.view.doOnPreDraw
 import androidx.core.view.isVisible
@@ -45,6 +47,7 @@ import code.name.monkey.retromusic.interfaces.IAlbumClickListener
 import code.name.monkey.retromusic.interfaces.IArtistClickListener
 import code.name.monkey.retromusic.model.Album
 import code.name.monkey.retromusic.model.Artist
+import code.name.monkey.retromusic.util.LastPageCache
 import code.name.monkey.retromusic.util.pageBackgroundColor
 import code.name.monkey.retromusic.util.RetroUtil
 import com.google.android.material.shape.MaterialShapeDrawable
@@ -137,7 +140,7 @@ class DetailListFragment : AbsMainActivityFragment(R.layout.fragment_playlist_de
             layoutManager = linearLayoutManager()
             scheduleLayoutAnimation()
         }
-        libraryViewModel.recentSongs().observeWhenSettled { songs ->
+        libraryViewModel.latestAddedSongs().observeWhenSettled { songs ->
             songAdapter.swapDataSet(songs)
         }
     }
@@ -169,7 +172,8 @@ class DetailListFragment : AbsMainActivityFragment(R.layout.fragment_playlist_de
             adapter = songAdapter
             layoutManager = linearLayoutManager()
         }
-        libraryViewModel.forYouNowSongs().observeWhenSettled { songs ->
+        // computed once per visit: re-opening the same page keeps its list (no reshuffle)
+        libraryViewModel.forYouNowSongs().observeWhenSettled(refresh = false) { songs ->
             songAdapter.swapDataSet(songs)
             binding.empty.isVisible = songs.isEmpty()
         }
@@ -186,7 +190,7 @@ class DetailListFragment : AbsMainActivityFragment(R.layout.fragment_playlist_de
             adapter = songAdapter
             layoutManager = linearLayoutManager()
         }
-        libraryViewModel.rediscoverSongs().observeWhenSettled { songs ->
+        libraryViewModel.rediscoverSongs().observeWhenSettled(refresh = false) { songs ->
             songAdapter.swapDataSet(songs)
             binding.empty.isVisible = songs.isEmpty()
         }
@@ -337,9 +341,39 @@ class DetailListFragment : AbsMainActivityFragment(R.layout.fragment_playlist_de
         view?.postOnAnimation { runNext(0) }
     }
 
-    /** Observes like [observe], but applies the data only after the enter animation has finished. */
-    private fun <T> LiveData<T>.observeWhenSettled(block: (T) -> Unit) {
-        observe(viewLifecycleOwner) { value -> runWhenEnterSettled { block(value) } }
+    /**
+     * Observes like [observe], but
+     *  - if this is the page that was opened last time, its previous data is shown at once (the
+     *    page does not load from scratch again); with [refresh] = false that data is kept as is;
+     *  - otherwise the data is applied after the enter animation and the rows fade in quickly.
+     */
+    private fun <T> LiveData<T>.observeWhenSettled(refresh: Boolean = true, block: (T) -> Unit) {
+        val key = "list:" + args.type
+        val cached: T? = LastPageCache.get(key)
+        var shown: T? = null
+        if (cached != null) {
+            shown = cached
+            block(cached)
+            if (!refresh) return
+        }
+        observe(viewLifecycleOwner) { value ->
+            LastPageCache.put(key, value)
+            if (value != shown) {
+                shown = value
+                runWhenEnterSettled {
+                    block(value)
+                    playRevealAnimation()
+                }
+            }
+        }
+    }
+
+    /** Rows appear one after the other with a quick fade instead of popping in. */
+    private fun playRevealAnimation() {
+        val list = _binding?.recyclerView ?: return
+        val fade = AlphaAnimation(0f, 1f).apply { duration = 180 }
+        list.layoutAnimation = LayoutAnimationController(fade, 0.07f)
+        list.scheduleLayoutAnimation()
     }
 
     // we hold the end of the enter animation (the one from NavOptions) without changing it
