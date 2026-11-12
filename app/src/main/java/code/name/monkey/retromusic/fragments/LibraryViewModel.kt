@@ -268,6 +268,11 @@ class LibraryViewModel(
         }
     }
 
+    /** Newest songs on the device (the Last added page) - not limited to the "last added" period setting. */
+    fun latestAddedSongs(): LiveData<List<Song>> = liveData(IO) {
+        emit(repository.latestAddedSongs(200))
+    }
+
     fun recentSongs(): LiveData<List<Song>> = liveData(IO) {
         emit(repository.recentSongs())
     }
