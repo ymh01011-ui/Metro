@@ -8,7 +8,7 @@ import android.content.Context
  */
 object PinnedStore {
 
-    enum class Type { ALBUM, ARTIST }
+    enum class Type { ALBUM, ARTIST, PLAYLIST }
 
     data class Pin(val type: Type, val id: Long)
 
