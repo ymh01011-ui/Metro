@@ -24,6 +24,7 @@ import code.name.monkey.retromusic.extensions.accentColor
 import code.name.monkey.retromusic.fragments.base.AbsMainActivityFragment
 import code.name.monkey.retromusic.fragments.home.HomeTileStyles
 import code.name.monkey.retromusic.model.ListeningStats
+import code.name.monkey.retromusic.util.LastPageCache
 import code.name.monkey.retromusic.util.pageBackgroundColor
 import com.google.android.material.color.MaterialColors
 import com.google.android.material.transition.MaterialSharedAxis
@@ -50,8 +51,21 @@ class ListeningStatsFragment : AbsMainActivityFragment(R.layout.fragment_listeni
         binding.toolbar.setNavigationOnClickListener { findNavController().navigateUp() }
 
         styleCards()
-        // the numbers are computed in the background right away, but drawn after the slide-in
-        libraryViewModel.listeningStats().observeWhenSettled { bindStats(it) }
+        // Same page as last time: its numbers are shown at once (no loading from scratch). Otherwise
+        // the numbers are computed in the background and fade in after the slide-in.
+        val cachedStats = LastPageCache.get<ListeningStats>(CACHE_KEY)
+        var shown: ListeningStats? = cachedStats
+        if (cachedStats != null) bindStats(cachedStats) else binding.statsScroll.alpha = 0f
+        libraryViewModel.listeningStats().observe(viewLifecycleOwner) { stats ->
+            LastPageCache.put(CACHE_KEY, stats)
+            if (stats != shown) {
+                shown = stats
+                runWhenEnterSettled {
+                    bindStats(stats)
+                    _binding?.statsScroll?.animate()?.alpha(1f)?.setDuration(180)?.start()
+                }
+            }
+        }
     }
 
     private fun styleCards() {
@@ -192,3 +206,4 @@ class ListeningStatsFragment : AbsMainActivityFragment(R.layout.fragment_listeni
 }
 
 private const val ENTER_SETTLE_FALLBACK_MS = 700L
+private const val CACHE_KEY = "stats"
