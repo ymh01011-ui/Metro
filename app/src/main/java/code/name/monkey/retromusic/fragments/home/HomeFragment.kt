@@ -411,9 +411,12 @@ class HomeFragment :
             .filterNot { PinnedStore.contains(ctx, PinnedStore.Type.PLAYLIST, it.playlistEntity.playListId) }
             .sortedBy { it.playlistEntity.playlistName.lowercase() }
         if (playlists.isEmpty()) return
+        val playlistNames: Array<CharSequence> = playlists
+            .map { it.playlistEntity.playlistName }
+            .toTypedArray()
         MaterialAlertDialogBuilder(ctx)
             .setTitle(R.string.home_pin_playlists)
-            .setItems(playlists.map { it.playlistEntity.playlistName }.toTypedArray()) { _, i ->
+            .setItems(playlistNames) { _: android.content.DialogInterface, i: Int ->
                 PinnedStore.add(ctx, PinnedStore.Type.PLAYLIST, playlists[i].playlistEntity.playListId)
                 renderPinned()
             }
