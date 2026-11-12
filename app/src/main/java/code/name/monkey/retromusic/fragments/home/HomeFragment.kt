@@ -178,6 +178,7 @@ class HomeFragment :
         // re-draw Pinned once the albums / artists are loaded (and whenever they reload)
         libraryViewModel.getAlbums().observe(viewLifecycleOwner) { renderPinned() }
         libraryViewModel.getArtists().observe(viewLifecycleOwner) { renderPinned() }
+        libraryViewModel.getPlaylists().observe(viewLifecycleOwner) { renderPinned() }
     }
 
     // ---------------------------------------------------------------- tiles
@@ -315,10 +316,12 @@ class HomeFragment :
         val ctx = context ?: return
         val albums = libraryViewModel.getAlbums().value.orEmpty().associateBy { it.id }
         val artists = libraryViewModel.getArtists().value.orEmpty().associateBy { it.id }
+        val playlists = libraryViewModel.getPlaylists().value.orEmpty().associateBy { it.playlistEntity.playListId }
         val items = PinnedStore.get(ctx).mapNotNull { pin ->
             when (pin.type) {
                 PinnedStore.Type.ALBUM -> albums[pin.id]?.let { HomePinnedAdapter.Item.AlbumItem(it) }
                 PinnedStore.Type.ARTIST -> artists[pin.id]?.let { HomePinnedAdapter.Item.ArtistItem(it) }
+                PinnedStore.Type.PLAYLIST -> playlists[pin.id]?.let { HomePinnedAdapter.Item.PlaylistItem(it) }
             }
         }
         // same pins as already shown: nothing to redraw
@@ -326,6 +329,7 @@ class HomeFragment :
             when (it) {
                 is HomePinnedAdapter.Item.AlbumItem -> "a" + it.album.id
                 is HomePinnedAdapter.Item.ArtistItem -> "r" + it.artist.id
+                is HomePinnedAdapter.Item.PlaylistItem -> "p" + it.playlist.playlistEntity.playListId
                 HomePinnedAdapter.Item.Add -> "+"
             }
         }
@@ -340,6 +344,10 @@ class HomeFragment :
                 slideTo(R.id.albumDetailsFragment, bundleOf(EXTRA_ALBUM_ID to item.album.id))
             is HomePinnedAdapter.Item.ArtistItem ->
                 slideTo(R.id.artistDetailsFragment, bundleOf(EXTRA_ARTIST_ID to item.artist.id))
+            is HomePinnedAdapter.Item.PlaylistItem -> slideTo(
+                R.id.playlistDetailsFragment,
+                bundleOf(EXTRA_PLAYLIST_ID to item.playlist.playlistEntity.playListId)
+            )
             HomePinnedAdapter.Item.Add -> showAddPinDialog()
         }
     }
@@ -349,6 +357,8 @@ class HomeFragment :
         val (type, id) = when (item) {
             is HomePinnedAdapter.Item.AlbumItem -> PinnedStore.Type.ALBUM to item.album.id
             is HomePinnedAdapter.Item.ArtistItem -> PinnedStore.Type.ARTIST to item.artist.id
+            is HomePinnedAdapter.Item.PlaylistItem ->
+                PinnedStore.Type.PLAYLIST to item.playlist.playlistEntity.playListId
             HomePinnedAdapter.Item.Add -> return
         }
         MaterialAlertDialogBuilder(ctx)
@@ -365,8 +375,18 @@ class HomeFragment :
         MaterialAlertDialogBuilder(requireContext())
             .setTitle(R.string.home_pin_add)
             .setItems(
-                arrayOf(getString(R.string.home_pin_albums), getString(R.string.home_pin_artists))
-            ) { _, which -> if (which == 0) pickAlbumToPin() else pickArtistToPin() }
+                arrayOf(
+                    getString(R.string.home_pin_albums),
+                    getString(R.string.home_pin_artists),
+                    getString(R.string.home_pin_playlists)
+                )
+            ) { _, which ->
+                when (which) {
+                    0 -> pickAlbumToPin()
+                    1 -> pickArtistToPin()
+                    else -> pickPlaylistToPin()
+                }
+            }
             .show()
     }
 
@@ -380,6 +400,21 @@ class HomeFragment :
             .setTitle(R.string.home_pin_albums)
             .setItems(albums.map { it.title }.toTypedArray()) { _, i ->
                 PinnedStore.add(ctx, PinnedStore.Type.ALBUM, albums[i].id)
+                renderPinned()
+            }
+            .show()
+    }
+
+    private fun pickPlaylistToPin() {
+        val ctx = requireContext()
+        val playlists = libraryViewModel.getPlaylists().value.orEmpty()
+            .filterNot { PinnedStore.contains(ctx, PinnedStore.Type.PLAYLIST, it.playlistEntity.playListId) }
+            .sortedBy { it.playlistEntity.playlistName.lowercase() }
+        if (playlists.isEmpty()) return
+        MaterialAlertDialogBuilder(ctx)
+            .setTitle(R.string.home_pin_playlists)
+            .setItems(playlists.map { it.playlistEntity.playlistName }.toTypedArray()) { _, i ->
+                PinnedStore.add(ctx, PinnedStore.Type.PLAYLIST, playlists[i].playlistEntity.playListId)
                 renderPinned()
             }
             .show()
