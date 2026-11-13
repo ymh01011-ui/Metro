@@ -285,6 +285,19 @@ class DetailListFragment : AbsMainActivityFragment(R.layout.fragment_playlist_de
         return if (RetroUtil.isLandscape) 4 else 2
     }
 
+    // estimates how many items fill one screen on this device (phone / tablet / landscape)
+    private fun firstScreenCount(): Int {
+        val dm = resources.displayMetrics
+        val lm = _binding?.recyclerView?.layoutManager
+        return if (lm is GridLayoutManager) {
+            val span = lm.spanCount
+            val cellHeight = dm.widthPixels / span + 56 * dm.density
+            (kotlin.math.ceil(dm.heightPixels / cellHeight).toInt() + 1) * span
+        } else {
+            kotlin.math.ceil(dm.heightPixels / (56 * dm.density)).toInt() + 2
+        }
+    }
+
 
     override fun onArtist(artistId: Long, view: View) {
         exitTransition = null
@@ -347,23 +360,37 @@ class DetailListFragment : AbsMainActivityFragment(R.layout.fragment_playlist_de
      *    page does not load from scratch again); with [refresh] = false that data is kept as is;
      *  - otherwise the data is applied after the enter animation and the rows fade in quickly.
      */
-    private fun <T> LiveData<T>.observeWhenSettled(refresh: Boolean = true, block: (T) -> Unit) {
+    private fun <E> LiveData<List<E>>.observeWhenSettled(
+        refresh: Boolean = true,
+        block: (List<E>) -> Unit
+    ) {
         val key = "list:" + args.type
-        val cached: T? = LastPageCache.get(key)
-        var shown: T? = null
+        val cached: List<E>? = LastPageCache.get(key)
+        var shown: List<E>? = null
+
+        // first screen at once, the rest after the enter animation has finished
+        fun show(list: List<E>, reveal: Boolean) {
+            val n = firstScreenCount()
+            if (enterSettled || list.size <= n) {
+                block(list)
+            } else {
+                block(list.take(n))
+                runWhenEnterSettled { block(list) }
+            }
+            if (reveal) playRevealAnimation()
+        }
+
         if (cached != null) {
             shown = cached
-            block(cached)
+            show(cached, reveal = false)
             if (!refresh) return
         }
         observe(viewLifecycleOwner) { value ->
             LastPageCache.put(key, value)
             if (value != shown) {
+                val first = shown == null
                 shown = value
-                runWhenEnterSettled {
-                    block(value)
-                    playRevealAnimation()
-                }
+                show(value, reveal = first)
             }
         }
     }
