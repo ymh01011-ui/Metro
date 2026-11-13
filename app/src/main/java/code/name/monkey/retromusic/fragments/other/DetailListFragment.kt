@@ -21,9 +21,7 @@ import android.view.MenuInflater
 import android.view.MenuItem
 import android.view.View
 import android.view.animation.Animation
-import android.view.animation.AlphaAnimation
 import android.view.animation.AnimationUtils
-import android.view.animation.LayoutAnimationController
 import androidx.core.os.bundleOf
 import androidx.core.view.doOnPreDraw
 import androidx.core.view.isVisible
@@ -138,7 +136,6 @@ class DetailListFragment : AbsMainActivityFragment(R.layout.fragment_playlist_de
         binding.recyclerView.apply {
             adapter = songAdapter
             layoutManager = linearLayoutManager()
-            scheduleLayoutAnimation()
         }
         libraryViewModel.latestAddedSongs().observeWhenSettled { songs ->
             songAdapter.swapDataSet(songs)
@@ -358,7 +355,7 @@ class DetailListFragment : AbsMainActivityFragment(R.layout.fragment_playlist_de
      * Observes like [observe], but
      *  - if this is the page that was opened last time, its previous data is shown at once (the
      *    page does not load from scratch again); with [refresh] = false that data is kept as is;
-     *  - otherwise the data is applied after the enter animation and the rows fade in quickly.
+     *  - otherwise the data is applied after the enter animation (no fade, rows just appear).
      */
     private fun <E> LiveData<List<E>>.observeWhenSettled(
         refresh: Boolean = true,
@@ -368,39 +365,34 @@ class DetailListFragment : AbsMainActivityFragment(R.layout.fragment_playlist_de
         val cached: List<E>? = LastPageCache.get(key)
         var shown: List<E>? = null
 
-        // first screen at once, the rest after the enter animation has finished
-        fun show(list: List<E>, reveal: Boolean) {
-            val n = firstScreenCount()
-            if (enterSettled || list.size <= n) {
-                block(list)
+        // Cached data: first screen at once, the rest after the enter animation.
+        // Fresh data: nothing is touched until the enter animation has finished, then the first
+        // screen goes in, and the rest one frame later (so no single frame is heavy).
+        fun show(list: List<E>, immediate: Boolean) {
+            val small = list.size <= firstScreenCount()
+            if (immediate) {
+                block(if (small) list else list.take(firstScreenCount()))
+                if (!small) runWhenEnterSettled { block(list) }
             } else {
-                block(list.take(n))
-                runWhenEnterSettled { block(list) }
+                runWhenEnterSettled {
+                    block(if (small) list else list.take(firstScreenCount()))
+                    if (!small) view?.postOnAnimation { if (_binding != null) block(list) }
+                }
             }
-            if (reveal) playRevealAnimation()
         }
 
         if (cached != null) {
             shown = cached
-            show(cached, reveal = false)
+            show(cached, immediate = true)
             if (!refresh) return
         }
         observe(viewLifecycleOwner) { value ->
             LastPageCache.put(key, value)
             if (value != shown) {
-                val first = shown == null
                 shown = value
-                show(value, reveal = first)
+                show(value, immediate = false)
             }
         }
-    }
-
-    /** Rows appear one after the other with a quick fade instead of popping in. */
-    private fun playRevealAnimation() {
-        val list = _binding?.recyclerView ?: return
-        val fade = AlphaAnimation(0f, 1f).apply { duration = 180 }
-        list.layoutAnimation = LayoutAnimationController(fade, 0.07f)
-        list.scheduleLayoutAnimation()
     }
 
     // we hold the end of the enter animation (the one from NavOptions) without changing it
