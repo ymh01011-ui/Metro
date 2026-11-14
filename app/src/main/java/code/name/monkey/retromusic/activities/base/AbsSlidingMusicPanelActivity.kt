@@ -469,17 +469,38 @@ abstract class AbsSlidingMusicPanelActivity : AbsMusicServiceActivity(),
         }
     }
 
+    /**
+     * How far (px) the mini player must move down to sit in the same row as the folded bar's
+     * circle. It is computed from where the panel WILL be once collapsed, not from where it is
+     * right now, so it is right even when no song is loaded yet (panel still hidden): a song
+     * that starts while the bar is folded then appears directly in the folded row.
+     */
+    private fun computeCompactShift(): Float {
+        val navLayer = GlassHelper.layerOf(binding.navigationView) ?: return compactShiftY
+        val pill = panelGlass ?: return compactShiftY
+        val parent = binding.slidingPanel.parent as? View ?: return compactShiftY
+        val params = pill.layoutParams as? ViewGroup.MarginLayoutParams ?: return compactShiftY
+        if (!ViewCompat.isLaidOut(navLayer) || navLayer.height == 0 || parent.height == 0) {
+            return compactShiftY
+        }
+        val xy = IntArray(2)
+        navLayer.getLocationOnScreen(xy)
+        val navCenter = xy[1] + navLayer.height / 2f
+        parent.getLocationOnScreen(xy)
+        val pillHeight = params.height.takeIf { it > 0 } ?: pill.height
+        val peek = windowInsets.getBottomInsets() +
+            dip(R.dimen.mini_player_height) + dip(R.dimen.bottom_nav_height)
+        val miniCenter = xy[1] + parent.height - peek + params.topMargin + pillHeight / 2f
+        return navCenter - miniCenter
+    }
+
     private fun setGlassCompact(compact: Boolean) {
         if (compact == glassCompact) return
         if (compact) {
             if (isLandscape || !PreferenceUtil.glassEnabled || !PreferenceUtil.glassCompact) return
             if (panelState != STATE_COLLAPSED || !isBottomNavVisible) return
             val navLayer = GlassHelper.layerOf(binding.navigationView) ?: return
-            val miniPill = panelGlass
-            compactShiftY =
-                if (miniPill != null && MusicPlayerRemote.playingQueue.isNotEmpty()) {
-                    GlassHelper.centerDelta(navLayer, miniPill)
-                } else 0F
+            compactShiftY = computeCompactShift()
             // the circle shows the tab you are on
             val menu = binding.navigationView.menu
             GlassHelper.setSelectedIcon(
@@ -490,7 +511,7 @@ abstract class AbsSlidingMusicPanelActivity : AbsMusicServiceActivity(),
         glassCompact = compact
         compactAnimator?.cancel()
         compactAnimator = ValueAnimator.ofFloat(compactProgress, if (compact) 1F else 0F).apply {
-            duration = if (compact) 450L else 850L
+            duration = if (compact) 550L else 650L
             interpolator = android.view.animation.PathInterpolator(0.2F, 0F, 0F, 1F)
             addUpdateListener {
                 compactProgress = it.animatedValue as Float
@@ -843,6 +864,10 @@ abstract class AbsSlidingMusicPanelActivity : AbsMusicServiceActivity(),
                     libraryViewModel.setFabMargin(this, dip(R.dimen.mini_player_height))
                 }
             }
+        }
+        if (glassCompact) {
+            compactShiftY = computeCompactShift()
+            renderCompact()
         }
     }
 
