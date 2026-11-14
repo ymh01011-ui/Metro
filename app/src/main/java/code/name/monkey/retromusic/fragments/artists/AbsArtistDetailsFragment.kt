@@ -1,6 +1,7 @@
 package code.name.monkey.retromusic.fragments.artists
 
 import code.name.monkey.retromusic.views.GlassHelper
+import code.name.monkey.retromusic.views.GlassLayer
 import code.name.monkey.retromusic.views.GlassPopupMenu
 import android.widget.FrameLayout
 import android.animation.ValueAnimator
@@ -138,6 +139,7 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
     private var cachedBitmap: Bitmap? = null
     private var cachedGradientStops: IntArray? = null
     private var hasExtractedColors: Boolean = false
+    private var glassPageColor: Int? = null
     // بنفصّل بداية الأنيميشن عن الـ layout pass الكامل بتاع الصفحة، عشان
     // قايمة الأغاني (RecyclerView جوه NestedScrollView بارتفاع wrap_content)
     // بتاخد وقت measure أطول كل ما الأغاني زادت، وكانت هي اللي فعليًا بتأخر
@@ -1032,6 +1034,9 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
      * الـ backdrop لازم يكون sibling مش parent، فبنستخدم appBarLayout.
      */
     private fun applyRealGlass(backgroundColor: Int) {
+        // الـ mini player والـ bottom bar والقوايم بتاخد لون الصفحة من هنا
+        glassPageColor = backgroundColor
+        if (isResumed) GlassLayer.setPage(this, backgroundColor)
         val backdrop = binding.appBarLayout ?: return
         val circles = listOf<View>(
             binding.fragmentArtistContent.infoAction,
@@ -1041,12 +1046,18 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
         for (button in circles) {
             val host = button.parent as? FrameLayout ?: continue
             // syncFill بيرفع الـ elevation للزرار فوق الزجاج
-            GlassHelper.syncFill(host, backdrop, true, raiseContent = false)?.baseColor = backgroundColor
+            GlassHelper.syncFill(host, backdrop, true, raiseContent = false)?.apply {
+                baseColor = backgroundColor
+                pageColor = backgroundColor // الزجاج بيحدد لون الخط من لون الصفحة نفسه
+            }
         }
         val bioHost = binding.fragmentArtistContent.biographyCardGlass.parent as? FrameLayout
         if (bioHost != null) {
             GlassHelper.syncRounded(bioHost, backdrop, true, BIOGRAPHY_GLASS_CORNER_DP, raiseContent = false)
-                ?.baseColor = backgroundColor
+                ?.apply {
+                    baseColor = backgroundColor
+                    pageColor = backgroundColor
+                }
         }
     }
 
@@ -1358,6 +1369,12 @@ abstract class AbsArtistDetailsFragment : AbsMainActivityFragment(R.layout.fragm
     override fun onResume() {
         super.onResume()
         applyStatusBarAppearance(ColorUtils.calculateLuminance(dominantBackgroundColor) > 0.45f)
+        glassPageColor?.let { GlassLayer.setPage(this, it) }
+    }
+
+    override fun onPause() {
+        super.onPause()
+        GlassLayer.clearPage(this)
     }
 
     override fun onDestroyView() {
