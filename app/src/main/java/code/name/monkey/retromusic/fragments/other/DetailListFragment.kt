@@ -130,14 +130,7 @@ class DetailListFragment : AbsMainActivityFragment(R.layout.fragment_playlist_de
         // no animation when rows are added: they appear at once, not one after another
         binding.recyclerView.itemAnimator = null
         binding.recyclerView.layoutAnimation = null
-        when (args.type) {
-            HISTORY_PLAYLIST,
-            LAST_ADDED_PLAYLIST,
-            TOP_PLAYED_PLAYLIST,
-            FOR_YOU_NOW_PLAYLIST,
-            REDISCOVER_PLAYLIST,
-            -> setupPlayButtons()
-        }
+        // Play / Shuffle buttons removed from these pages (setupPlayButtons() is no longer called)
         when (args.type) {
             TOP_ARTISTS -> loadArtists(R.string.top_artists, TOP_ARTISTS)
             RECENT_ARTISTS -> loadArtists(R.string.recent_artists, RECENT_ARTISTS)
