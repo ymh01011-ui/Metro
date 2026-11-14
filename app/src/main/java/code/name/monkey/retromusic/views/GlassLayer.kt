@@ -1,10 +1,7 @@
 package code.name.monkey.retromusic.views
 
 import android.animation.ValueAnimator
-import android.app.Activity
 import android.content.Context
-import android.content.ContextWrapper
-import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.ColorMatrix
@@ -14,14 +11,11 @@ import android.graphics.Rect
 import android.graphics.RenderNode
 import android.graphics.Shader
 import android.os.Build
-import android.os.Handler
-import android.os.Looper
 import android.os.SystemClock
-import android.view.PixelCopy
 import android.view.ViewGroup
-import android.view.Window
 import android.widget.FrameLayout
 import androidx.core.graphics.ColorUtils
+import com.google.android.material.color.MaterialColors
 import kotlin.math.ceil
 
 /**
@@ -83,7 +77,35 @@ class GlassLayer(context: Context) : FrameLayout(context) {
 
     override fun hasOverlappingRendering(): Boolean = !cheapFade
 
-    /** true once the brightness behind the pill has been measured at least once */
+    /**
+     * null = tone follows the app theme (light mode -> dark ink, dark mode -> light ink).
+     * a colour = the page behind this pill is painted with it (artist / album pages), so the tone
+     * is decided from that colour directly, up front. Nothing is measured from the screen.
+     */
+    var pageColor: Int? = null
+        set(value) {
+            if (field == value) return
+            field = value
+            syncTone(force = true)
+            invalidate()
+        }
+
+    /**
+     * true = when [pageColor] is not set, this layer takes the colour of the page that is
+     * currently open (see [setPage]) if that page is painted from an image (artist / album).
+     * Used by the shared pieces that sit over every page: bottom bar, mini player, popup menus.
+     */
+    var followsPage = false
+        set(value) {
+            if (field == value) return
+            field = value
+            syncTone(force = true)
+            invalidate()
+        }
+
+    private var seenPageVersion = -1
+
+    /** true once the tone (light or dark ink) has been decided at least once */
     var sampled = false
         private set
 
@@ -110,13 +132,7 @@ class GlassLayer(context: Context) : FrameLayout(context) {
 
     private var toneAnimator: ValueAnimator? = null
 
-    private val mainHandler = Handler(Looper.getMainLooper())
     private var lastSample = 0L
-    private var sampling = false
-    private var sampleBitmap: Bitmap? = null
-    private val sampleRect = Rect()
-    private val spot = IntArray(2)
-    private val pixels = IntArray(SAMPLE_W * SAMPLE_H)
 
     private var node: RenderNode? = null
     private var effect: RenderEffect? = null
@@ -135,58 +151,28 @@ class GlassLayer(context: Context) : FrameLayout(context) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             drawGlass(canvas)
         }
-        maybeSample()
+        syncTone(force = false)
     }
 
     /**
-     * Like Apple's glass over a bright page: a few times a second the (tiny) area of the pill is
-     * read back from the window and its brightness decides whether the content over it must be
-     * dark or light. Two thresholds, so it never flickers between the two.
+     * Decides whether the content over the pill is dark or light: from [pageColor] when the page
+     * has its own colour, otherwise from the app theme. Nothing is read back from the screen.
      */
-    private fun maybeSample() {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O || sampling) return
+    private fun syncTone(force: Boolean) {
         val now = SystemClock.uptimeMillis()
-        if (now - lastSample < 300 || !isShown || alpha < (if (cheapFade) 0.99f else 0.5f)) return
-        if (width < 8 || height < 8) return
-        val window = findWindow() ?: return
-        if (screenCoords) getLocationOnScreen(spot) else getLocationInWindow(spot)
-        sampleRect.set(
-            spot[0] + width / 8, spot[1] + height / 4,
-            spot[0] + width - width / 8, spot[1] + height - height / 4
-        )
-        val decor = window.decorView
-        if (!sampleRect.intersect(0, 0, decor.width, decor.height) ||
-            sampleRect.width() < 4 || sampleRect.height() < 4
-        ) return
-        val bitmap = sampleBitmap
-            ?: Bitmap.createBitmap(SAMPLE_W, SAMPLE_H, Bitmap.Config.ARGB_8888).also { sampleBitmap = it }
+        val pageChanged = followsPage && seenPageVersion != pageVersion
+        if (!force && !pageChanged && sampled && now - lastSample < 1000) return
         lastSample = now
-        sampling = true
-        try {
-            PixelCopy.request(window, sampleRect, bitmap, { result ->
-                sampling = false
-                if (result == PixelCopy.SUCCESS) onSampled(bitmap)
-            }, mainHandler)
-        } catch (e: Exception) {
-            sampling = false
+        seenPageVersion = pageVersion
+        val page = pageColor ?: if (followsPage) currentPageColor else null
+        val light = if (page != null) {
+            ColorUtils.calculateLuminance(ColorUtils.setAlphaComponent(page, 255)) > PAGE_LIGHT_THRESHOLD
+        } else {
+            val surface = MaterialColors.getColor(
+                context, com.google.android.material.R.attr.colorSurface, Color.BLACK
+            )
+            ColorUtils.calculateLuminance(surface) >= 0.5
         }
-    }
-
-    private fun onSampled(bitmap: Bitmap) {
-        bitmap.getPixels(pixels, 0, SAMPLE_W, 0, 0, SAMPLE_W, SAMPLE_H)
-        var r = 0L
-        var g = 0L
-        var b = 0L
-        for (p in pixels) {
-            r += Color.red(p)
-            g += Color.green(p)
-            b += Color.blue(p)
-        }
-        val n = pixels.size
-        val luminance = ColorUtils.calculateLuminance(
-            Color.rgb((r / n).toInt(), (g / n).toInt(), (b / n).toInt())
-        )
-        val light = if (onLight) luminance > 0.30 else luminance > 0.45
         val first = !sampled
         sampled = true
         if (first || light != onLight) {
@@ -196,47 +182,12 @@ class GlassLayer(context: Context) : FrameLayout(context) {
     }
 
     /**
-     * Measures the page at [area] (window coordinates) once, BEFORE this layer is shown, so a
-     * popup opens already in the right tone instead of jumping when the first regular
-     * measurement arrives. [done] is always called, at the latest after a short timeout.
+     * Sets the tone before this layer is shown, so a popup opens already in the right tone.
+     * [area] is kept only so existing callers still compile; [done] is called right away.
      */
     fun prime(area: Rect, done: () -> Unit) {
-        val window = findWindow()
-        if (window == null || Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
-            done()
-            return
-        }
-        val decor = window.decorView
-        val rect = Rect(
-            area.left + area.width() / 8, area.top + area.height() / 4,
-            area.right - area.width() / 8, area.bottom - area.height() / 4
-        )
-        if (!rect.intersect(0, 0, decor.width, decor.height) || rect.width() < 4 || rect.height() < 4) {
-            done()
-            return
-        }
-        val bitmap = sampleBitmap
-            ?: Bitmap.createBitmap(SAMPLE_W, SAMPLE_H, Bitmap.Config.ARGB_8888).also { sampleBitmap = it }
-        var finished = false
-        lateinit var timeout: Runnable
-        val finish = {
-            if (!finished) {
-                finished = true
-                mainHandler.removeCallbacks(timeout)
-                done()
-            }
-        }
-        timeout = Runnable { finish() }
-        mainHandler.postDelayed(timeout, 120)
-        lastSample = SystemClock.uptimeMillis()
-        try {
-            PixelCopy.request(window, rect, bitmap, { result ->
-                if (!finished && result == PixelCopy.SUCCESS) onSampled(bitmap)
-                finish()
-            }, mainHandler)
-        } catch (e: Exception) {
-            finish()
-        }
+        syncTone(force = true)
+        done()
     }
 
     private fun glideTo(target: Float, animate: Boolean) {
@@ -261,15 +212,6 @@ class GlassLayer(context: Context) : FrameLayout(context) {
     override fun onDetachedFromWindow() {
         toneAnimator?.cancel()
         super.onDetachedFromWindow()
-    }
-
-    private fun findWindow(): Window? {
-        var c: Context? = context
-        while (c != null) {
-            if (c is Activity) return c.window
-            c = (c as? ContextWrapper)?.baseContext
-        }
-        return null
     }
 
     @androidx.annotation.RequiresApi(Build.VERSION_CODES.S)
@@ -343,10 +285,39 @@ class GlassLayer(context: Context) : FrameLayout(context) {
     }
 
     companion object {
+        /** colour of the open page when it is painted from an image (artist / album), else null */
+        @Volatile
+        var currentPageColor: Int? = null
+            private set
+
+        /** goes up on every change, so layers that follow the page notice it on their next draw */
+        @Volatile
+        private var pageVersion = 0
+        private var pageOwner: java.lang.ref.WeakReference<Any>? = null
+
+        /** An image-coloured page (artist / album) announces its colour while it is on screen. */
+        fun setPage(owner: Any, color: Int) {
+            pageOwner = java.lang.ref.WeakReference(owner)
+            if (currentPageColor != color) {
+                currentPageColor = color
+                pageVersion++
+            }
+        }
+
+        /** Only the page that announced the colour can clear it (so page -> page can't clash). */
+        fun clearPage(owner: Any) {
+            if (pageOwner?.get() !== owner) return
+            pageOwner = null
+            if (currentPageColor != null) {
+                currentPageColor = null
+                pageVersion++
+            }
+        }
+
         val DARK_INK: Int = Color.parseColor("#1C1B1F")
         /** strength (0..255) of the dark veil over a bright page */
         private const val LIGHT_VEIL_ALPHA = 16
-        private const val SAMPLE_W = 32
-        private const val SAMPLE_H = 8
+        /** same threshold the artist / album pages use to pick black or white text */
+        private const val PAGE_LIGHT_THRESHOLD = 0.45
     }
 }
