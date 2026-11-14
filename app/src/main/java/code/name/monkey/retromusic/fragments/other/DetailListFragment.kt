@@ -14,14 +14,27 @@
  */
 package code.name.monkey.retromusic.fragments.other
 
+import android.content.res.ColorStateList
 import android.graphics.Color
+import android.graphics.Path
+import android.graphics.drawable.Drawable
+import android.graphics.drawable.GradientDrawable
+import android.graphics.drawable.ShapeDrawable
+import android.graphics.drawable.shapes.PathShape
 import android.os.Bundle
+import android.view.Gravity
 import android.view.Menu
 import android.view.MenuInflater
 import android.view.MenuItem
 import android.view.View
+import android.view.ViewGroup
 import android.view.animation.Animation
 import android.view.animation.AnimationUtils
+import android.widget.FrameLayout
+import android.widget.ImageView
+import android.widget.LinearLayout
+import androidx.coordinatorlayout.widget.CoordinatorLayout
+import androidx.core.graphics.ColorUtils
 import androidx.core.os.bundleOf
 import androidx.core.view.doOnPreDraw
 import androidx.core.view.isVisible
@@ -36,18 +49,23 @@ import code.name.monkey.retromusic.*
 import code.name.monkey.retromusic.R
 import code.name.monkey.retromusic.adapter.album.AlbumAdapter
 import code.name.monkey.retromusic.adapter.artist.ArtistAdapter
-import code.name.monkey.retromusic.adapter.song.ShuffleButtonSongAdapter
 import code.name.monkey.retromusic.adapter.song.SongAdapter
 import code.name.monkey.retromusic.databinding.FragmentPlaylistDetailBinding
 import code.name.monkey.retromusic.db.toSong
 import code.name.monkey.retromusic.fragments.base.AbsMainActivityFragment
 import code.name.monkey.retromusic.interfaces.IAlbumClickListener
+import code.name.monkey.retromusic.helper.MusicPlayerRemote
 import code.name.monkey.retromusic.interfaces.IArtistClickListener
 import code.name.monkey.retromusic.model.Album
 import code.name.monkey.retromusic.model.Artist
+import code.name.monkey.retromusic.model.Song
 import code.name.monkey.retromusic.util.LastPageCache
+import code.name.monkey.retromusic.util.PreferenceUtil
 import code.name.monkey.retromusic.util.pageBackgroundColor
 import code.name.monkey.retromusic.util.RetroUtil
+import code.name.monkey.retromusic.views.GlassHelper
+import code.name.monkey.retromusic.views.GlassLayer
+import com.google.android.material.color.MaterialColors
 import com.google.android.material.shape.MaterialShapeDrawable
 import com.google.android.material.snackbar.Snackbar
 import com.google.android.material.transition.MaterialSharedAxis
@@ -106,6 +124,17 @@ class DetailListFragment : AbsMainActivityFragment(R.layout.fragment_playlist_de
         view.postDelayed({ startEnter() }, ENTER_START_FALLBACK_MS)
         mainActivity.setSupportActionBar(binding.toolbar)
         binding.progressIndicator.hide()
+        // no animation when rows are added: they appear at once, not one after another
+        binding.recyclerView.itemAnimator = null
+        binding.recyclerView.layoutAnimation = null
+        when (args.type) {
+            HISTORY_PLAYLIST,
+            LAST_ADDED_PLAYLIST,
+            TOP_PLAYED_PLAYLIST,
+            FOR_YOU_NOW_PLAYLIST,
+            REDISCOVER_PLAYLIST,
+            -> setupPlayButtons()
+        }
         when (args.type) {
             TOP_ARTISTS -> loadArtists(R.string.top_artists, TOP_ARTISTS)
             RECENT_ARTISTS -> loadArtists(R.string.recent_artists, RECENT_ARTISTS)
@@ -128,7 +157,7 @@ class DetailListFragment : AbsMainActivityFragment(R.layout.fragment_playlist_de
 
     private fun lastAddedSongs() {
         binding.toolbar.setTitle(R.string.last_added)
-        val songAdapter = ShuffleButtonSongAdapter(
+        val songAdapter = SongAdapter(
             requireActivity(),
             mutableListOf(),
             R.layout.item_list
@@ -137,14 +166,14 @@ class DetailListFragment : AbsMainActivityFragment(R.layout.fragment_playlist_de
             adapter = songAdapter
             layoutManager = linearLayoutManager()
         }
-        libraryViewModel.latestAddedSongs().observeWhenSettled { songs ->
+        libraryViewModel.latestAddedSongs().observeWhenSettled(onFull = { onFullSongs(it) }) { songs ->
             songAdapter.appendDataSet(songs)
         }
     }
 
     private fun topPlayed() {
         binding.toolbar.setTitle(R.string.my_top_tracks)
-        val songAdapter = ShuffleButtonSongAdapter(
+        val songAdapter = SongAdapter(
             requireActivity(),
             mutableListOf(),
             R.layout.item_list
@@ -153,14 +182,14 @@ class DetailListFragment : AbsMainActivityFragment(R.layout.fragment_playlist_de
             adapter = songAdapter
             layoutManager = linearLayoutManager()
         }
-        libraryViewModel.playCountSongs().observeWhenSettled { songs ->
+        libraryViewModel.playCountSongs().observeWhenSettled(onFull = { onFullSongs(it) }) { songs ->
             songAdapter.appendDataSet(songs)
         }
     }
 
     private fun forYouNow() {
         binding.toolbar.setTitle(R.string.tile_for_you_now)
-        val songAdapter = ShuffleButtonSongAdapter(
+        val songAdapter = SongAdapter(
             requireActivity(),
             mutableListOf(),
             R.layout.item_list
@@ -170,7 +199,7 @@ class DetailListFragment : AbsMainActivityFragment(R.layout.fragment_playlist_de
             layoutManager = linearLayoutManager()
         }
         // computed once per visit: re-opening the same page keeps its list (no reshuffle)
-        libraryViewModel.forYouNowSongs().observeWhenSettled(refresh = false) { songs ->
+        libraryViewModel.forYouNowSongs().observeWhenSettled(refresh = false, onFull = { onFullSongs(it) }) { songs ->
             songAdapter.appendDataSet(songs)
             binding.empty.isVisible = songs.isEmpty()
         }
@@ -178,7 +207,7 @@ class DetailListFragment : AbsMainActivityFragment(R.layout.fragment_playlist_de
 
     private fun rediscover() {
         binding.toolbar.setTitle(R.string.tile_rediscover)
-        val songAdapter = ShuffleButtonSongAdapter(
+        val songAdapter = SongAdapter(
             requireActivity(),
             mutableListOf(),
             R.layout.item_list
@@ -187,7 +216,7 @@ class DetailListFragment : AbsMainActivityFragment(R.layout.fragment_playlist_de
             adapter = songAdapter
             layoutManager = linearLayoutManager()
         }
-        libraryViewModel.rediscoverSongs().observeWhenSettled(refresh = false) { songs ->
+        libraryViewModel.rediscoverSongs().observeWhenSettled(refresh = false, onFull = { onFullSongs(it) }) { songs ->
             songAdapter.appendDataSet(songs)
             binding.empty.isVisible = songs.isEmpty()
         }
@@ -196,7 +225,7 @@ class DetailListFragment : AbsMainActivityFragment(R.layout.fragment_playlist_de
     private fun loadHistory() {
         binding.toolbar.setTitle(R.string.history)
 
-        val songAdapter = ShuffleButtonSongAdapter(
+        val songAdapter = SongAdapter(
             requireActivity(),
             mutableListOf(),
             R.layout.item_list
@@ -206,7 +235,7 @@ class DetailListFragment : AbsMainActivityFragment(R.layout.fragment_playlist_de
             layoutManager = linearLayoutManager()
         }
 
-        libraryViewModel.observableHistorySongs().observeWhenSettled {
+        libraryViewModel.observableHistorySongs().observeWhenSettled(onFull = { onFullSongs(it) }) {
             songAdapter.appendDataSet(it)
             binding.empty.isVisible = it.isEmpty()
         }
@@ -325,6 +354,152 @@ class DetailListFragment : AbsMainActivityFragment(R.layout.fragment_playlist_de
         )
     }
 
+    // ---- floating Play / Shuffle glass buttons (bottom right) -------------------------------
+
+    private var playButtons: View? = null
+    private var playSongs: () -> List<Song> = { emptyList() }
+
+    // the FULL list of the page (not only the first screen), so Play / Shuffle use every song
+    private fun onFullSongs(songs: List<Song>) {
+        playSongs = { songs }
+        playButtons?.isVisible = songs.isNotEmpty()
+    }
+
+    private fun setupPlayButtons() {
+        val b = _binding ?: return
+        val parent = b.container as? ViewGroup ?: return
+        val density = resources.displayMetrics.density
+        fun dp(v: Int) = (v * density).toInt()
+
+        playSongs = { emptyList() }
+        val row = LinearLayout(requireContext()).apply {
+            orientation = LinearLayout.HORIZONTAL
+            isVisible = false // shown once the list is known (see onFullSongs)
+        }
+        val size = dp(BUTTON_SIZE_DP)
+        row.addView(
+            glassButton(shuffleIcon(), "Shuffle") {
+                val songs = playSongs()
+                if (songs.isNotEmpty()) MusicPlayerRemote.openAndShuffleQueue(songs, true)
+            },
+            LinearLayout.LayoutParams(size, size)
+        )
+        row.addView(
+            glassButton(playIcon(), "Play all") {
+                val songs = playSongs()
+                if (songs.isNotEmpty()) MusicPlayerRemote.openQueue(songs, 0, true)
+            },
+            LinearLayout.LayoutParams(size, size).apply { marginStart = dp(BUTTON_GAP_DP) }
+        )
+
+        // sits above the mini player, at the bottom right
+        val bottom = resources.getDimensionPixelSize(R.dimen.mini_player_height) +
+                dp(BUTTON_BOTTOM_EXTRA_DP)
+        val wrap = ViewGroup.LayoutParams.WRAP_CONTENT
+        val lp: ViewGroup.LayoutParams = when (parent) {
+            is CoordinatorLayout -> CoordinatorLayout.LayoutParams(wrap, wrap).apply {
+                gravity = Gravity.BOTTOM or Gravity.END
+                marginEnd = dp(BUTTON_END_DP)
+                bottomMargin = bottom
+            }
+            is FrameLayout -> FrameLayout.LayoutParams(wrap, wrap, Gravity.BOTTOM or Gravity.END)
+                .apply {
+                    marginEnd = dp(BUTTON_END_DP)
+                    bottomMargin = bottom
+                }
+            else -> return
+        }
+        parent.addView(row, lp)
+        playButtons = row
+    }
+
+    /** One rounded-square glass button (same glass as the search bar / mini player). */
+    private fun glassButton(icon: Drawable, description: String, onClick: () -> Unit): FrameLayout {
+        val ctx = requireContext()
+        val density = resources.displayMetrics.density
+        val pad = (BUTTON_ICON_PAD_DP * density).toInt()
+        val host = FrameLayout(ctx).apply {
+            contentDescription = description
+            isClickable = true
+            isFocusable = true
+            setOnClickListener { onClick() }
+        }
+        val image = ImageView(ctx).apply {
+            setImageDrawable(icon)
+            scaleType = ImageView.ScaleType.FIT_CENTER
+            setPadding(pad, pad, pad, pad)
+            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+        }
+        host.addView(
+            image,
+            FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT
+            )
+        )
+        val surface = MaterialColors.getColor(
+            host, com.google.android.material.R.attr.colorSurface, Color.BLACK
+        )
+        val onSurface = MaterialColors.getColor(
+            host, com.google.android.material.R.attr.colorOnSurface, Color.WHITE
+        )
+        image.imageTintList = ColorStateList.valueOf(onSurface)
+
+        // the glass blurs the list under it, so the list is its backdrop (a sibling, not a parent)
+        val layer = _binding?.let {
+            GlassHelper.syncRounded(
+                host, it.recyclerView, PreferenceUtil.glassEnabled, BUTTON_CORNER_DP,
+                raiseContent = false
+            )
+        }
+        if (layer != null) {
+            // the icon follows the brightness of the page behind the glass
+            layer.onToneExtra = { tone ->
+                image.imageTintList =
+                    ColorStateList.valueOf(ColorUtils.blendARGB(Color.WHITE, GlassLayer.DARK_INK, tone))
+            }
+            layer.inkColor?.let { image.imageTintList = ColorStateList.valueOf(it) }
+        } else {
+            // glass is off in the settings: a plain translucent rounded button
+            host.background = GradientDrawable().apply {
+                cornerRadius = BUTTON_CORNER_DP * density
+                setColor(ColorUtils.setAlphaComponent(surface, 235))
+            }
+            host.elevation = 6 * density
+        }
+        return host
+    }
+
+    // Material "play arrow" and "shuffle" icons, drawn from their outlines (no extra resources)
+    private fun playIcon(): Drawable = outlineIcon(
+        floatArrayOf(8f, 5f, 8f, 19f, 19f, 12f)
+    )
+
+    private fun shuffleIcon(): Drawable = outlineIcon(
+        floatArrayOf(10.59f, 9.17f, 5.41f, 4f, 4f, 5.41f, 9.17f, 10.58f),
+        floatArrayOf(14.5f, 4f, 16.54f, 6.04f, 4f, 18.59f, 5.41f, 20f, 17.96f, 7.46f, 20f, 9.5f, 20f, 4f),
+        floatArrayOf(14.83f, 13.41f, 13.42f, 14.82f, 16.55f, 17.95f, 14.5f, 20f, 20f, 20f, 20f, 14.5f, 17.96f, 16.54f)
+    )
+
+    // each array is one closed shape: x1, y1, x2, y2 ... on a 24 x 24 grid
+    private fun outlineIcon(vararg shapes: FloatArray): Drawable {
+        val path = Path()
+        for (p in shapes) {
+            path.moveTo(p[0], p[1])
+            var i = 2
+            while (i < p.size) {
+                path.lineTo(p[i], p[i + 1])
+                i += 2
+            }
+            path.close()
+        }
+        val px = (24 * resources.displayMetrics.density).toInt()
+        return ShapeDrawable(PathShape(path, 24f, 24f)).apply {
+            intrinsicWidth = px
+            intrinsicHeight = px
+            paint.color = Color.WHITE
+        }
+    }
+
     // ---- enter animation bookkeeping (same pattern as the artist page) --------------------------
 
     // true once the enter animation has finished (the rest of the list is added only then)
@@ -371,6 +546,7 @@ class DetailListFragment : AbsMainActivityFragment(R.layout.fragment_playlist_de
      */
     private fun <E> LiveData<List<E>>.observeWhenSettled(
         refresh: Boolean = true,
+        onFull: ((List<E>) -> Unit)? = null,
         block: (List<E>) -> Unit
     ) {
         val key = "list:" + args.type
@@ -379,6 +555,7 @@ class DetailListFragment : AbsMainActivityFragment(R.layout.fragment_playlist_de
 
         fun show(list: List<E>) {
             if (_binding == null) return
+            onFull?.invoke(list)
             // page already open and settled (e.g. a later refresh): just apply the data
             if (enterSettled) {
                 block(list)
@@ -431,6 +608,7 @@ class DetailListFragment : AbsMainActivityFragment(R.layout.fragment_playlist_de
     override fun onDestroyView() {
         super.onDestroyView()
         settledCallbacks.clear()
+        playButtons = null
         _binding = null
     }
 
@@ -470,3 +648,11 @@ class DetailListFragment : AbsMainActivityFragment(R.layout.fragment_playlist_de
 
 private const val ENTER_SETTLE_FALLBACK_MS = 700L
 private const val ENTER_START_FALLBACK_MS = 800L
+
+// floating Play / Shuffle buttons
+private const val BUTTON_SIZE_DP = 64
+private const val BUTTON_GAP_DP = 12
+private const val BUTTON_CORNER_DP = 20
+private const val BUTTON_ICON_PAD_DP = 18
+private const val BUTTON_END_DP = 16
+private const val BUTTON_BOTTOM_EXTRA_DP = 16
