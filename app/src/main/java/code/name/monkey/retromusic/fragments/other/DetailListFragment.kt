@@ -88,22 +88,22 @@ class DetailListFragment : AbsMainActivityFragment(R.layout.fragment_playlist_de
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
-        // Opened from the home page with the slide animation: same approach as the artist page.
-        // The page stays postponed until its first frame is ready, and the heavy part (filling the
-        // list) waits until the enter animation has finished.
+        // The page stays postponed until the FIRST SCREEN of the list is loaded and laid out, then
+        // the enter animation starts (see startEnter). The rest of the list is added only after
+        // the enter animation has finished.
         val slide = arguments?.getBoolean(EXTRA_SLIDE_NAV, false) == true
-        enterSettled = !slide
+        enterSettled = false
+        enterStarted = false
         settledCallbacks.clear()
         _binding = FragmentPlaylistDetailBinding.bind(view)
         if (slide) {
             // this page slides in over the home page: it gets the page colour the rest of the app
             // draws on, so the home page can't show through it
             if (view.background == null) view.setBackgroundColor(pageBackgroundColor())
-            // safety net in case the animation never reports that it ended
-            view.postDelayed({ markEnterSettled() }, ENTER_SETTLE_FALLBACK_MS)
         }
         postponeEnterTransition()
-        view.doOnPreDraw { startPostponedEnterTransition() }
+        // safety net: never keep the page waiting forever if the data is slow or never arrives
+        view.postDelayed({ startEnter() }, ENTER_START_FALLBACK_MS)
         mainActivity.setSupportActionBar(binding.toolbar)
         binding.progressIndicator.hide()
         when (args.type) {
@@ -327,9 +327,20 @@ class DetailListFragment : AbsMainActivityFragment(R.layout.fragment_playlist_de
 
     // ---- enter animation bookkeeping (same pattern as the artist page) --------------------------
 
-    // true = nothing to wait for (page not opened with the slide animation)
-    private var enterSettled = true
+    // true once the enter animation has finished (the rest of the list is added only then)
+    private var enterSettled = false
+    // true once the enter animation was allowed to start (first screen of the list is ready)
+    private var enterStarted = false
     private val settledCallbacks = mutableListOf<() -> Unit>()
+
+    // starts the postponed enter animation; safe to call more than once
+    private fun startEnter() {
+        if (enterStarted || _binding == null) return
+        enterStarted = true
+        startPostponedEnterTransition()
+        // safety net in case the animation never reports that it ended
+        view?.postDelayed({ markEnterSettled() }, ENTER_SETTLE_FALLBACK_MS)
+    }
 
     private fun runWhenEnterSettled(block: () -> Unit) {
         if (_binding == null) return
@@ -355,7 +366,8 @@ class DetailListFragment : AbsMainActivityFragment(R.layout.fragment_playlist_de
      * Observes like [observe], but
      *  - if this is the page that was opened last time, its previous data is shown at once (the
      *    page does not load from scratch again); with [refresh] = false that data is kept as is;
-     *  - otherwise the data is applied after the enter animation (no fade, rows just appear).
+     *  - the enter animation starts only once the first screen of the list is in place; only that
+     *    first screen is loaded before the animation, the rest comes after it has finished.
      */
     private fun <E> LiveData<List<E>>.observeWhenSettled(
         refresh: Boolean = true,
@@ -365,32 +377,33 @@ class DetailListFragment : AbsMainActivityFragment(R.layout.fragment_playlist_de
         val cached: List<E>? = LastPageCache.get(key)
         var shown: List<E>? = null
 
-        // Cached data: first screen at once, the rest after the enter animation.
-        // Fresh data: nothing is touched until the enter animation has finished, then the first
-        // screen goes in, and the rest one frame later (so no single frame is heavy).
-        fun show(list: List<E>, immediate: Boolean) {
-            val small = list.size <= firstScreenCount()
-            if (immediate) {
-                block(if (small) list else list.take(firstScreenCount()))
-                if (!small) runWhenEnterSettled { block(list) }
-            } else {
-                runWhenEnterSettled {
-                    block(if (small) list else list.take(firstScreenCount()))
-                    if (!small) view?.postOnAnimation { if (_binding != null) block(list) }
-                }
+        fun show(list: List<E>) {
+            if (_binding == null) return
+            // page already open and settled (e.g. a later refresh): just apply the data
+            if (enterSettled) {
+                block(list)
+                startEnter()
+                return
             }
+            // 1) only what fits on the first screen goes in now
+            val n = firstScreenCount()
+            block(if (list.size <= n) list else list.take(n))
+            // 2) the enter animation starts once that first screen has been laid out
+            _binding?.recyclerView?.doOnPreDraw { startEnter() }
+            // 3) the rest of the list is added after the enter animation has finished
+            if (list.size > n) runWhenEnterSettled { block(list) }
         }
 
         if (cached != null) {
             shown = cached
-            show(cached, immediate = true)
+            show(cached)
             if (!refresh) return
         }
         observe(viewLifecycleOwner) { value ->
             LastPageCache.put(key, value)
             if (value != shown) {
                 shown = value
-                show(value, immediate = false)
+                show(value)
             }
         }
     }
@@ -456,3 +469,4 @@ class DetailListFragment : AbsMainActivityFragment(R.layout.fragment_playlist_de
 }
 
 private const val ENTER_SETTLE_FALLBACK_MS = 700L
+private const val ENTER_START_FALLBACK_MS = 800L
