@@ -138,7 +138,7 @@ class DetailListFragment : AbsMainActivityFragment(R.layout.fragment_playlist_de
             layoutManager = linearLayoutManager()
         }
         libraryViewModel.latestAddedSongs().observeWhenSettled { songs ->
-            songAdapter.swapDataSet(songs)
+            songAdapter.appendDataSet(songs)
         }
     }
 
@@ -154,7 +154,7 @@ class DetailListFragment : AbsMainActivityFragment(R.layout.fragment_playlist_de
             layoutManager = linearLayoutManager()
         }
         libraryViewModel.playCountSongs().observeWhenSettled { songs ->
-            songAdapter.swapDataSet(songs)
+            songAdapter.appendDataSet(songs)
         }
     }
 
@@ -171,7 +171,7 @@ class DetailListFragment : AbsMainActivityFragment(R.layout.fragment_playlist_de
         }
         // computed once per visit: re-opening the same page keeps its list (no reshuffle)
         libraryViewModel.forYouNowSongs().observeWhenSettled(refresh = false) { songs ->
-            songAdapter.swapDataSet(songs)
+            songAdapter.appendDataSet(songs)
             binding.empty.isVisible = songs.isEmpty()
         }
     }
@@ -188,7 +188,7 @@ class DetailListFragment : AbsMainActivityFragment(R.layout.fragment_playlist_de
             layoutManager = linearLayoutManager()
         }
         libraryViewModel.rediscoverSongs().observeWhenSettled(refresh = false) { songs ->
-            songAdapter.swapDataSet(songs)
+            songAdapter.appendDataSet(songs)
             binding.empty.isVisible = songs.isEmpty()
         }
     }
@@ -207,7 +207,7 @@ class DetailListFragment : AbsMainActivityFragment(R.layout.fragment_playlist_de
         }
 
         libraryViewModel.observableHistorySongs().observeWhenSettled {
-            songAdapter.swapDataSet(it)
+            songAdapter.appendDataSet(it)
             binding.empty.isVisible = it.isEmpty()
         }
 
@@ -226,7 +226,7 @@ class DetailListFragment : AbsMainActivityFragment(R.layout.fragment_playlist_de
         }
         libraryViewModel.favorites().observeWhenSettled { songEntities ->
             val songs = songEntities.map { songEntity -> songEntity.toSong() }
-            songAdapter.swapDataSet(songs)
+            songAdapter.appendDataSet(songs)
         }
     }
 
@@ -251,7 +251,7 @@ class DetailListFragment : AbsMainActivityFragment(R.layout.fragment_playlist_de
             layoutManager = gridLayoutManager()
         }
         libraryViewModel.albums(type).observeWhenSettled { albums ->
-            albumAdapter.swapDataSet(albums)
+            albumAdapter.appendDataSet(albums)
         }
     }
 
