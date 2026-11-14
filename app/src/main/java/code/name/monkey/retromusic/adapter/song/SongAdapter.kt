@@ -71,6 +71,25 @@ open class SongAdapter(
         notifyDataSetChanged()
     }
 
+    /** Number of extra rows before the songs (e.g. the shuffle / play button row). */
+    protected open val headerCount: Int
+        get() = 0
+
+    /**
+     * Shows [full] by adding only the songs after the ones already shown, so the rows already on
+     * screen are not rebound. Falls back to [swapDataSet] when [full] is not simply the current
+     * list plus more songs at the end (first load, or the list really changed).
+     */
+    open fun appendDataSet(full: List<Song>) {
+        val old = dataSet.size
+        if (old == 0 || full.size <= old || (0 until old).any { full[it] != dataSet[it] }) {
+            swapDataSet(full)
+            return
+        }
+        dataSet.addAll(full.subList(old, full.size))
+        notifyItemRangeInserted(headerCount + old, full.size - old)
+    }
+
     override fun getItemId(position: Int): Long {
         return dataSet[position].id
     }
