@@ -278,14 +278,15 @@ class LibraryViewModel(
     }
 
     fun playCountSongs(): LiveData<List<Song>> = liveData(IO) {
-        repository.playCountSongs().forEach { song ->
+        // the list is shown at once; entries whose file is gone are cleaned up right after
+        // (one query, no per-song file check before the page can open)
+        val entities = repository.playCountSongs()
+        emit(entities.filter { it.id != -1L }.map { it.toSong() })
+        entities.forEach { song ->
             if (!File(song.data).exists() || song.id == -1L) {
                 repository.deleteSongInPlayCount(song)
             }
         }
-        emit(repository.playCountSongs().map {
-            it.toSong()
-        })
     }
 
     fun artists(type: Int): LiveData<List<Artist>> = liveData(IO) {
@@ -324,15 +325,14 @@ class LibraryViewModel(
 
     fun observableHistorySongs(): LiveData<List<Song>> {
         viewModelScope.launch(IO) {
-            repository.historySong().forEach { song ->
+            // the list is shown at once; entries whose file is gone are cleaned up right after
+            val history = repository.historySong()
+            songHistory.postValue(history.filter { it.id != -1L }.map { it.toSong() })
+            history.forEach { song ->
                 if (!File(song.data).exists() || song.id == -1L) {
                     repository.deleteSongInHistory(song.id)
                 }
             }
-
-            songHistory.postValue(repository.historySong().map {
-                it.toSong()
-            })
         }
         return songHistory
     }
