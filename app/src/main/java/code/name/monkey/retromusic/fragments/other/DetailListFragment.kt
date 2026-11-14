@@ -55,7 +55,9 @@ import code.name.monkey.retromusic.db.toSong
 import code.name.monkey.retromusic.fragments.base.AbsMainActivityFragment
 import code.name.monkey.retromusic.interfaces.IAlbumClickListener
 import code.name.monkey.retromusic.helper.MusicPlayerRemote
+import code.name.monkey.retromusic.interfaces.IAlbumArtistClickListener
 import code.name.monkey.retromusic.interfaces.IArtistClickListener
+import code.name.monkey.retromusic.interfaces.IMultiArtistClickListener
 import code.name.monkey.retromusic.model.Album
 import code.name.monkey.retromusic.model.Artist
 import code.name.monkey.retromusic.model.Song
@@ -72,7 +74,8 @@ import com.google.android.material.transition.MaterialSharedAxis
 
 
 class DetailListFragment : AbsMainActivityFragment(R.layout.fragment_playlist_detail),
-    IArtistClickListener, IAlbumClickListener {
+    IArtistClickListener, IAlbumArtistClickListener, IMultiArtistClickListener,
+    IAlbumClickListener {
     private val args by navArgs<DetailListFragmentArgs>()
     private var _binding: FragmentPlaylistDetailBinding? = null
     private val binding get() = _binding!!
@@ -288,7 +291,9 @@ class DetailListFragment : AbsMainActivityFragment(R.layout.fragment_playlist_de
         requireActivity(),
         artists,
         R.layout.item_grid_circle,
-        this
+        this,
+        this, // album artists
+        this // split (multiple) artists
     )
 
     private fun albumAdapter(albums: List<Album>): AlbumAdapter = AlbumAdapter(
@@ -326,6 +331,21 @@ class DetailListFragment : AbsMainActivityFragment(R.layout.fragment_playlist_de
 
 
     override fun onArtist(artistId: Long, view: View) {
+        openArtistPage(R.id.artistDetailsFragment, bundleOf(EXTRA_ARTIST_ID to artistId))
+    }
+
+    // "Show album artists" is on: the artist is identified by name, not by id
+    override fun onAlbumArtist(artistName: String, view: View) {
+        openArtistPage(R.id.albumArtistDetailsFragment, bundleOf(EXTRA_ARTIST_NAME to artistName))
+    }
+
+    // "Split multiple artists" is on: a split artist has no real id (it is made up from the
+    // name), so the page must be opened by name, exactly like the Artists tab does
+    override fun onMultiArtist(artistName: String, view: View) {
+        openArtistPage(R.id.multiArtistDetailsFragment, bundleOf(EXTRA_ARTIST_NAME to artistName))
+    }
+
+    private fun openArtistPage(destination: Int, extras: Bundle) {
         exitTransition = null
         reenterTransition = null
 
@@ -336,11 +356,7 @@ class DetailListFragment : AbsMainActivityFragment(R.layout.fragment_playlist_de
             .setPopExitAnim(R.anim.nav_slide_out_right)
             .build()
 
-        findNavController().navigate(
-            R.id.artistDetailsFragment,
-            bundleOf(EXTRA_ARTIST_ID to artistId),
-            navOptions
-        )
+        findNavController().navigate(destination, extras, navOptions)
     }
 
     override fun onAlbumClick(albumId: Long, view: View) {
