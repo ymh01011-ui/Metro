@@ -6,6 +6,7 @@
 package code.name.monkey.retromusic.fragments.albums
 
 import code.name.monkey.retromusic.views.GlassHelper
+import code.name.monkey.retromusic.views.GlassLayer
 import code.name.monkey.retromusic.views.GlassPopupMenu
 import android.widget.FrameLayout
 import android.app.ActivityOptions
@@ -232,6 +233,7 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
     private var dominantBackgroundColor: Int = Color.BLACK
     private var cachedBitmap: Bitmap? = null
     private var hasExtractedColors: Boolean = false
+    private var glassPageColor: Int? = null
     private var transitionStarted: Boolean = false
     private var albumTitleBottomInScrollContent: Int = -1
     private var foregroundColor: Int = Color.WHITE
@@ -1448,11 +1450,13 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
         exoPlayer?.playWhenReady = videoVisibleOnScreen
         // أي شاشة تانية أو حوار أو الـ Activity ممكن يكون غيّر ألوان الستاتس بار، فبنعيد تطبيق لون الصفحة
         lastStatusBarLight?.let { applyStatusBarAppearance(it) }
+        glassPageColor?.let { GlassLayer.setPage(this, it) }
     }
 
     override fun onPause() {
         super.onPause()
         exoPlayer?.playWhenReady = false
+        GlassLayer.clearPage(this)
     }
 
     private fun releaseEnterTransition() {
@@ -1813,6 +1817,9 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
      * عشان كده بنستخدم الـ appBarLayout اللي sibling للـ scroll.
      */
     private fun applyRealGlassToActionCircles(backgroundColor: Int) {
+        // الـ mini player والـ bottom bar والقوايم بتاخد لون الصفحة من هنا
+        glassPageColor = backgroundColor
+        if (isResumed) GlassLayer.setPage(this, backgroundColor)
         val backdrop = binding.appBarLayout ?: return
         val buttons = listOfNotNull(
             binding.fragmentAlbumContent.shuffleAction,
@@ -1825,13 +1832,17 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
             val layer = GlassHelper.syncFill(host, backdrop, true, raiseContent = false) ?: continue
             // syncFill بيستخدم لون الثيم كخلفية؛ هنا الصفحة لونها ديناميكي (لون الغلاف)
             layer.baseColor = backgroundColor
+            layer.pageColor = backgroundColor // الزجاج بيحدد لون الخط من لون الصفحة نفسه
         }
 
         // كارت About: زجاج حقيقي بحواف دائرية أكتر (كانت 12dp)
         val aboutHost = binding.fragmentAlbumContent.aboutCardGlass.parent as? FrameLayout
         if (aboutHost != null) {
             GlassHelper.syncRounded(aboutHost, backdrop, true, ABOUT_CARD_CORNER_DP, raiseContent = false)
-                ?.baseColor = backgroundColor
+                ?.apply {
+                    baseColor = backgroundColor
+                    pageColor = backgroundColor
+                }
         }
     }
 
