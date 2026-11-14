@@ -757,10 +757,12 @@ object GlassHelper {
             layer.invalidateOutline()
         }
 
-        // the mini player pill slides into the row, next to the circle
+        // the mini player pill slides into the row, next to the circle. The WHOLE panel moves
+        // (not only its glass and content), so no empty touchable strip is left where the mini
+        // player used to be.
         val extra = ((circle + gap) * p).toInt()
+        panel.translationY = shiftY * p
         layerOf(panel)?.let { layer ->
-            layer.translationY = shiftY * p
             val params = layer.layoutParams as? ViewGroup.MarginLayoutParams
             if (params != null &&
                 (params.marginStart != side + extra || params.marginEnd != side)
@@ -773,7 +775,7 @@ object GlassHelper {
         }
         if (mini != null) {
             setMiniInsets(mini, true, extra)
-            mini.translationY = shiftY * p
+            mini.translationY = 0f
         }
     }
 }
