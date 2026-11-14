@@ -114,6 +114,8 @@ object GlassHelper {
             params.marginStart = side
             params.marginEnd = side
             layer = createLayer(host, blurRoot, params, TAG_LAYER)
+            // bottom bar and mini player sit over every page: follow an image-coloured page
+            layer.followsPage = true
             if (withIcon) {
                 val icon = ImageView(context)
                 icon.tag = TAG_ICON
@@ -233,6 +235,7 @@ object GlassHelper {
         val layer = GlassLayer(context)
         layer.tag = TAG_LAYER
         layer.screenCoords = true
+        layer.followsPage = true
         layer.outlineProvider = object : ViewOutlineProvider() {
             override fun getOutline(view: View, outline: Outline) {
                 outline.setRoundRect(0, 0, view.width, view.height, corner)
