@@ -63,6 +63,21 @@ open class AlbumAdapter(
         notifyDataSetChanged()
     }
 
+    /**
+     * Shows [full] by adding only the albums after the ones already shown, so the rows already
+     * on screen are not rebound. Falls back to [swapDataSet] when [full] is not simply the
+     * current list plus more albums at the end.
+     */
+    fun appendDataSet(full: List<Album>) {
+        val old = dataSet.size
+        if (old == 0 || full.size <= old || (0 until old).any { full[it].id != dataSet[it].id }) {
+            swapDataSet(full)
+            return
+        }
+        this.dataSet = full
+        notifyItemRangeInserted(old, full.size - old)
+    }
+
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ViewHolder {
         val view = LayoutInflater.from(activity).inflate(itemLayoutRes, parent, false)
         return createViewHolder(view, viewType)
