@@ -42,6 +42,10 @@ abstract class AbsOffsetSongAdapter(
         return ViewHolder(view)
     }
 
+    // the first row is the quick-actions row, so songs start at position 1
+    override val headerCount: Int
+        get() = 1
+
     override fun getItemId(position: Int): Long {
         var positionFinal = position
         positionFinal--
