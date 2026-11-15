@@ -494,6 +494,24 @@ abstract class AbsSlidingMusicPanelActivity : AbsMusicServiceActivity(),
         return navCenter - miniCenter
     }
 
+    // A page that has heavy work to do while it opens (building its first rows) can make the
+    // fold wait until it is ready: holdGlassFold() when its view is created, releaseGlassFold()
+    // when its enter animation starts. The fold then starts together with that animation.
+    private var glassFoldHeld = false
+    private var glassFoldPending = false
+
+    fun holdGlassFold() {
+        glassFoldHeld = true
+    }
+
+    fun releaseGlassFold() {
+        glassFoldHeld = false
+        if (glassFoldPending) {
+            glassFoldPending = false
+            if (glassDetailMode) setGlassCompact(true)
+        }
+    }
+
     private fun setGlassCompact(compact: Boolean) {
         if (compact == glassCompact) return
         if (compact) {
@@ -796,7 +814,18 @@ abstract class AbsSlidingMusicPanelActivity : AbsMusicServiceActivity(),
                 animate = animate,
                 isBottomNavVisible = true
             )
-            setGlassCompact(glassDetailMode)
+            if (glassDetailMode && animate) {
+                // one frame later, so the page that is opening can ask the fold to wait for it
+                // (holdGlassFold): its first rows are built and bound BEFORE the fold starts,
+                // not in the middle of it
+                binding.root.post {
+                    if (!glassDetailMode) return@post
+                    if (glassFoldHeld) glassFoldPending = true else setGlassCompact(true)
+                }
+            } else {
+                glassFoldPending = false
+                setGlassCompact(glassDetailMode)
+            }
             return
         }
         if (visible xor navigationView.isVisible) {
