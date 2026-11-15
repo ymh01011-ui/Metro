@@ -1,8 +1,12 @@
 package code.name.monkey.retromusic.fragments.playlists
 
+import code.name.monkey.retromusic.views.GlassHelper
 import code.name.monkey.retromusic.views.GlassPopupMenu
 import android.content.res.ColorStateList
+import android.content.Context
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.os.Build
 import android.graphics.Color
 import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.ColorDrawable
@@ -19,6 +23,7 @@ import android.view.ViewGroup
 import android.view.ViewTreeObserver
 import android.view.animation.Animation
 import android.view.animation.AnimationUtils
+import android.widget.FrameLayout
 import android.widget.ImageView
 import androidx.core.content.ContextCompat
 import androidx.core.graphics.ColorUtils
@@ -58,6 +63,8 @@ import com.bumptech.glide.request.target.Target
 import com.h6ah4i.android.widget.advrecyclerview.animator.DraggableItemAnimator
 import me.zhanghai.android.fastscroll.FastScroller
 import com.h6ah4i.android.widget.advrecyclerview.draggable.RecyclerViewDragDropManager
+import java.io.File
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -78,6 +85,7 @@ private const val ENTER_SETTLE_FALLBACK_MS = 700L
 // عن المهلة دي الحركة بتبدأ برضه والصورة بتظهر بـ fade.
 private const val RELEASE_DEADLINE_MS = 350L
 private const val COLLAGE_SIZE_PX = 1200
+private const val COLLAGE_DIR_NAME = "playlist_collages"
 
 class PlaylistDetailsFragment : AbsMainActivityFragment(R.layout.fragment_playlist_detail_new) {
     private val arguments by navArgs<PlaylistDetailsFragmentArgs>()
@@ -224,6 +232,9 @@ class PlaylistDetailsFragment : AbsMainActivityFragment(R.layout.fragment_playli
         }
         viewModel.playlistExists().observe(viewLifecycleOwner) {
             if (!it) {
+                val appContext = requireContext().applicationContext
+                val id = arguments.extraPlaylistId
+                CoroutineScope(Dispatchers.IO).launch { runCatching { deleteCollages(appContext, id) } }
                 findNavController().navigateUp()
             }
         }
@@ -243,22 +254,53 @@ class PlaylistDetailsFragment : AbsMainActivityFragment(R.layout.fragment_playli
     // ---------- الصورة التلقائية (من صور الأغاني) ----------
 
     private fun loadCollage(playlistWithSongs: PlaylistWithSongs) {
-        val key = 31 * playlistWithSongs.playlistEntity.playListId.hashCode() +
-            playlistWithSongs.songs.size
+        val playlistId = playlistWithSongs.playlistEntity.playListId
+        // الصورة بتتغير بس لما ترتيب الأغاني أو عددها يتغير (إضافة / حذف / ترتيب)
+        val signature = collageSignature(playlistWithSongs)
+        val key = 31 * playlistId.hashCode() + signature
         if (key == appliedCollageKey) return
         appliedCollageKey = key
-        // نفس الصورة اتعرضت قبل كده: بنحطها فورًا من الذاكرة من غير ما نولّدها تاني
+        // 1) في الذاكرة: فورًا
         val cached = collageCache.get(key)
         if (cached != null && !cached.isRecycled) {
-            binding.image.setImageBitmap(cached)
-            binding.image.alpha = 1f
-            imageReady = true
-            tryRelease()
+            showCollage(cached)
             return
         }
+        // 2) محفوظة على التليفون (من فتح سابق، حتى لو التطبيق اتقفل): بتتفك من الملف
+        val file = collageFile(requireContext(), playlistId, signature)
+        viewLifecycleOwner.lifecycleScope.launch {
+            val saved = withContext(Dispatchers.IO) {
+                if (file.exists()) runCatching { BitmapFactory.decodeFile(file.path) }.getOrNull() else null
+            }
+            if (_binding == null || appliedCollageKey != key) return@launch
+            if (saved != null) {
+                collageCache.put(key, saved)
+                showCollage(saved)
+            } else {
+                generateCollage(playlistWithSongs, key, playlistId, signature)
+            }
+        }
+    }
+
+    private fun showCollage(bitmap: Bitmap) {
+        val b = _binding ?: return
+        b.image.setImageBitmap(bitmap)
+        b.image.alpha = 1f
+        imageReady = true
+        tryRelease()
+    }
+
+    // 3) مفيش نسخة: بتتولّد من أغلفة الأغاني وبتتحفظ للمرات الجاية
+    private fun generateCollage(
+        playlistWithSongs: PlaylistWithSongs,
+        key: Int,
+        playlistId: Long,
+        signature: Int,
+    ) {
         // التوليد (تحميل أغلفة + رسم) بيبدأ فورًا مش بعد الأنيميشن، والصفحة متأجلة
         // لحد ما الصورة تجهز، فبتظهر من أول فريم في الحركة. لو اتأخرت عن المهلة
         // بتظهر بـ fade فوق الحركة.
+        val appContext = requireContext().applicationContext
         Glide.with(this)
             .load(PlaylistPreview(playlistWithSongs))
             .playlistOptions()
@@ -279,13 +321,15 @@ class PlaylistDetailsFragment : AbsMainActivityFragment(R.layout.fragment_playli
                     dataSource: DataSource?, isFirstResource: Boolean
                 ): Boolean {
                     showImage()
-                    // نسخة في الذاكرة للفتح الجاي (نسخة مش نفس bitmap بتاع Glide عشان ميتعاد استخدامه)
+                    // نسخة في الذاكرة وعلى التليفون للفتح الجاي (نسخة مش نفس bitmap بتاع Glide عشان ميتعاد استخدامه)
                     val source = (resource as? BitmapDrawable)?.bitmap
                     if (source != null && !source.isRecycled) {
                         view?.post {
                             runCatching {
-                                source.copy(Bitmap.Config.ARGB_8888, false)
-                                    ?.let { collageCache.put(key, it) }
+                                source.copy(Bitmap.Config.ARGB_8888, false)?.let { copy ->
+                                    collageCache.put(key, copy)
+                                    saveCollage(appContext, playlistId, signature, copy)
+                                }
                             }
                         }
                     }
@@ -293,6 +337,48 @@ class PlaylistDetailsFragment : AbsMainActivityFragment(R.layout.fragment_playli
                 }
             })
             .into(binding.image)
+    }
+
+    // ---------- حفظ الصورة على التليفون ----------
+
+    // بصمة الصورة: ترتيب الأغاني (ومعرّفاتها). أي إضافة / حذف / تغيير ترتيب بتغيّرها.
+    private fun collageSignature(playlistWithSongs: PlaylistWithSongs): Int {
+        val songs = playlistWithSongs.songs.toSongs()
+        return songs.fold(songs.size) { acc, s -> 31 * acc + s.id.hashCode() }
+    }
+
+    private fun collageDir(context: Context): File =
+        File(context.filesDir, COLLAGE_DIR_NAME)
+
+    private fun collageFile(context: Context, playlistId: Long, signature: Int): File =
+        File(collageDir(context), "p${playlistId}_$signature.webp")
+
+    @Suppress("DEPRECATION")
+    private fun saveCollage(context: Context, playlistId: Long, signature: Int, bitmap: Bitmap) {
+        CoroutineScope(Dispatchers.IO).launch {
+            runCatching {
+                val dir = collageDir(context)
+                dir.mkdirs()
+                val target = collageFile(context, playlistId, signature)
+                val temp = File(dir, target.name + ".tmp")
+                temp.outputStream().use { out ->
+                    val format = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                        Bitmap.CompressFormat.WEBP_LOSSLESS
+                    } else {
+                        Bitmap.CompressFormat.WEBP
+                    }
+                    bitmap.compress(format, 100, out)
+                }
+                temp.renameTo(target)
+                // النسخ القديمة لنفس الـ playlist بتتمسح (فضل الأحدث بس)
+                deleteCollages(context, playlistId, keep = target)
+            }
+        }
+    }
+
+    private fun deleteCollages(context: Context, playlistId: Long, keep: File? = null) {
+        collageDir(context).listFiles { f -> f.name.startsWith("p${playlistId}_") && f != keep }
+            ?.forEach { it.delete() }
     }
 
     // الصورة جاهزة: لو الأنيميشن لسه مابدأش بتظهر فورًا (والصفحة متأجلة)،
@@ -627,8 +713,7 @@ class PlaylistDetailsFragment : AbsMainActivityFragment(R.layout.fragment_playli
             toolbar.setTitleTextColor(fg)
         }
 
-        binding.shuffleActionGlass.setBackdropColor(bg)
-        binding.addActionGlass.setBackdropColor(bg)
+        applyRealGlassToActionCircles(bg)
         binding.shuffleAction.iconTint = ColorStateList.valueOf(fg)
         binding.addAction.iconTint = ColorStateList.valueOf(fg)
 
@@ -638,6 +723,23 @@ class PlaylistDetailsFragment : AbsMainActivityFragment(R.layout.fragment_playli
             backgroundTintList = ColorStateList.valueOf(playBg)
             setTextColor(playFg)
             iconTint = ColorStateList.valueOf(playFg)
+        }
+    }
+
+    /**
+     * نفس دوائر صفحة الألبوم: زجاج حقيقي (GlassLayer) بدل LiquidGlassView. الزرار نفسه بيفضل فوق
+     * الزجاج. الـ backdrop لازم يكون view مش parent للدوائر (الدوائر جوه الهيدر)، فبنستخدم
+     * القايمة: هي اللي بتعدّي من تحت الدوائر لما تسكرول.
+     */
+    private fun applyRealGlassToActionCircles(backgroundColor: Int) {
+        binding.shuffleActionGlass.visibility = View.GONE
+        binding.addActionGlass.visibility = View.GONE
+        for (button in listOf(binding.shuffleAction, binding.addAction)) {
+            val host = button.parent as? FrameLayout ?: continue
+            val layer = GlassHelper.syncFill(host, binding.recyclerView, true, raiseContent = false)
+                ?: continue
+            // لون الصفحة هنا هو لون الثيم
+            layer.baseColor = backgroundColor
         }
     }
 
