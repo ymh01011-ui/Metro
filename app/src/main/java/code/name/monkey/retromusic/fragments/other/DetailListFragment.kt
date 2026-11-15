@@ -129,6 +129,9 @@ class DetailListFragment : AbsMainActivityFragment(R.layout.fragment_playlist_de
             if (view.background == null) view.setBackgroundColor(pageBackgroundColor())
         }
         postponeEnterTransition()
+        // the bottom bar's fold waits until this page is ready (released in startEnter), so
+        // building the first rows doesn't happen in the middle of the fold animation
+        mainActivity.holdGlassFold()
         // safety net: never keep the page waiting forever if the data is slow or never arrives
         view.postDelayed({ startEnter() }, ENTER_START_FALLBACK_MS)
         mainActivity.setSupportActionBar(binding.toolbar)
@@ -506,6 +509,7 @@ class DetailListFragment : AbsMainActivityFragment(R.layout.fragment_playlist_de
         if (enterStarted || _binding == null) return
         enterStarted = true
         startPostponedEnterTransition()
+        mainActivity.releaseGlassFold()
         // safety net in case the animation never reports that it ended
         view?.postDelayed({ markEnterSettled() }, ENTER_SETTLE_FALLBACK_MS)
     }
@@ -610,6 +614,7 @@ class DetailListFragment : AbsMainActivityFragment(R.layout.fragment_playlist_de
 
     override fun onDestroyView() {
         super.onDestroyView()
+        runCatching { mainActivity.releaseGlassFold() }
         savedListState = _binding?.recyclerView?.layoutManager?.onSaveInstanceState()
         settledCallbacks.clear()
         playButtons = null
