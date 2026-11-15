@@ -59,7 +59,10 @@ import code.name.monkey.retromusic.interfaces.IArtistClickListener
 import code.name.monkey.retromusic.interfaces.IMultiArtistClickListener
 import code.name.monkey.retromusic.model.Album
 import code.name.monkey.retromusic.model.Artist
+import code.name.monkey.retromusic.glide.RetroGlideExtension
+import code.name.monkey.retromusic.glide.RetroGlideExtension.songCoverOptions
 import code.name.monkey.retromusic.model.Song
+import com.bumptech.glide.Glide
 import code.name.monkey.retromusic.util.LastPageCache
 import code.name.monkey.retromusic.util.PreferenceUtil
 import code.name.monkey.retromusic.util.pageBackgroundColor
@@ -156,11 +159,7 @@ class DetailListFragment : AbsMainActivityFragment(R.layout.fragment_playlist_de
 
     private fun lastAddedSongs() {
         binding.toolbar.setTitle(R.string.last_added)
-        val songAdapter = SongAdapter(
-            requireActivity(),
-            mutableListOf(),
-            R.layout.item_list
-        )
+        val songAdapter = lightSongAdapter()
         binding.recyclerView.apply {
             adapter = songAdapter
             layoutManager = linearLayoutManager()
@@ -172,11 +171,7 @@ class DetailListFragment : AbsMainActivityFragment(R.layout.fragment_playlist_de
 
     private fun topPlayed() {
         binding.toolbar.setTitle(R.string.my_top_tracks)
-        val songAdapter = SongAdapter(
-            requireActivity(),
-            mutableListOf(),
-            R.layout.item_list
-        )
+        val songAdapter = lightSongAdapter()
         binding.recyclerView.apply {
             adapter = songAdapter
             layoutManager = linearLayoutManager()
@@ -188,11 +183,7 @@ class DetailListFragment : AbsMainActivityFragment(R.layout.fragment_playlist_de
 
     private fun forYouNow() {
         binding.toolbar.setTitle(R.string.tile_for_you_now)
-        val songAdapter = SongAdapter(
-            requireActivity(),
-            mutableListOf(),
-            R.layout.item_list
-        )
+        val songAdapter = lightSongAdapter()
         binding.recyclerView.apply {
             adapter = songAdapter
             layoutManager = linearLayoutManager()
@@ -206,11 +197,7 @@ class DetailListFragment : AbsMainActivityFragment(R.layout.fragment_playlist_de
 
     private fun rediscover() {
         binding.toolbar.setTitle(R.string.tile_rediscover)
-        val songAdapter = SongAdapter(
-            requireActivity(),
-            mutableListOf(),
-            R.layout.item_list
-        )
+        val songAdapter = lightSongAdapter()
         binding.recyclerView.apply {
             adapter = songAdapter
             layoutManager = linearLayoutManager()
@@ -224,11 +211,7 @@ class DetailListFragment : AbsMainActivityFragment(R.layout.fragment_playlist_de
     private fun loadHistory() {
         binding.toolbar.setTitle(R.string.history)
 
-        val songAdapter = SongAdapter(
-            requireActivity(),
-            mutableListOf(),
-            R.layout.item_list
-        )
+        val songAdapter = lightSongAdapter()
         binding.recyclerView.apply {
             adapter = songAdapter
             layoutManager = linearLayoutManager()
@@ -243,11 +226,7 @@ class DetailListFragment : AbsMainActivityFragment(R.layout.fragment_playlist_de
 
     private fun loadFavorite() {
         binding.toolbar.setTitle(R.string.favorites)
-        val songAdapter = SongAdapter(
-            requireActivity(),
-            mutableListOf(),
-            R.layout.item_list
-        )
+        val songAdapter = lightSongAdapter()
         binding.recyclerView.apply {
             adapter = songAdapter
             layoutManager = linearLayoutManager()
@@ -280,6 +259,26 @@ class DetailListFragment : AbsMainActivityFragment(R.layout.fragment_playlist_de
         }
         libraryViewModel.albums(type).observeWhenSettled { albums ->
             albumAdapter.appendDataSet(albums)
+        }
+    }
+
+    /**
+     * The normal song list, but its covers are loaded as plain bitmaps. The default SongAdapter
+     * loads every cover through the palette pipeline (colours are computed for each row, while
+     * the page is still animating in); this page does not use those colours.
+     */
+    private fun lightSongAdapter(): SongAdapter = object : SongAdapter(
+        requireActivity(),
+        mutableListOf(),
+        R.layout.item_list
+    ) {
+        override fun loadAlbumCover(song: Song, holder: SongAdapter.ViewHolder) {
+            val image = holder.image ?: return
+            Glide.with(activity)
+                .asBitmap()
+                .songCoverOptions(song)
+                .load(RetroGlideExtension.getSongModel(song))
+                .into(image)
         }
     }
 
