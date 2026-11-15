@@ -274,8 +274,9 @@ class DetailListFragment : AbsMainActivityFragment(R.layout.fragment_playlist_de
     ) {
         override fun loadAlbumCover(song: Song, holder: SongAdapter.ViewHolder) {
             val image = holder.image ?: return
+            // asDrawable(), same as SimpleSongAdapter: shares the disk cache with the other pages
             Glide.with(activity)
-                .asBitmap()
+                .asDrawable()
                 .songCoverOptions(song)
                 .load(RetroGlideExtension.getSongModel(song))
                 .into(image)
