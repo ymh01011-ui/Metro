@@ -40,7 +40,6 @@ import androidx.core.view.doOnPreDraw
 import androidx.core.view.isVisible
 import androidx.lifecycle.LiveData
 import androidx.navigation.NavOptions
-import androidx.navigation.fragment.FragmentNavigatorExtras
 import androidx.navigation.fragment.findNavController
 import androidx.navigation.fragment.navArgs
 import androidx.recyclerview.widget.GridLayoutManager
@@ -80,6 +79,10 @@ class DetailListFragment : AbsMainActivityFragment(R.layout.fragment_playlist_de
     private var _binding: FragmentPlaylistDetailBinding? = null
     private val binding get() = _binding!!
     private var showClearHistoryOption = false
+
+    // where the list was scrolled to when this page's view was destroyed (an album / artist page
+    // was opened from it); put back when the page comes back
+    private var savedListState: android.os.Parcelable? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -309,36 +312,22 @@ class DetailListFragment : AbsMainActivityFragment(R.layout.fragment_playlist_de
         return if (RetroUtil.isLandscape) 4 else 2
     }
 
-    // estimates how many items fill one screen on this device (phone / tablet / landscape)
-    private fun firstScreenCount(): Int {
-        val dm = resources.displayMetrics
-        val lm = _binding?.recyclerView?.layoutManager
-        return if (lm is GridLayoutManager) {
-            val span = lm.spanCount
-            val cellHeight = dm.widthPixels / span + 56 * dm.density
-            (kotlin.math.ceil(dm.heightPixels / cellHeight).toInt() + 1) * span
-        } else {
-            kotlin.math.ceil(dm.heightPixels / (56 * dm.density)).toInt() + 2
-        }
-    }
-
-
     override fun onArtist(artistId: Long, view: View) {
-        openArtistPage(R.id.artistDetailsFragment, bundleOf(EXTRA_ARTIST_ID to artistId))
+        openDetailPage(R.id.artistDetailsFragment, bundleOf(EXTRA_ARTIST_ID to artistId))
     }
 
     // "Show album artists" is on: the artist is identified by name, not by id
     override fun onAlbumArtist(artistName: String, view: View) {
-        openArtistPage(R.id.albumArtistDetailsFragment, bundleOf(EXTRA_ARTIST_NAME to artistName))
+        openDetailPage(R.id.albumArtistDetailsFragment, bundleOf(EXTRA_ARTIST_NAME to artistName))
     }
 
     // "Split multiple artists" is on: a split artist has no real id (it is made up from the
     // name), so the page must be opened by name, exactly like the Artists tab does
     override fun onMultiArtist(artistName: String, view: View) {
-        openArtistPage(R.id.multiArtistDetailsFragment, bundleOf(EXTRA_ARTIST_NAME to artistName))
+        openDetailPage(R.id.multiArtistDetailsFragment, bundleOf(EXTRA_ARTIST_NAME to artistName))
     }
 
-    private fun openArtistPage(destination: Int, extras: Bundle) {
+    private fun openDetailPage(destination: Int, extras: Bundle) {
         exitTransition = null
         reenterTransition = null
 
@@ -352,15 +341,10 @@ class DetailListFragment : AbsMainActivityFragment(R.layout.fragment_playlist_de
         findNavController().navigate(destination, extras, navOptions)
     }
 
+    // the album page takes its enter animation from the NavOptions (like the artist page), so it
+    // is opened the same way; with no NavOptions it opened with no animation at all
     override fun onAlbumClick(albumId: Long, view: View) {
-        findNavController().navigate(
-            R.id.albumDetailsFragment,
-            bundleOf(EXTRA_ALBUM_ID to albumId),
-            null,
-            FragmentNavigatorExtras(
-                view to albumId.toString()
-            )
-        )
+        openDetailPage(R.id.albumDetailsFragment, bundleOf(EXTRA_ALBUM_ID to albumId))
     }
 
     // ---- floating Play / Shuffle glass buttons (bottom right) -------------------------------
@@ -550,8 +534,8 @@ class DetailListFragment : AbsMainActivityFragment(R.layout.fragment_playlist_de
      * Observes like [observe], but
      *  - if this is the page that was opened last time, its previous data is shown at once (the
      *    page does not load from scratch again); with [refresh] = false that data is kept as is;
-     *  - the enter animation starts only once the first screen of the list is in place; only that
-     *    first screen is loaded before the animation, the rest comes after it has finished.
+     *  - the enter animation starts only once the first FIRST_LOAD_COUNT items are in place; only
+     *    those are loaded before the animation, the rest comes right after it has finished.
      */
     private fun <E> LiveData<List<E>>.observeWhenSettled(
         refresh: Boolean = true,
@@ -571,12 +555,22 @@ class DetailListFragment : AbsMainActivityFragment(R.layout.fragment_playlist_de
                 startEnter()
                 return
             }
-            // 1) only what fits on the first screen goes in now
-            val n = firstScreenCount()
+            // coming back to this page (e.g. from an album / artist page): the whole list goes in
+            // at once and the list is put back exactly where it was scrolled to
+            val restore = savedListState
+            if (restore != null) {
+                savedListState = null
+                block(list)
+                _binding?.recyclerView?.layoutManager?.onRestoreInstanceState(restore)
+                _binding?.recyclerView?.doOnPreDraw { startEnter() }
+                return
+            }
+            // 1) only the first FIRST_LOAD_COUNT items go in now
+            val n = FIRST_LOAD_COUNT
             block(if (list.size <= n) list else list.take(n))
-            // 2) the enter animation starts once that first screen has been laid out
+            // 2) the enter animation starts once those items have been laid out
             _binding?.recyclerView?.doOnPreDraw { startEnter() }
-            // 3) the rest of the list is added after the enter animation has finished
+            // 3) the rest of the list is added as soon as the enter animation has finished
             if (list.size > n) runWhenEnterSettled { block(list) }
         }
 
@@ -616,6 +610,7 @@ class DetailListFragment : AbsMainActivityFragment(R.layout.fragment_playlist_de
 
     override fun onDestroyView() {
         super.onDestroyView()
+        savedListState = _binding?.recyclerView?.layoutManager?.onSaveInstanceState()
         settledCallbacks.clear()
         playButtons = null
         _binding = null
@@ -665,3 +660,6 @@ private const val BUTTON_CORNER_DP = 20
 private const val BUTTON_ICON_PAD_DP = 18
 private const val BUTTON_END_DP = 16
 private const val BUTTON_BOTTOM_EXTRA_DP = 16
+
+// how many items load before the enter animation; the rest load right after it
+private const val FIRST_LOAD_COUNT = 12
