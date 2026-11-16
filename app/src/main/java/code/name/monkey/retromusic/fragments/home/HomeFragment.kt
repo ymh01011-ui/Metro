@@ -46,6 +46,7 @@ import code.name.monkey.appthemehelper.util.ColorUtil
 import code.name.monkey.retromusic.*
 import code.name.monkey.retromusic.adapter.HomeAdapter
 import code.name.monkey.retromusic.databinding.FragmentHomeBinding
+import code.name.monkey.retromusic.extensions.GlassAlertDialogBuilder
 import code.name.monkey.retromusic.extensions.accentColor
 import code.name.monkey.retromusic.extensions.dip
 import code.name.monkey.retromusic.extensions.elevatedAccentColor
@@ -361,7 +362,7 @@ class HomeFragment :
                 PinnedStore.Type.PLAYLIST to item.playlist.playlistEntity.playListId
             HomePinnedAdapter.Item.Add -> return
         }
-        MaterialAlertDialogBuilder(ctx)
+        GlassAlertDialogBuilder(ctx)
             .setMessage(R.string.home_unpin_message)
             .setPositiveButton(R.string.home_unpin) { _, _ ->
                 PinnedStore.remove(ctx, type, id)
@@ -372,7 +373,7 @@ class HomeFragment :
     }
 
     private fun showAddPinDialog() {
-        MaterialAlertDialogBuilder(requireContext())
+        GlassAlertDialogBuilder(requireContext())
             .setTitle(R.string.home_pin_add)
             .setItems(
                 arrayOf(
@@ -396,7 +397,7 @@ class HomeFragment :
             .filterNot { PinnedStore.contains(ctx, PinnedStore.Type.ALBUM, it.id) }
             .sortedBy { it.title.lowercase() }
         if (albums.isEmpty()) return
-        MaterialAlertDialogBuilder(ctx)
+        GlassAlertDialogBuilder(ctx)
             .setTitle(R.string.home_pin_albums)
             .setItems(albums.map { it.title }.toTypedArray()) { _, i ->
                 PinnedStore.add(ctx, PinnedStore.Type.ALBUM, albums[i].id)
@@ -414,7 +415,7 @@ class HomeFragment :
         val playlistNames: Array<CharSequence> = playlists
             .map { it.playlistEntity.playlistName }
             .toTypedArray()
-        MaterialAlertDialogBuilder(ctx)
+        GlassAlertDialogBuilder(ctx)
             .setTitle(R.string.home_pin_playlists)
             .setItems(playlistNames) { _: android.content.DialogInterface, i: Int ->
                 PinnedStore.add(ctx, PinnedStore.Type.PLAYLIST, playlists[i].playlistEntity.playListId)
@@ -429,7 +430,7 @@ class HomeFragment :
             .filterNot { PinnedStore.contains(ctx, PinnedStore.Type.ARTIST, it.id) }
             .sortedBy { it.name.lowercase() }
         if (artists.isEmpty()) return
-        MaterialAlertDialogBuilder(ctx)
+        GlassAlertDialogBuilder(ctx)
             .setTitle(R.string.home_pin_artists)
             .setItems(artists.map { it.name }.toTypedArray()) { _, i ->
                 PinnedStore.add(ctx, PinnedStore.Type.ARTIST, artists[i].id)
