@@ -463,7 +463,7 @@ fun goToArtist(activity: Activity) {
 
 private fun showArtistPickerDialog(activity: MainActivity, artists: List<Artist>) {
     val adapter = ArtistPickerAdapter(activity, artists)
-    MaterialAlertDialogBuilder(activity)
+    GlassAlertDialogBuilder(activity)
         .setTitle(R.string.action_go_to_artist)
         .setAdapter(adapter) { _, which ->
             goToMultiArtist(activity, artists[which].name)
