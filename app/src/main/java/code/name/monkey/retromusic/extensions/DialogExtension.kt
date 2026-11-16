@@ -11,24 +11,37 @@
  * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See the GNU General Public License for more details.
  *
- */
 package code.name.monkey.retromusic.extensions
 
+import android.content.Context
 import androidx.appcompat.app.AlertDialog
 import androidx.fragment.app.Fragment
 import code.name.monkey.retromusic.BuildConfig
 import code.name.monkey.retromusic.R
+import code.name.monkey.retromusic.views.GlassDialogs
 import com.afollestad.materialdialogs.MaterialDialog
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 
+/** Every dialog made by this builder turns into glass when it is shown (if Glass is enabled). */
+class GlassAlertDialogBuilder : MaterialAlertDialogBuilder {
+    constructor(context: Context) : super(context)
+    constructor(context: Context, themeResId: Int) : super(context, themeResId)
+
+    override fun create(): AlertDialog {
+        val dialog = super.create()
+        GlassDialogs.applyWhenShown(dialog)
+        return dialog
+    }
+}
+
 fun Fragment.materialDialog(title: Int): MaterialAlertDialogBuilder {
     return if (BuildConfig.DEBUG) {
-        MaterialAlertDialogBuilder(
+        GlassAlertDialogBuilder(
             requireContext(),
             R.style.MaterialAlertDialogTheme
         )
     } else {
-        MaterialAlertDialogBuilder(
+        GlassAlertDialogBuilder(
             requireContext()
         )
     }.setTitle(title)
@@ -46,4 +59,5 @@ fun AlertDialog.colorButtons(): AlertDialog {
 fun Fragment.materialDialog(): MaterialDialog {
     return MaterialDialog(requireContext())
         .cornerRadius(res = R.dimen.m3_dialog_corner_size)
+        .also { GlassDialogs.applyWhenShown(it) } // best effort, see notes
 }
