@@ -28,12 +28,16 @@ import android.view.View
 import android.view.inputmethod.InputMethodManager
 import android.widget.EditText
 import androidx.core.app.ActivityCompat
+import androidx.fragment.app.DialogFragment
+import androidx.fragment.app.Fragment
+import androidx.fragment.app.FragmentManager
 import androidx.core.content.getSystemService
 import code.name.monkey.appthemehelper.util.VersionUtils
 import code.name.monkey.retromusic.R
 import code.name.monkey.retromusic.extensions.accentColor
 import code.name.monkey.retromusic.extensions.rootView
 import code.name.monkey.retromusic.util.logD
+import code.name.monkey.retromusic.views.glassify
 import com.google.android.material.snackbar.Snackbar
 
 abstract class AbsBaseActivity : AbsThemeActivity() {
@@ -58,6 +62,14 @@ abstract class AbsBaseActivity : AbsThemeActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // every DialogFragment turns into glass when Glass is enabled
+        supportFragmentManager.registerFragmentLifecycleCallbacks(
+            object : FragmentManager.FragmentLifecycleCallbacks() {
+                override fun onFragmentStarted(fm: FragmentManager, f: Fragment) {
+                    if (f is DialogFragment) f.glassify()
+                }
+            }, true
+        )
         volumeControlStream = AudioManager.STREAM_MUSIC
         permissions = getPermissionsToRequest()
         hadPermissions = hasPermissions()
