@@ -68,6 +68,9 @@ object GlassDialogs {
         // 2) glass layer behind the panel, following the panel's bounds
         val layer = GlassHelper.createPopupLayer(dialog.context, backdrop, DIALOG_CORNER_DP)
         layer.tag = TAG
+        // the glass has an elevation (shadow), so it would be drawn OVER the dialog's content
+        // (that's why the text disappeared): lift the panel above it. No background = no shadow.
+        panel.elevation = layer.elevation + GlassHelper.dp(dialog.context, 2)
         val lp = FrameLayout.LayoutParams(panel.width, panel.height, Gravity.TOP or Gravity.START)
         content.addView(layer, 0, lp)
 
