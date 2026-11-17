@@ -59,6 +59,7 @@ import code.name.monkey.retromusic.glide.RetroGlideExtension.userProfileOptions
 import code.name.monkey.retromusic.helper.MusicPlayerRemote
 import code.name.monkey.retromusic.interfaces.IScrollHelper
 import code.name.monkey.retromusic.model.Song
+import code.name.monkey.retromusic.EXTRA_ARTIST_NAME
 import code.name.monkey.retromusic.util.PreferenceUtil
 import code.name.monkey.retromusic.util.PreferenceUtil.userName
 import com.bumptech.glide.Glide
@@ -344,7 +345,12 @@ class HomeFragment :
             is HomePinnedAdapter.Item.AlbumItem ->
                 slideTo(R.id.albumDetailsFragment, bundleOf(EXTRA_ALBUM_ID to item.album.id))
             is HomePinnedAdapter.Item.ArtistItem ->
-                slideTo(R.id.artistDetailsFragment, bundleOf(EXTRA_ARTIST_ID to item.artist.id))
+                // multi-artists mode: artists are resolved by (split) name, like "Go to artist"
+                if (PreferenceUtil.multiArtistsEnabled) {
+                    slideTo(R.id.multiArtistDetailsFragment, bundleOf(EXTRA_ARTIST_NAME to item.artist.name))
+                } else {
+                    slideTo(R.id.artistDetailsFragment, bundleOf(EXTRA_ARTIST_ID to item.artist.id))
+                }
             is HomePinnedAdapter.Item.PlaylistItem -> slideTo(
                 R.id.playlistDetailsFragment,
                 bundleOf(EXTRA_PLAYLIST_ID to item.playlist.playlistEntity.playListId)
