@@ -19,7 +19,7 @@ import android.graphics.Color
 import android.os.Bundle
 import android.view.View
 import androidx.appcompat.widget.Toolbar
-import androidx.palette.graphics.Palette
+import androidx.lifecycle.lifecycleScope
 import code.name.monkey.appthemehelper.util.ToolbarContentTintHelper
 import code.name.monkey.retromusic.R
 import code.name.monkey.retromusic.databinding.FragmentBlurBinding
@@ -30,10 +30,14 @@ import code.name.monkey.retromusic.fragments.player.PlayerAlbumCoverFragment
 import code.name.monkey.retromusic.glide.RetroGlideExtension
 import code.name.monkey.retromusic.helper.MusicPlayerRemote
 import code.name.monkey.retromusic.model.Song
+import code.name.monkey.retromusic.util.color.CoverColorExtractor
 import code.name.monkey.retromusic.util.color.MediaNotificationProcessor
 import com.bumptech.glide.Glide
 import com.bumptech.glide.request.target.CustomTarget
 import com.bumptech.glide.request.transition.Transition
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 
 class BlurPlayerFragment : AbsPlayerFragment(R.layout.fragment_blur) {
@@ -107,30 +111,18 @@ class BlurPlayerFragment : AbsPlayerFragment(R.layout.fragment_blur) {
 
     private var coverTarget: CustomTarget<Bitmap>? = null
 
-    // Pull the real colors straight from the album cover and feed them to the background
+    // Real colors from the cover (k-means, distinct hues) -> mesh background
     private fun updateBackgroundColors() {
         coverTarget?.let { Glide.with(this).clear(it) }
-        val target = object : CustomTarget<Bitmap>(200, 200) {
+        val target = object : CustomTarget<Bitmap>(96, 96) {
             override fun onResourceReady(resource: Bitmap, transition: Transition<in Bitmap>?) {
-                Palette.from(resource).clearFilters().generate { palette ->
-                    if (palette == null || _binding == null) return@generate
-                    val candidates = listOfNotNull(
-                        palette.dominantSwatch,
-                        palette.vibrantSwatch,
-                        palette.darkVibrantSwatch,
-                        palette.mutedSwatch,
-                        palette.lightVibrantSwatch,
-                        palette.darkMutedSwatch,
-                        palette.lightMutedSwatch
-                    ).filter { sw ->
-                        // skip pure white/black swatches, keep every other color untouched
-                        val l = sw.hsl[2]
-                        l in 0.08f..0.92f
-                    }.map { it.rgb }.distinct()
-
-                    if (candidates.isEmpty()) return@generate
-                    val colors = IntArray(4) { candidates[it % candidates.size] }
-                    binding.colorBackground.setColors(colors)
+                viewLifecycleOwner.lifecycleScope.launch {
+                    val colors = withContext(Dispatchers.Default) {
+                        CoverColorExtractor.extract(resource, 5)
+                    }
+                    if (colors.isNotEmpty() && _binding != null) {
+                        binding.colorBackground.setColors(colors)
+                    }
                 }
             }
 
@@ -143,14 +135,25 @@ class BlurPlayerFragment : AbsPlayerFragment(R.layout.fragment_blur) {
             .into(target)
     }
 
+    private fun updatePlayingState() {
+        if (_binding != null) binding.colorBackground.setPlaying(MusicPlayerRemote.isPlaying)
+    }
+
     override fun onServiceConnected() {
         updateIsFavorite()
         updateBackgroundColors()
+        updatePlayingState()
     }
 
     override fun onPlayingMetaChanged() {
         updateIsFavorite()
         updateBackgroundColors()
+        updatePlayingState()
+    }
+
+    override fun onPlayStateChanged() {
+        super.onPlayStateChanged()
+        updatePlayingState()
     }
 
     override fun onDestroyView() {
