@@ -7,16 +7,14 @@
     android:clickable="true"
     android:focusable="true">
 
-    <androidx.appcompat.widget.AppCompatImageView
+    <code.name.monkey.retromusic.views.MeshGradientView
         android:id="@+id/colorBackground"
         android:layout_width="0dp"
         android:layout_height="0dp"
-        android:scaleType="centerCrop"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toTopOf="parent"
-        app:srcCompat="@color/black_color" />
+        app:layout_constraintTop_toTopOf="parent" />
 
     <View
         android:layout_width="match_parent"
