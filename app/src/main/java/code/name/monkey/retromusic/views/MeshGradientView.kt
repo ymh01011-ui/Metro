@@ -10,7 +10,6 @@ import android.graphics.Shader
 import android.util.AttributeSet
 import android.view.View
 import android.view.animation.LinearInterpolator
-import androidx.core.graphics.ColorUtils
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.max
@@ -47,7 +46,7 @@ class MeshGradientView @JvmOverloads constructor(
 
     fun setColors(newColors: IntArray) {
         if (newColors.isEmpty()) return
-        val target = IntArray(newColors.size) { fixColor(newColors[it]) }
+        val target = newColors.copyOf()
         val from = IntArray(target.size) { colors.getOrElse(it) { _ -> target[it] } }
         colorAnim?.cancel()
         colorAnim = ValueAnimator.ofFloat(0f, 1f).apply {
@@ -61,15 +60,6 @@ class MeshGradientView @JvmOverloads constructor(
             }
             start()
         }
-    }
-
-    // Darken light colors so white text/icons stay readable
-    private fun fixColor(c: Int): Int {
-        val hsl = FloatArray(3)
-        ColorUtils.colorToHSL(c, hsl)
-        hsl[1] = hsl[1].coerceIn(0.20f, 0.50f)
-        hsl[2] = hsl[2].coerceIn(0.32f, 0.50f)
-        return ColorUtils.HSLToColor(hsl)
     }
 
     private fun rebuildShaders() {
