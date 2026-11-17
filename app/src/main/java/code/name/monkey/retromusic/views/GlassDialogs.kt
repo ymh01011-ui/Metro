@@ -11,9 +11,14 @@ import android.graphics.drawable.InsetDrawable
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
+import android.widget.Button
+import android.widget.EditText
 import android.widget.FrameLayout
+import android.widget.TextView
 import androidx.appcompat.app.AlertDialog
+import androidx.core.graphics.ColorUtils
 import androidx.fragment.app.DialogFragment
+import code.name.monkey.appthemehelper.ThemeStore
 import code.name.monkey.retromusic.util.PreferenceUtil
 
 /**
@@ -24,6 +29,7 @@ object GlassDialogs {
 
     private const val DIALOG_CORNER_DP = 28
     private const val TAG = "metro_glass_dialog"
+
 
     private fun glassOn(): Boolean = PreferenceUtil.glassEnabled
 
@@ -88,7 +94,33 @@ object GlassDialogs {
         }
         follow()
         panel.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> follow() }
+        // 3) ink: same logic as the popup menus / mini player. Over a bright page (artist / album
+        // pages painted from the cover) the text goes dark, over a dark page it goes light.
         layer.prime(Rect()) {}
+
+        layer.onToneExtra = { tintContent(panel, layer) }
+        panel.viewTreeObserver.addOnGlobalLayoutListener { tintContent(panel, layer) }
+        tintContent(panel, layer)
+    }
+
+    private fun tintContent(panel: View, layer: GlassLayer) {
+        val ink = layer.inkColor ?: return
+        val base = ThemeStore.accentColor(panel.context)
+        val accent = ColorUtils.blendARGB(
+            base, ColorUtils.blendARGB(base, Color.BLACK, 0.35f), layer.lightness
+        )
+        tintTree(panel, ink, accent)
+    }
+
+    private fun tintTree(v: View, ink: Int, accent: Int) {
+        when (v) {
+            is Button -> if (v.currentTextColor != accent) v.setTextColor(accent)
+            is EditText -> Unit
+            is TextView -> if (v.currentTextColor != ink) v.setTextColor(ink)
+        }
+        if (v is ViewGroup) {
+            for (i in 0 until v.childCount) tintTree(v.getChildAt(i), ink, accent)
+        }
     }
 
     private fun Context.findActivity(): Activity? {
