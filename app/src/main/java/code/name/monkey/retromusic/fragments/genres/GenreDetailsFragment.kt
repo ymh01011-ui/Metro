@@ -1,13 +1,16 @@
 package code.name.monkey.retromusic.fragments.genres
 
 import code.name.monkey.retromusic.views.GlassPopupMenu
+import android.content.Context
 import android.content.res.ColorStateList
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.graphics.Color
 import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.Drawable
 import android.graphics.drawable.GradientDrawable
+import android.os.Build
 import android.os.Bundle
 import android.util.LruCache
 import android.util.TypedValue
@@ -19,6 +22,7 @@ import android.view.ViewGroup
 import android.view.ViewTreeObserver
 import android.view.animation.Animation
 import android.view.animation.AnimationUtils
+import android.widget.FrameLayout
 import android.widget.ImageView
 import androidx.core.content.ContextCompat
 import androidx.core.graphics.ColorUtils
@@ -40,7 +44,9 @@ import code.name.monkey.retromusic.adapter.song.SongAdapter
 import code.name.monkey.retromusic.databinding.FragmentPlaylistDetailNewBinding
 import code.name.monkey.retromusic.dialogs.AddToPlaylistDialog
 import code.name.monkey.retromusic.fragments.base.AbsMainActivityFragment
+import code.name.monkey.retromusic.glide.RetroGlideExtension
 import code.name.monkey.retromusic.glide.RetroGlideExtension.playlistOptions
+import code.name.monkey.retromusic.glide.RetroGlideExtension.songCoverOptions
 import code.name.monkey.retromusic.glide.playlistPreview.GenrePreview
 import code.name.monkey.retromusic.helper.MusicPlayerRemote
 import code.name.monkey.retromusic.helper.menu.GenreMenuHelper
@@ -49,12 +55,15 @@ import code.name.monkey.retromusic.model.Song
 import code.name.monkey.retromusic.repository.RealRepository
 import code.name.monkey.retromusic.util.MusicUtil
 import code.name.monkey.retromusic.util.ThemedFastScroller
+import code.name.monkey.retromusic.views.GlassHelper
 import code.name.monkey.retromusic.views.TintableToolbar
 import com.bumptech.glide.Glide
 import com.bumptech.glide.load.DataSource
 import com.bumptech.glide.load.engine.GlideException
 import com.bumptech.glide.request.RequestListener
 import com.bumptech.glide.request.target.Target
+import java.io.File
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -73,6 +82,7 @@ private const val ENTER_SETTLE_FALLBACK_MS = 700L
 // أقصى مدة نستنى فيها (الهيدر + الصورة + أول دفعة أغاني) قبل ما الأنيميشن يبدأ.
 private const val RELEASE_DEADLINE_MS = 350L
 private const val COLLAGE_SIZE_PX = 1200
+private const val COLLAGE_DIR_NAME = "genre_collages"
 
 class GenreDetailsFragment : AbsMainActivityFragment(R.layout.fragment_playlist_detail_new) {
     private val arguments by navArgs<GenreDetailsFragmentArgs>()
@@ -219,19 +229,44 @@ class GenreDetailsFragment : AbsMainActivityFragment(R.layout.fragment_playlist_
     // ---------- الصورة التلقائية (من صور الأغاني، بنفس طريقة الـ Playlist) ----------
 
     private fun loadCollage(songs: List<Song>, signature: Int) {
-        val key = 31 * genre.id.hashCode() + signature
+        val genreId = genre.id
+        val key = 31 * genreId.hashCode() + signature
         if (key == appliedCollageKey) return
         appliedCollageKey = key
-        // نفس الصورة اتعرضت قبل كده: بنحطها فورًا من الذاكرة من غير ما نولّدها تاني
+        // 1) في الذاكرة: فورًا
         val cached = collageCache.get(key)
         if (cached != null && !cached.isRecycled) {
-            binding.image.setImageBitmap(cached)
-            binding.image.alpha = 1f
-            imageReady = true
-            tryRelease()
+            showCollage(cached)
             return
         }
+        // 2) محفوظة على التليفون (من فتح سابق، حتى لو التطبيق اتقفل): بتتفك من الملف
+        val file = collageFile(requireContext(), genreId, signature)
+        viewLifecycleOwner.lifecycleScope.launch {
+            val saved = withContext(Dispatchers.IO) {
+                if (file.exists()) runCatching { BitmapFactory.decodeFile(file.path) }.getOrNull() else null
+            }
+            if (_binding == null || appliedCollageKey != key) return@launch
+            if (saved != null) {
+                collageCache.put(key, saved)
+                showCollage(saved)
+            } else {
+                generateCollage(songs, key, genreId, signature)
+            }
+        }
+    }
+
+    private fun showCollage(bitmap: Bitmap) {
+        val b = _binding ?: return
+        b.image.setImageBitmap(bitmap)
+        b.image.alpha = 1f
+        imageReady = true
+        tryRelease()
+    }
+
+    // 3) مفيش نسخة: بتتولّد من أغلفة الأغاني وبتتحفظ للمرات الجاية
+    private fun generateCollage(songs: List<Song>, key: Int, genreId: Long, signature: Int) {
         // التوليد بيبدأ فورًا مش بعد الأنيميشن، والصفحة متأجلة لحد ما الصورة تجهز
+        val appContext = requireContext().applicationContext
         Glide.with(this)
             .load(GenrePreview(genre, songs))
             .playlistOptions()
@@ -251,13 +286,15 @@ class GenreDetailsFragment : AbsMainActivityFragment(R.layout.fragment_playlist_
                     dataSource: DataSource?, isFirstResource: Boolean
                 ): Boolean {
                     showImage()
-                    // نسخة في الذاكرة للفتح الجاي (مش نفس bitmap بتاع Glide عشان ميتعاد استخدامه)
+                    // نسخة في الذاكرة وعلى التليفون للفتح الجاي (مش نفس bitmap بتاع Glide عشان ميتعاد استخدامه)
                     val source = (resource as? BitmapDrawable)?.bitmap
                     if (source != null && !source.isRecycled) {
                         view?.post {
                             runCatching {
-                                source.copy(Bitmap.Config.ARGB_8888, false)
-                                    ?.let { collageCache.put(key, it) }
+                                source.copy(Bitmap.Config.ARGB_8888, false)?.let { copy ->
+                                    collageCache.put(key, copy)
+                                    saveCollage(appContext, genreId, signature, copy)
+                                }
                             }
                         }
                     }
@@ -265,6 +302,41 @@ class GenreDetailsFragment : AbsMainActivityFragment(R.layout.fragment_playlist_
                 }
             })
             .into(binding.image)
+    }
+
+    // ---------- حفظ الصورة على التليفون ----------
+
+    // بصمة الصورة: ترتيب الأغاني (ومعرّفاتها) بس. أي إضافة / حذف / تغيير ترتيب بتغيّرها.
+    private fun collageSignature(songs: List<Song>): Int =
+        songs.fold(songs.size) { acc, s -> 31 * acc + s.id.hashCode() }
+
+    private fun collageDir(context: Context): File = File(context.filesDir, COLLAGE_DIR_NAME)
+
+    private fun collageFile(context: Context, genreId: Long, signature: Int): File =
+        File(collageDir(context), "g${genreId}_$signature.webp")
+
+    @Suppress("DEPRECATION")
+    private fun saveCollage(context: Context, genreId: Long, signature: Int, bitmap: Bitmap) {
+        CoroutineScope(Dispatchers.IO).launch {
+            runCatching {
+                val dir = collageDir(context)
+                dir.mkdirs()
+                val target = collageFile(context, genreId, signature)
+                val temp = File(dir, target.name + ".tmp")
+                temp.outputStream().use { out ->
+                    val format = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                        Bitmap.CompressFormat.WEBP_LOSSLESS
+                    } else {
+                        Bitmap.CompressFormat.WEBP
+                    }
+                    bitmap.compress(format, 100, out)
+                }
+                temp.renameTo(target)
+                // النسخ القديمة لنفس الـ genre بتتمسح (فضل الأحدث بس)
+                dir.listFiles { f -> f.name.startsWith("g${genreId}_") && f != target }
+                    ?.forEach { it.delete() }
+            }
+        }
     }
 
     // الصورة جاهزة: لو الأنيميشن لسه مابدأش بتظهر فورًا، وإلا بتظهر بـ fade.
@@ -311,7 +383,7 @@ class GenreDetailsFragment : AbsMainActivityFragment(R.layout.fragment_playlist_
 
     private fun setUpRecyclerView() {
         // نفس layout صفحة الأغاني (Songs) بالظبط
-        songAdapter = SongAdapter(requireActivity(), ArrayList(), R.layout.item_list)
+        songAdapter = lightSongAdapter()
 
         val bottomPadding =
             resources.getDimensionPixelSize(R.dimen.mini_player_height) +
@@ -355,6 +427,26 @@ class GenreDetailsFragment : AbsMainActivityFragment(R.layout.fragment_playlist_
             override fun onItemRangeMoved(fromPosition: Int, toPosition: Int, itemCount: Int) =
                 postSyncHeader()
         })
+    }
+
+    /**
+     * نفس SongAdapter بس الأغلفة بتتحمل عادي. SongAdapter الأصلي بيحمّل كل غلاف عن طريق
+     * الـ palette (بيحسب ألوان لكل صف وقت ما الصفحة بتتحرك) والصفحة دي مش بتستخدم الألوان دي.
+     * asDrawable() زي SimpleSongAdapter: نفس الـ cache بتاع باقي الصفحات.
+     */
+    private fun lightSongAdapter(): SongAdapter = object : SongAdapter(
+        requireActivity(),
+        ArrayList(),
+        R.layout.item_list
+    ) {
+        override fun loadAlbumCover(song: Song, holder: SongAdapter.ViewHolder) {
+            val image = holder.image ?: return
+            Glide.with(activity)
+                .asDrawable()
+                .songCoverOptions(song)
+                .load(RetroGlideExtension.getSongModel(song))
+                .into(image)
+        }
     }
 
     // بيتعمل أول مرة المستخدم يسحب القايمة بصباعه، مش وقت فتح الصفحة.
@@ -406,7 +498,7 @@ class GenreDetailsFragment : AbsMainActivityFragment(R.layout.fragment_playlist_
         appliedSongsSignature = signature
 
         binding.playlistInfo.text = MusicUtil.getPlaylistInfoString(requireContext(), songs)
-        loadCollage(songs, signature)
+        loadCollage(songs, collageSignature(songs))
 
         val immediate = minOf(VISIBLE_SONGS_IMMEDIATE, songs.size)
         if (enterSettled || songs.size <= immediate) {
@@ -581,8 +673,7 @@ class GenreDetailsFragment : AbsMainActivityFragment(R.layout.fragment_playlist_
             toolbar.setTitleTextColor(fg)
         }
 
-        binding.shuffleActionGlass.setBackdropColor(bg)
-        binding.addActionGlass.setBackdropColor(bg)
+        applyRealGlassToActionCircles(bg)
         binding.shuffleAction.iconTint = ColorStateList.valueOf(fg)
         binding.addAction.iconTint = ColorStateList.valueOf(fg)
 
@@ -592,6 +683,23 @@ class GenreDetailsFragment : AbsMainActivityFragment(R.layout.fragment_playlist_
             backgroundTintList = ColorStateList.valueOf(playBg)
             setTextColor(playFg)
             iconTint = ColorStateList.valueOf(playFg)
+        }
+    }
+
+    /**
+     * نفس دوائر صفحة الألبوم: زجاج حقيقي (GlassLayer) بدل LiquidGlassView. الزرار نفسه بيفضل فوق
+     * الزجاج. الـ backdrop لازم يكون view مش parent للدوائر (الدوائر جوه الهيدر)، فبنستخدم
+     * القايمة: هي اللي بتعدّي من تحت الدوائر لما تسكرول.
+     */
+    private fun applyRealGlassToActionCircles(backgroundColor: Int) {
+        binding.shuffleActionGlass.visibility = View.GONE
+        binding.addActionGlass.visibility = View.GONE
+        for (button in listOf(binding.shuffleAction, binding.addAction)) {
+            val host = button.parent as? FrameLayout ?: continue
+            val layer = GlassHelper.syncFill(host, binding.recyclerView, true, raiseContent = false)
+                ?: continue
+            // لون الصفحة هنا هو لون الثيم
+            layer.baseColor = backgroundColor
         }
     }
 
