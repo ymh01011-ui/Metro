@@ -12,11 +12,6 @@
         android:layout_width="match_parent"
         android:layout_height="match_parent" />
 
-    <View
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:background="@drawable/shadow_up_edited" />
-
     <include layout="@layout/shadow_statusbar_toolbar" />
 
     <LinearLayout
