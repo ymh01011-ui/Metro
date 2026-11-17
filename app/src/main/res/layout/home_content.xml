@@ -117,13 +117,13 @@
             android:id="@+id/recentHeader"
             android:layout_width="match_parent"
             android:layout_height="48dp"
-            android:background="?attr/selectableItemBackground"
+            android:background="@null"
             android:clickable="true"
             android:focusable="true"
             android:gravity="center_vertical"
             android:orientation="horizontal"
             android:paddingStart="@dimen/home_content_margin"
-            android:paddingEnd="@dimen/home_chevron_end_padding">
+            android:paddingEnd="16dp">
 
             <TextView
                 android:layout_width="0dp"
@@ -134,12 +134,14 @@
                 android:textSize="22sp"
                 android:textStyle="bold" />
 
-            <ImageView
-                android:layout_width="24dp"
-                android:layout_height="24dp"
+            <!-- same icon and view as the arrow of "Top artists" (section_recycler_view.xml).
+                 There it has 16dp padding on every side, so its right edge sits 16dp from the
+                 screen edge: the 16dp paddingEnd above puts this one on the same vertical line. -->
+            <code.name.monkey.retromusic.views.AccentIcon
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
                 android:importantForAccessibility="no"
-                android:src="@drawable/ic_home_chevron_right"
-                app:tint="?android:attr/textColorSecondary" />
+                app:srcCompat="@drawable/ic_arrow_forward" />
         </LinearLayout>
 
         <androidx.recyclerview.widget.RecyclerView
