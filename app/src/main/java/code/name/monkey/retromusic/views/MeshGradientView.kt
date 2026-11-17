@@ -67,8 +67,8 @@ class MeshGradientView @JvmOverloads constructor(
     private fun fixColor(c: Int): Int {
         val hsl = FloatArray(3)
         ColorUtils.colorToHSL(c, hsl)
-        hsl[1] = hsl[1].coerceIn(0.35f, 0.9f)
-        hsl[2] = hsl[2].coerceIn(0.15f, 0.40f)
+        hsl[1] = hsl[1].coerceIn(0.20f, 0.50f)
+        hsl[2] = hsl[2].coerceIn(0.32f, 0.50f)
         return ColorUtils.HSLToColor(hsl)
     }
 
