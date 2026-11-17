@@ -15,7 +15,9 @@ import code.name.monkey.retromusic.db.toSong
 import android.content.res.ColorStateList
 import code.name.monkey.retromusic.glide.RetroGlideExtension
 import code.name.monkey.retromusic.glide.RetroGlideExtension.artistImageOptions
+import code.name.monkey.retromusic.glide.RetroGlideExtension.playlistOptions
 import code.name.monkey.retromusic.glide.RetroGlideExtension.songCoverOptions
+import code.name.monkey.retromusic.glide.playlistPreview.PlaylistPreview
 import code.name.monkey.retromusic.model.Album
 import code.name.monkey.retromusic.model.Artist
 import code.name.monkey.retromusic.model.Song
@@ -86,11 +88,11 @@ class HomePinnedAdapter(
                 setTexts(holder, item.artist.name, null, centered = true)
             }
             is Item.PlaylistItem -> {
-                val first = item.playlist.songs.firstOrNull()?.toSong()
-                if (first != null) loadCover(holder.image, first) else {
-                    clearImage(holder.image)
-                    noCover = true
-                }
+                // same source as the Playlists page (PlaylistAdapter): the playlist preview
+                Glide.with(holder.image)
+                    .load(PlaylistPreview(item.playlist))
+                    .playlistOptions()
+                    .into(holder.image)
                 val count = item.playlist.songs.size
                 setTexts(
                     holder,
