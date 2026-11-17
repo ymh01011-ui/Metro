@@ -14,11 +14,12 @@
  */
 package code.name.monkey.retromusic.fragments.player.blur
 
+import android.graphics.Bitmap
 import android.graphics.Color
 import android.os.Bundle
 import android.view.View
 import androidx.appcompat.widget.Toolbar
-import androidx.core.graphics.ColorUtils
+import androidx.palette.graphics.Palette
 import code.name.monkey.appthemehelper.util.ToolbarContentTintHelper
 import code.name.monkey.retromusic.R
 import code.name.monkey.retromusic.databinding.FragmentBlurBinding
@@ -26,9 +27,13 @@ import code.name.monkey.retromusic.extensions.drawAboveSystemBars
 import code.name.monkey.retromusic.extensions.whichFragment
 import code.name.monkey.retromusic.fragments.base.AbsPlayerFragment
 import code.name.monkey.retromusic.fragments.player.PlayerAlbumCoverFragment
+import code.name.monkey.retromusic.glide.RetroGlideExtension
 import code.name.monkey.retromusic.helper.MusicPlayerRemote
 import code.name.monkey.retromusic.model.Song
 import code.name.monkey.retromusic.util.color.MediaNotificationProcessor
+import com.bumptech.glide.Glide
+import com.bumptech.glide.request.target.CustomTarget
+import com.bumptech.glide.request.transition.Transition
 
 
 class BlurPlayerFragment : AbsPlayerFragment(R.layout.fragment_blur) {
@@ -78,22 +83,6 @@ class BlurPlayerFragment : AbsPlayerFragment(R.layout.fragment_blur) {
         libraryViewModel.updateColor(color.backgroundColor)
         ToolbarContentTintHelper.colorizeToolbar(binding.playerToolbar, Color.WHITE, activity)
 
-        val bg = color.backgroundColor
-        binding.colorBackground.setColors(
-            intArrayOf(
-                bg,
-                ColorUtils.blendARGB(bg, Color.WHITE, 0.15f),
-                shiftHue(bg, 25f),
-                shiftHue(bg, -25f)
-            )
-        )
-    }
-
-    private fun shiftHue(color: Int, degrees: Float): Int {
-        val hsl = FloatArray(3)
-        ColorUtils.colorToHSL(color, hsl)
-        hsl[0] = (hsl[0] + degrees + 360f) % 360f
-        return ColorUtils.HSLToColor(hsl)
     }
 
     override fun toggleFavorite(song: Song) {
@@ -116,16 +105,58 @@ class BlurPlayerFragment : AbsPlayerFragment(R.layout.fragment_blur) {
     override val paletteColor: Int
         get() = lastColor
 
+    private var coverTarget: CustomTarget<Bitmap>? = null
+
+    // Pull the real colors straight from the album cover and feed them to the background
+    private fun updateBackgroundColors() {
+        coverTarget?.let { Glide.with(this).clear(it) }
+        val target = object : CustomTarget<Bitmap>(200, 200) {
+            override fun onResourceReady(resource: Bitmap, transition: Transition<in Bitmap>?) {
+                Palette.from(resource).clearFilters().generate { palette ->
+                    if (palette == null || _binding == null) return@generate
+                    val candidates = listOfNotNull(
+                        palette.dominantSwatch,
+                        palette.vibrantSwatch,
+                        palette.darkVibrantSwatch,
+                        palette.mutedSwatch,
+                        palette.lightVibrantSwatch,
+                        palette.darkMutedSwatch,
+                        palette.lightMutedSwatch
+                    ).filter { sw ->
+                        // skip pure white/black swatches, keep every other color untouched
+                        val l = sw.hsl[2]
+                        l in 0.08f..0.92f
+                    }.map { it.rgb }.distinct()
+
+                    if (candidates.isEmpty()) return@generate
+                    val colors = IntArray(4) { candidates[it % candidates.size] }
+                    binding.colorBackground.setColors(colors)
+                }
+            }
+
+            override fun onLoadCleared(placeholder: android.graphics.drawable.Drawable?) {}
+        }
+        coverTarget = target
+        Glide.with(this)
+            .asBitmap()
+            .load(RetroGlideExtension.getSongModel(MusicPlayerRemote.currentSong))
+            .into(target)
+    }
+
     override fun onServiceConnected() {
         updateIsFavorite()
+        updateBackgroundColors()
     }
 
     override fun onPlayingMetaChanged() {
         updateIsFavorite()
+        updateBackgroundColors()
     }
 
     override fun onDestroyView() {
         super.onDestroyView()
+        coverTarget?.let { Glide.with(this).clear(it) }
+        coverTarget = null
         _binding = null
     }
 }
