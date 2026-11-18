@@ -76,6 +76,23 @@ class PlayerAlbumCoverFragment : AbsMusicServiceFragment(R.layout.fragment_playe
 
     var lyrics: Lyrics? = null
 
+    /** The big artwork of the page that is currently centred (used by the mini->full morph). */
+    fun currentCoverImage(): View? {
+        val pager = _binding?.viewPager ?: return null
+        var best: View? = null
+        var bestD = Float.MAX_VALUE
+        for (i in 0 until pager.childCount) {
+            val page = pager.getChildAt(i)
+            val img = page.findViewById<View>(R.id.player_image) ?: continue
+            val d = kotlin.math.abs(page.left + page.translationX + page.width / 2f - pager.width / 2f)
+            if (d < bestD) {
+                bestD = d
+                best = img
+            }
+        }
+        return best
+    }
+
     fun removeSlideEffect() {
         val transformer = ParallaxPagerTransformer(R.id.player_image)
         transformer.setSpeed(0.3f)
