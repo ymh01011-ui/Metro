@@ -32,7 +32,7 @@ class MeshGradientView @JvmOverloads constructor(
 ) : View(context, attrs) {
 
     /** Constant black scrim over the colors (Apple keeps the mesh a bit dimmed). 0 = off. */
-    var scrimAlpha = 0.28f
+    var scrimAlpha = 0.12f
         set(value) { field = value.coerceIn(0f, 0.8f); invalidate() }
 
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
@@ -42,8 +42,12 @@ class MeshGradientView @JvmOverloads constructor(
 
     // Anchor (fraction of view) and orbit radius for each blob, plus orbit speeds (integers
     // => the 48s loop is seamless). Slot 0 is the base fill, slots 1..4 are the moving blobs.
-    private val ax = floatArrayOf(0.50f, 0.18f, 0.82f, 0.22f, 0.80f)
-    private val ay = floatArrayOf(0.50f, 0.14f, 0.22f, 0.82f, 0.78f)
+    private val ax = floatArrayOf(0.50f, 0.22f, 0.80f, 0.25f, 0.78f)
+    private val ay = floatArrayOf(0.50f, 0.20f, 0.30f, 0.80f, 0.72f)
+    // Blob size (fraction of the longer side) and strength. Slots 1-2 hold the two most
+    // important colors: big and strong. Slots 3-4 are shades / extra colors: smaller, softer.
+    private val radius = floatArrayOf(0f, 0.85f, 0.70f, 0.60f, 0.55f)
+    private val strength = floatArrayOf(0f, 0.95f, 0.95f, 0.50f, 0.50f)
     private val rx = floatArrayOf(0.00f, 0.20f, 0.18f, 0.22f, 0.16f)
     private val ry = floatArrayOf(0.00f, 0.12f, 0.16f, 0.14f, 0.18f)
     private val fx = intArrayOf(0, 1, 2, 1, 3)
@@ -101,13 +105,16 @@ class MeshGradientView @JvmOverloads constructor(
 
     private fun rebuildShaders() {
         if (width == 0 || height == 0) return
-        val r = max(width, height) * 0.70f
+        val side = max(width, height)
+        // alpha falloff ~ (1 - d)^0.8 : strong core, soft edge
+        val pos = floatArrayOf(0f, 0.25f, 0.5f, 0.75f, 1f)
+        val fall = floatArrayOf(1f, 0.794f, 0.574f, 0.330f, 0f)
         for (i in 1 until slots) {
             val c = colors[i]
             shaders[i] = RadialGradient(
-                0f, 0f, r,
-                intArrayOf(c, withAlpha(c, 0xA8), withAlpha(c, 0)),
-                floatArrayOf(0f, 0.55f, 1f),
+                0f, 0f, side * radius[i],
+                IntArray(5) { withAlpha(c, (fall[it] * strength[i] * 255).toInt()) },
+                pos,
                 Shader.TileMode.CLAMP
             )
         }
@@ -137,14 +144,16 @@ class MeshGradientView @JvmOverloads constructor(
         canvas.drawColor(colors[0])
         val w = width.toFloat()
         val h = height.toFloat()
-        for (i in 1 until slots) {
+        val side = max(w, h)
+        // Draw the shade blobs first, the main colors last so they stay on top and visible
+        for (i in slots - 1 downTo 1) {
             val shader = shaders[i] ?: continue
             val cx = w * (ax[i] + rx[i] * cos(angle * fx[i] + ph[i]))
             val cy = h * (ay[i] + ry[i] * sin(angle * fy[i] + ph[i] * 1.3f))
             paint.shader = shader
             canvas.save()
             canvas.translate(cx, cy)
-            canvas.drawCircle(0f, 0f, max(w, h) * 0.70f, paint)
+            canvas.drawCircle(0f, 0f, side * radius[i], paint)
             canvas.restore()
         }
         if (scrimAlpha > 0f) {
