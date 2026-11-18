@@ -91,24 +91,26 @@ class NowPlayingChoreographer(
     /**
      * The sheet travels about 1200px, so p = 0.1 is only ~120px of finger movement.
      *
-     * The tab bar's fade is the clock of the whole transformation: the full player is 100% there
-     * at the very moment the tab bar is 100% gone ([glassArrive] / [plainArrive]). Everything
-     * that belongs to the player is derived from it, so changing the tab bar timing moves the
-     * player with it.
+     * Glass mode runs in two steps:
+     *   1. 0 .. [glassExpand]: the glass pill is pulled over the tab bar (which dissolves in it) and
+     *      grows, in width and in height, until it has exactly the size of the player behind it.
+     *      The player is not visible yet.
+     *   2. [glassExpand] .. [glassArrive]: the player appears on top, quickly. The glass is
+     *      dropped once the player is opaque.
      */
-    private val glassArrive = 0.06f
+    private val glassExpand = 0.12f
+    private val glassArrive = glassExpand + 0.05f
     private val plainArrive = 0.20f
 
-    /** glass on: the glass body is pulled over the tab bar, the player takes it over at [glassArrive] */
     private val glassTimes = Times(
         miniOut = Span(0f, 0.035f),
-        playerIn = Span(0f, glassArrive),
-        controlsIn = Span(0.015f, glassArrive),
-        toolbarIn = Span(0.025f, glassArrive),
-        navFade = Span(0.01f, glassArrive),
-        navSlide = Span(glassArrive, 0.25f), // moves away only once it is invisible
-        backdropIn = Span(0f, glassArrive),
-        cornerIn = Span(0f, 0.10f),
+        playerIn = Span(glassExpand, glassArrive),
+        controlsIn = Span(glassExpand + 0.01f, glassArrive + 0.02f),
+        toolbarIn = Span(glassExpand + 0.02f, glassArrive + 0.03f),
+        navFade = Span(0.01f, 0.06f), // inside the expansion; moves away once it is invisible
+        navSlide = Span(0.06f, 0.25f),
+        backdropIn = Span(glassExpand, glassArrive),
+        cornerIn = Span(glassExpand - 0.04f, glassExpand),
         cornerOut = Span(0.60f, 1f),
     )
 
@@ -127,10 +129,9 @@ class NowPlayingChoreographer(
 
     // the glass body (only needed until the player has taken over)
     private val bodyStretch = Span(0f, 0.04f) // pill is pulled down over the tab bar
-    private val bodyGrow = Span(0f, 0.14f) // sides and top open up to the screen edges
-    private val bodyFloor = Span(0.02f, 0.16f) // bottom goes from the tab bar to the screen bottom
-    private val bodyCorner = Span(0.20f, 0.60f)
-    private val bodyOut = Span(0.03f, glassArrive) // gone as soon as the player is fully there
+    private val bodyGrow = Span(0f, glassExpand) // sides and top open up to the screen edges
+    private val bodyFloor = Span(0.02f, glassExpand) // bottom goes down to the screen bottom
+    private val bodyOut = Span(glassArrive - 0.02f, glassArrive + 0.01f) // gone under the player
 
     private val density = panel.resources.displayMetrics.density
     private fun dp(v: Float) = v * density
@@ -328,7 +329,8 @@ class NowPlayingChoreographer(
             lp.height = height
             layer.layoutParams = lp
         }
-        GlassHelper.setCornerOverride(layer, baseRadius * (1f - bodyCorner.at(p)))
+        // pill radius -> the sheet's radius, so the player that appears on top has the same corners
+        GlassHelper.setCornerOverride(layer, lerp(baseRadius, dp(32f), grow))
     }
 
     /** Back to the pill the layout gave it (and to applyCompact's control). */
