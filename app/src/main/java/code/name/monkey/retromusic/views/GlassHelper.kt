@@ -75,6 +75,18 @@ object GlassHelper {
 
     fun layerOf(host: ViewGroup): GlassLayer? = host.findViewWithTag<GlassLayer>(TAG_LAYER)
 
+    private val cornerOverrides = WeakHashMap<View, Float>()
+
+    /**
+     * Lets a pill that grows (the mini player turning into the player) keep a chosen corner radius
+     * instead of the "half of the shorter side" of a pill. null = back to the pill shape.
+     */
+    fun setCornerOverride(layer: View, px: Float?) {
+        if (px == null) cornerOverrides.remove(layer) else cornerOverrides[layer] = px
+        (layer.findViewWithTag<View>(TAG_EDGE)?.background as? RimDrawable)?.setCorner(px ?: -1f)
+        layer.invalidateOutline()
+    }
+
     /** Re-reads the settings for the pill of [host]. */
     fun restyle(host: ViewGroup) {
         layerOf(host)?.let { style(it) }
@@ -287,9 +299,9 @@ object GlassHelper {
         layer.layoutParams = params
         layer.outlineProvider = object : ViewOutlineProvider() {
             override fun getOutline(view: View, outline: Outline) {
-                outline.setRoundRect(
-                    0, 0, view.width, view.height, minOf(view.width, view.height) / 2f
-                )
+                val pill = minOf(view.width, view.height) / 2f
+                val radius = cornerOverrides[view]?.let { minOf(it, pill) } ?: pill
+                outline.setRoundRect(0, 0, view.width, view.height, radius)
                 outline.alpha = 1f
             }
         }
@@ -766,7 +778,8 @@ object GlassHelper {
         panel.translationY = shiftY * p * (1f - lift.coerceIn(0f, 1f))
         layerOf(panel)?.let { layer ->
             val params = layer.layoutParams as? ViewGroup.MarginLayoutParams
-            if (params != null &&
+            // (while the sheet is open, lift > 0, the choreographer owns the pill's bounds)
+            if (params != null && lift <= 0f &&
                 (params.marginStart != side + extra || params.marginEnd != side)
             ) {
                 // always set BOTH ends: setting only the start resets the end margin to 0
@@ -792,7 +805,7 @@ private const val RIM_OPACITY = 0.75f
 
 private class RimDrawable(
     private val strokePx: Float,
-    private val cornerPx: Float = -1f,
+    private var cornerPx: Float = -1f,
 ) : Drawable() {
     private var tone = 0f
     private val sheen = Paint(Paint.ANTI_ALIAS_FLAG)
@@ -805,6 +818,12 @@ private class RimDrawable(
         strokeWidth = strokePx
     }
     private val rect = RectF()
+
+    fun setCorner(px: Float) {
+        if (px == cornerPx) return
+        cornerPx = px
+        invalidateSelf()
+    }
 
     fun setTone(value: Float) {
         if (value == tone) return
