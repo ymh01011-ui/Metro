@@ -81,8 +81,8 @@ import code.name.monkey.retromusic.model.CategoryInfo
 import code.name.monkey.retromusic.util.PreferenceUtil
 import code.name.monkey.retromusic.util.ViewUtil
 import code.name.monkey.retromusic.util.logD
-import code.name.monkey.retromusic.views.CoverMorphHelper
 import code.name.monkey.retromusic.views.GlassHelper
+import code.name.monkey.retromusic.views.NowPlayingChoreographer
 import com.google.android.material.bottomnavigation.BottomNavigationView
 import com.google.android.material.bottomsheet.BottomSheetBehavior
 import com.google.android.material.bottomsheet.BottomSheetBehavior.BottomSheetCallback
@@ -112,7 +112,10 @@ abstract class AbsSlidingMusicPanelActivity : AbsMusicServiceActivity(),
     private var paletteColor: Int = Color.WHITE
     private var navigationBarColor = 0
     private var panelGlass: View? = null
-    private var coverMorph: CoverMorphHelper? = null
+    private var choreographer: NowPlayingChoreographer? = null
+
+    /** 0 = mini player, 1 = full player: the one value every visual is derived from */
+    private var sheetProgress = 0f
     private var glassCompact = false
     /** true while a detail page (album, artist, playlist...) is open and the bar is folded */
     private var glassDetailMode = false
@@ -172,7 +175,6 @@ abstract class AbsSlidingMusicPanelActivity : AbsMusicServiceActivity(),
 
             override fun onSlide(bottomSheet: View, slideOffset: Float) {
                 setMiniPlayerAlphaProgress(slideOffset)
-                coverMorph?.onSlide(slideOffset)
                 navigationBarColorAnimator?.cancel()
                 setNavigationBarColorPreOreo(
                     argbEvaluator.evaluate(
@@ -185,9 +187,11 @@ abstract class AbsSlidingMusicPanelActivity : AbsMusicServiceActivity(),
 
             override fun onStateChanged(bottomSheet: View, newState: Int) {
                 onBackPressedCallback.isEnabled = newState == STATE_EXPANDED
-                // the player is opening: unfold; back to the mini player: fold again on detail pages
-                setGlassCompact(newState == STATE_COLLAPSED && glassDetailMode)
+                // The fold is frozen while the sheet moves: it only changes at rest, and the
+                // choreographer lifts the folded panel back to y = 0 with the sheet.
                 if (newState == STATE_EXPANDED) resetGlassCompact()
+                else if (newState == STATE_COLLAPSED) setGlassCompact(glassDetailMode)
+                if (newState == STATE_HIDDEN) setMiniPlayerAlphaProgress(0F)
                 if (PreferenceUtil.glassEnabled) {
                     if (newState == STATE_EXPANDED) {
                         GlassHelper.setHostBackgroundAlpha(binding.slidingPanel, 255)
@@ -224,9 +228,6 @@ abstract class AbsSlidingMusicPanelActivity : AbsMusicServiceActivity(),
                     else -> {
                         logD("Do a flip")
                     }
-                }
-                if (newState == STATE_EXPANDED || newState == STATE_COLLAPSED || newState == STATE_HIDDEN) {
-                    coverMorph?.finish()
                 }
             }
         }
@@ -266,10 +267,31 @@ abstract class AbsSlidingMusicPanelActivity : AbsMusicServiceActivity(),
 
     private fun setupBottomSheet() {
         bottomSheetBehavior = from(binding.slidingPanel)
-        coverMorph = CoverMorphHelper(
+        choreographer = NowPlayingChoreographer(
             binding.slidingPanel,
-            miniCard = { miniPlayerFragment?.view?.findViewById(R.id.imageTextContainer) },
-            bigCover = { if (this::playerFragment.isInitialized) playerFragment.bigCoverImage() else null }
+            object : NowPlayingChoreographer.Host {
+                override val mini: View?
+                    get() = miniPlayerFragment?.view
+                override val miniCard: View?
+                    get() = miniPlayerFragment?.view?.findViewById(R.id.imageTextContainer)
+                override val player: View
+                    get() = binding.playerFragmentContainer
+                override val bigArtwork: View?
+                    get() = if (this@AbsSlidingMusicPanelActivity::playerFragment.isInitialized) {
+                        playerFragment.bigCoverImage()
+                    } else null
+                override val nav: View?
+                    get() = if (this@AbsSlidingMusicPanelActivity.isLandscape) null
+                    else binding.navigationView
+                override val panelGlass: View?
+                    get() = this@AbsSlidingMusicPanelActivity.panelGlass
+                override val fadesPanelBackground: Boolean
+                    get() = PreferenceUtil.glassEnabled
+
+                override fun setPanelBackgroundAlpha(alpha: Int) {
+                    GlassHelper.setHostBackgroundAlpha(binding.slidingPanel, alpha)
+                }
+            }
         )
         bottomSheetBehavior.addBottomSheetCallback(bottomSheetCallbackList)
         bottomSheetBehavior.isHideable = PreferenceUtil.swipeDownToDismiss
@@ -293,6 +315,7 @@ abstract class AbsSlidingMusicPanelActivity : AbsMusicServiceActivity(),
         super.onDestroy()
         bottomSheetBehavior.removeBottomSheetCallback(bottomSheetCallbackList)
         compactAnimator?.cancel()
+        choreographer?.release()
         PreferenceUtil.unregisterOnSharedPreferenceChangedListener(this)
     }
 
@@ -567,7 +590,8 @@ abstract class AbsSlidingMusicPanelActivity : AbsMusicServiceActivity(),
             miniPlayerFragment?.view,
             compactProgress,
             compactShiftY,
-            circle
+            circle,
+            sheetProgress
         )
     }
 
@@ -599,23 +623,13 @@ abstract class AbsSlidingMusicPanelActivity : AbsMusicServiceActivity(),
         bottomSheetBehavior.state = STATE_EXPANDED
     }
 
+    /** Single entry point: everything visual follows [progress] through the choreographer. */
     private fun setMiniPlayerAlphaProgress(progress: Float) {
         if (progress < 0) return
-        val alpha = 1 - progress
-        miniPlayerFragment?.view?.alpha = 1 - (progress / 0.2F)
-        miniPlayerFragment?.view?.isGone = alpha == 0f
-        if (!isLandscape) {
-            binding.navigationView.translationY = progress * 500
-            binding.navigationView.alpha = alpha
-        }
-        binding.playerFragmentContainer.alpha = (progress - 0.2F) / 0.2F
-        panelGlass?.alpha = (1 - progress / 0.2F).coerceIn(0F, 1F)
-        if (PreferenceUtil.glassEnabled) {
-            GlassHelper.setHostBackgroundAlpha(
-                binding.slidingPanel,
-                ((progress / 0.2F).coerceIn(0F, 1F) * 255).toInt()
-            )
-        }
+        sheetProgress = progress
+        // the folded panel's own offset depends on the sheet, so refresh it first
+        if (compactProgress > 0f) renderCompact()
+        choreographer?.render(progress)
     }
 
     private fun animateNavigationBarColor(color: Int) {
