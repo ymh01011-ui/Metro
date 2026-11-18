@@ -719,6 +719,8 @@ object GlassHelper {
         p: Float,
         shiftY: Float,
         circle: Int,
+        // how far the sheet is open (0..1): the folded panel travels back to y = 0 with it
+        lift: Float = 0f,
     ) {
         val context = nav.context
         val side = dp(context, SIDE_MARGIN_DP)
@@ -761,7 +763,7 @@ object GlassHelper {
         // (not only its glass and content), so no empty touchable strip is left where the mini
         // player used to be.
         val extra = ((circle + gap) * p).toInt()
-        panel.translationY = shiftY * p
+        panel.translationY = shiftY * p * (1f - lift.coerceIn(0f, 1f))
         layerOf(panel)?.let { layer ->
             val params = layer.layoutParams as? ViewGroup.MarginLayoutParams
             if (params != null &&
