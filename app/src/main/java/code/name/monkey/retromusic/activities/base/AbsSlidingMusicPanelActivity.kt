@@ -285,6 +285,8 @@ abstract class AbsSlidingMusicPanelActivity : AbsMusicServiceActivity(),
                     else binding.navigationView
                 override val panelGlass: View?
                     get() = this@AbsSlidingMusicPanelActivity.panelGlass
+                override val navGlass: View?
+                    get() = GlassHelper.layerOf(binding.navigationView)
                 override val fadesPanelBackground: Boolean
                     get() = PreferenceUtil.glassEnabled
 
