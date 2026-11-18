@@ -84,7 +84,9 @@ class PlayerAlbumCoverFragment : AbsMusicServiceFragment(R.layout.fragment_playe
         for (i in 0 until pager.childCount) {
             val page = pager.getChildAt(i)
             val img = page.findViewById<View>(R.id.player_image) ?: continue
-            val d = kotlin.math.abs(page.left + page.translationX + page.width / 2f - pager.width / 2f)
+            // ViewPager lays pages out side by side and scrolls them with scrollX, so the page
+            // that is really on screen is the one whose centre lands in the middle of the viewport
+            val d = kotlin.math.abs(page.left - pager.scrollX + page.translationX + page.width / 2f - pager.width / 2f)
             if (d < bestD) {
                 bestD = d
                 best = img
