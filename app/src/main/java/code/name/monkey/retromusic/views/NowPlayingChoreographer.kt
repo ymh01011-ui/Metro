@@ -14,7 +14,6 @@ import com.google.android.material.card.MaterialCardView
 import com.google.android.material.imageview.ShapeableImageView
 import kotlin.math.abs
 import kotlin.math.max
-import kotlin.math.pow
 
 /**
  * The ONE place that decides how the mini player turns into the full player (and back).
@@ -88,38 +87,44 @@ class NowPlayingChoreographer(
         val cornerOut: Span,
     )
 
-    /** glass on: the glass body stays until the player has arrived, so the player comes late */
+    /**
+     * The sheet travels about 1200px, so p = 0.1 is only ~120px of finger movement. The whole
+     * transformation lives in the first third of the travel: it starts almost at once and the
+     * rest of the way is the finished player rising into place.
+     */
+
+    /** glass on: the glass body stays until the player backdrop is in, then dissolves under it */
     private val glassTimes = Times(
-        miniOut = Span(0f, 0.16f),
-        playerIn = Span(0.45f, 0.80f),
-        controlsIn = Span(0.55f, 0.90f),
-        toolbarIn = Span(0.65f, 0.98f),
-        navFade = Span(0.02f, 0.12f),
-        navSlide = Span(0.12f, 0.50f), // moves away only once it is invisible
-        backdropIn = Span(0.55f, 0.85f),
-        cornerIn = Span(0.50f, 0.65f),
+        miniOut = Span(0f, 0.06f),
+        playerIn = Span(0.05f, 0.30f),
+        controlsIn = Span(0.14f, 0.42f),
+        toolbarIn = Span(0.22f, 0.52f),
+        navFade = Span(0.01f, 0.06f),
+        navSlide = Span(0.06f, 0.25f), // moves away only once it is invisible
+        backdropIn = Span(0.08f, 0.32f),
+        cornerIn = Span(0f, 0.10f),
         cornerOut = Span(0.60f, 1f),
     )
 
-    /** glass off: opaque panel, so the player can come early */
+    /** glass off: opaque panel */
     private val plainTimes = Times(
-        miniOut = Span(0f, 0.16f),
-        playerIn = Span(0.10f, 0.50f),
-        controlsIn = Span(0.38f, 0.82f),
-        toolbarIn = Span(0.55f, 0.95f),
-        navFade = Span(0f, 0.35f),
-        navSlide = Span(0f, 0.70f),
-        backdropIn = Span(0f, 0.22f),
-        cornerIn = Span(0f, 0.15f),
+        miniOut = Span(0f, 0.12f),
+        playerIn = Span(0.04f, 0.30f),
+        controlsIn = Span(0.12f, 0.42f),
+        toolbarIn = Span(0.22f, 0.52f),
+        navFade = Span(0f, 0.20f),
+        navSlide = Span(0f, 0.40f),
+        backdropIn = Span(0f, 0.15f),
+        cornerIn = Span(0f, 0.10f),
         cornerOut = Span(0.60f, 1f),
     )
 
     // the glass body
-    private val bodyStretch = Span(0f, 0.08f) // pill is pulled down over the tab bar
-    private val bodyGrow = Span(0.05f, 0.70f) // sides and top open up to the screen edges
-    private val bodyFloor = Span(0.10f, 0.50f) // bottom goes from the tab bar to the screen bottom
-    private val bodyCorner = Span(0.55f, 0.95f)
-    private val bodyOut = Span(0.62f, 0.95f) // dissolves under the player
+    private val bodyStretch = Span(0f, 0.04f) // pill is pulled down over the tab bar
+    private val bodyGrow = Span(0f, 0.14f) // sides and top open up to the screen edges
+    private val bodyFloor = Span(0.02f, 0.16f) // bottom goes from the tab bar to the screen bottom
+    private val bodyCorner = Span(0.20f, 0.60f)
+    private val bodyOut = Span(0.22f, 0.45f) // dissolves under the player
 
     private val density = panel.resources.displayMetrics.density
     private fun dp(v: Float) = v * density
@@ -364,8 +369,9 @@ class NowPlayingChoreographer(
             }
         }
 
-        // the artwork runs slightly ahead of the sheet
-        val e = 1f - (1f - p).pow(ART_LEAD)
+        // the artwork gets to its place early (ease-out), the sheet keeps rising under it
+        val t = (p / ART_END).coerceIn(0f, 1f)
+        val e = 1f - (1f - t) * (1f - t)
         val w = lerp(from.width().toFloat(), to.width().toFloat(), e)
         val h = lerp(from.height().toFloat(), to.height().toFloat(), e)
         val sx = w / to.width()
@@ -429,8 +435,8 @@ class NowPlayingChoreographer(
     private fun lerp(a: Float, b: Float, t: Float) = a + (b - a) * t
 
     private companion object {
-        /** > 1: the artwork leads the sheet a little. 1 = locked to it. */
-        const val ART_LEAD = 1.2f
+        /** progress at which the artwork has reached the big artwork's place */
+        const val ART_END = 0.6f
 
         /** must stay above the 9dp that GlassHelper.setMiniInsets gives the mini player */
         const val BASE_Z_DP = 14f
