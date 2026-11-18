@@ -13,6 +13,7 @@ import code.name.monkey.retromusic.R
 import com.google.android.material.card.MaterialCardView
 import com.google.android.material.imageview.ShapeableImageView
 import kotlin.math.abs
+import kotlin.math.max
 import kotlin.math.pow
 
 /**
@@ -27,6 +28,10 @@ import kotlin.math.pow
  * Every element has its own time window ([Span]) on the same timeline, so the motion is
  * staggered the way Apple Music does it, and the whole thing is a pure function of p:
  * dragging, settling, reversing and interrupting all look the same.
+ *
+ * Glass mode: the mini player pill does not fade away. It is pulled down over the tab bar
+ * (the two glass pills fuse into one body), then it grows into the sheet and stays on screen
+ * until the full player has faded in on top of it: the glass turns into the player.
  */
 class NowPlayingChoreographer(
     private val panel: FrameLayout,
@@ -52,6 +57,9 @@ class NowPlayingChoreographer(
         /** the glass pill behind the mini player, null when glass is off */
         val panelGlass: View?
 
+        /** the glass pill of the tab bar, null when there is none */
+        val navGlass: View?
+
         /** true when the panel's own background has to fade in with p (glass mode) */
         val fadesPanelBackground: Boolean
 
@@ -68,16 +76,50 @@ class NowPlayingChoreographer(
         }
     }
 
-    private val miniContentOut = Span(0f, 0.16f)
-    private val pillOut = Span(0.04f, 0.30f)
-    private val backdropIn = Span(0f, 0.22f)
-    private val playerIn = Span(0.10f, 0.50f)
-    private val controlsIn = Span(0.38f, 0.82f)
-    private val toolbarIn = Span(0.55f, 0.95f)
-    private val navFade = Span(0f, 0.35f)
-    private val navSlide = Span(0f, 0.70f)
-    private val cornerIn = Span(0f, 0.15f)
-    private val cornerOut = Span(0.60f, 1f)
+    private class Times(
+        val miniOut: Span,
+        val playerIn: Span,
+        val controlsIn: Span,
+        val toolbarIn: Span,
+        val navFade: Span,
+        val navSlide: Span,
+        val backdropIn: Span,
+        val cornerIn: Span,
+        val cornerOut: Span,
+    )
+
+    /** glass on: the glass body stays until the player has arrived, so the player comes late */
+    private val glassTimes = Times(
+        miniOut = Span(0f, 0.16f),
+        playerIn = Span(0.45f, 0.80f),
+        controlsIn = Span(0.55f, 0.90f),
+        toolbarIn = Span(0.65f, 0.98f),
+        navFade = Span(0.02f, 0.12f),
+        navSlide = Span(0.12f, 0.50f), // moves away only once it is invisible
+        backdropIn = Span(0.55f, 0.85f),
+        cornerIn = Span(0.50f, 0.65f),
+        cornerOut = Span(0.60f, 1f),
+    )
+
+    /** glass off: opaque panel, so the player can come early */
+    private val plainTimes = Times(
+        miniOut = Span(0f, 0.16f),
+        playerIn = Span(0.10f, 0.50f),
+        controlsIn = Span(0.38f, 0.82f),
+        toolbarIn = Span(0.55f, 0.95f),
+        navFade = Span(0f, 0.35f),
+        navSlide = Span(0f, 0.70f),
+        backdropIn = Span(0f, 0.22f),
+        cornerIn = Span(0f, 0.15f),
+        cornerOut = Span(0.60f, 1f),
+    )
+
+    // the glass body
+    private val bodyStretch = Span(0f, 0.08f) // pill is pulled down over the tab bar
+    private val bodyGrow = Span(0.05f, 0.70f) // sides and top open up to the screen edges
+    private val bodyFloor = Span(0.10f, 0.50f) // bottom goes from the tab bar to the screen bottom
+    private val bodyCorner = Span(0.55f, 0.95f)
+    private val bodyOut = Span(0.62f, 0.95f) // dissolves under the player
 
     private val density = panel.resources.displayMetrics.density
     private fun dp(v: Float) = v * density
@@ -146,44 +188,51 @@ class NowPlayingChoreographer(
     /** Writes the whole look for progress [raw] (values outside 0..1 are clamped). */
     fun render(raw: Float) {
         val p = raw.coerceIn(0f, 1f)
+        val t = if (host.panelGlass != null) glassTimes else plainTimes
 
         // mini player content leaves first
         host.mini?.let {
-            val a = 1f - miniContentOut.at(p)
+            val a = 1f - t.miniOut.at(p)
             it.alpha = a
             it.isVisible = a > 0f
         }
 
-        // glass pill dissolves while the panel backdrop takes over (they overlap: no see-through dip)
-        host.panelGlass?.alpha = 1f - pillOut.at(p)
+        // glass body: dissolves only once the player is on top of it
+        host.panelGlass?.alpha = 1f - bodyOut.at(p)
         if (host.fadesPanelBackground) {
-            host.setPanelBackgroundAlpha((backdropIn.at(p) * 255f).toInt())
+            host.setPanelBackgroundAlpha((t.backdropIn.at(p) * 255f).toInt())
         }
 
         // full player: backdrop first, then controls, then toolbar
-        host.player.alpha = playerIn.at(p)
+        host.player.alpha = t.playerIn.at(p)
         resolvePlayerViews()
         controls?.let {
-            val c = controlsIn.at(p)
+            val c = t.controlsIn.at(p)
             it.alpha = c
             it.translationY = (1f - c) * dp(28f)
         }
-        toolbar?.alpha = toolbarIn.at(p)
+        toolbar?.alpha = t.toolbarIn.at(p)
 
-        // tab bar slides away and fades
+        // tab bar: dissolves into the glass body, then moves out of the way (and out of touch)
         host.nav?.let {
-            it.alpha = 1f - navFade.at(p)
-            it.translationY = navSlide.at(p) * (it.height + dp(24f))
+            it.alpha = 1f - t.navFade.at(p)
+            it.translationY = t.navSlide.at(p) * (it.height + dp(24f))
         }
 
         // panel corners: square at both ends, round while the sheet travels
-        setPanelCorner(dp(32f) * cornerIn.at(p) * (1f - cornerOut.at(p)))
+        setPanelCorner(dp(32f) * t.cornerIn.at(p) * (1f - t.cornerOut.at(p)))
 
+        morphGlass(p)
         morphArtwork(p)
     }
 
     /** Gives the real artworks back (call when the activity goes away). */
     fun release() {
+        restoreGlass()
+        releaseArtwork()
+    }
+
+    private fun releaseArtwork() {
         active = false
         ghost.visibility = View.GONE
         hiddenCard?.alpha = 1f
@@ -202,9 +251,91 @@ class NowPlayingChoreographer(
         toolbar = root.findViewById(R.id.playerToolbar)
     }
 
+    // ------------------------------------------------------------------ glass body
+
+    private var bodyLayer: View? = null
+    private var baseStart = 0
+    private var baseEnd = 0
+    private var baseTop = 0
+    private var baseHeight = 0
+    private var baseRadius = 0f
+    private var navBottomScreen = 0f
+    private val xy = IntArray(2)
+
+    private fun screenY(view: View): Int {
+        view.getLocationOnScreen(xy)
+        return xy[1]
+    }
+
+    /**
+     * The mini player pill becomes the sheet. Its top follows the panel (the finger); its bottom
+     * is first pulled down onto the bottom edge of the tab bar pill, then slides to the bottom of
+     * the screen; its sides open up to the screen edges. Because the pill and the tab bar pill
+     * share the same width, the union of the two (once the gap is filled) looks like one body.
+     */
+    private fun morphGlass(p: Float) {
+        val layer = host.panelGlass
+        if (layer == null || p <= 0f) {
+            restoreGlass()
+            return
+        }
+        val lp = layer.layoutParams as? FrameLayout.LayoutParams ?: return
+        if (bodyLayer !== layer) {
+            restoreGlass()
+            bodyLayer = layer
+            baseStart = lp.marginStart
+            baseEnd = lp.marginEnd
+            baseTop = lp.topMargin
+            baseHeight = if (lp.height > 0) lp.height else layer.height
+            baseRadius = baseHeight / 2f
+            val ref = host.navGlass ?: host.nav
+            navBottomScreen = if (ref != null) (screenY(ref) + ref.height).toFloat()
+            else panel.rootView.height.toFloat()
+        }
+
+        val grow = bodyGrow.at(p)
+        val stretch = bodyStretch.at(p)
+        val floor = bodyFloor.at(p)
+
+        val panelTop = screenY(panel)
+        val screenBottom = panel.rootView.height.toFloat()
+        val bottomTarget = lerp(navBottomScreen, screenBottom, floor) - panelTop
+
+        val top = lerp(baseTop.toFloat(), 0f, grow)
+        val bottom = lerp((baseTop + baseHeight).toFloat(), bottomTarget, stretch)
+        val height = max(baseHeight.toFloat(), bottom - top).toInt()
+        val start = lerp(baseStart.toFloat(), 0f, grow).toInt()
+        val end = lerp(baseEnd.toFloat(), 0f, grow).toInt()
+        val topPx = top.toInt()
+
+        if (lp.marginStart != start || lp.marginEnd != end ||
+            lp.topMargin != topPx || lp.height != height
+        ) {
+            lp.marginStart = start
+            lp.marginEnd = end
+            lp.topMargin = topPx
+            lp.height = height
+            layer.layoutParams = lp
+        }
+        GlassHelper.setCornerOverride(layer, baseRadius * (1f - bodyCorner.at(p)))
+    }
+
+    /** Back to the pill the layout gave it (and to applyCompact's control). */
+    private fun restoreGlass() {
+        val layer = bodyLayer ?: return
+        bodyLayer = null
+        GlassHelper.setCornerOverride(layer, null)
+        val lp = layer.layoutParams as? FrameLayout.LayoutParams ?: return
+        lp.marginStart = baseStart
+        lp.marginEnd = baseEnd
+        lp.topMargin = baseTop
+        lp.height = baseHeight
+        layer.layoutParams = lp
+    }
+
     private fun morphArtwork(p: Float) {
         if (p <= 0f || p >= 1f) {
-            release()
+            releaseArtwork()
             return
         }
         val card = host.miniCard
@@ -213,7 +344,7 @@ class NowPlayingChoreographer(
         if (card == null || image == null || big == null ||
             card.width == 0 || big.width == 0 || big.height == 0
         ) {
-            release()
+            releaseArtwork()
             return
         }
 
@@ -228,7 +359,7 @@ class NowPlayingChoreographer(
             to.width() != boundW || to.height() != boundH
         ) {
             if (!bind(card, image, big)) {
-                release()
+                releaseArtwork()
                 return
             }
         }
