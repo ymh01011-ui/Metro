@@ -81,6 +81,7 @@ import code.name.monkey.retromusic.model.CategoryInfo
 import code.name.monkey.retromusic.util.PreferenceUtil
 import code.name.monkey.retromusic.util.ViewUtil
 import code.name.monkey.retromusic.util.logD
+import code.name.monkey.retromusic.views.CoverMorphHelper
 import code.name.monkey.retromusic.views.GlassHelper
 import com.google.android.material.bottomnavigation.BottomNavigationView
 import com.google.android.material.bottomsheet.BottomSheetBehavior
@@ -111,6 +112,7 @@ abstract class AbsSlidingMusicPanelActivity : AbsMusicServiceActivity(),
     private var paletteColor: Int = Color.WHITE
     private var navigationBarColor = 0
     private var panelGlass: View? = null
+    private var coverMorph: CoverMorphHelper? = null
     private var glassCompact = false
     /** true while a detail page (album, artist, playlist...) is open and the bar is folded */
     private var glassDetailMode = false
@@ -170,6 +172,7 @@ abstract class AbsSlidingMusicPanelActivity : AbsMusicServiceActivity(),
 
             override fun onSlide(bottomSheet: View, slideOffset: Float) {
                 setMiniPlayerAlphaProgress(slideOffset)
+                coverMorph?.onSlide(slideOffset)
                 navigationBarColorAnimator?.cancel()
                 setNavigationBarColorPreOreo(
                     argbEvaluator.evaluate(
@@ -222,6 +225,9 @@ abstract class AbsSlidingMusicPanelActivity : AbsMusicServiceActivity(),
                         logD("Do a flip")
                     }
                 }
+                if (newState == STATE_EXPANDED || newState == STATE_COLLAPSED || newState == STATE_HIDDEN) {
+                    coverMorph?.finish()
+                }
             }
         }
     }
@@ -260,6 +266,11 @@ abstract class AbsSlidingMusicPanelActivity : AbsMusicServiceActivity(),
 
     private fun setupBottomSheet() {
         bottomSheetBehavior = from(binding.slidingPanel)
+        coverMorph = CoverMorphHelper(
+            binding.slidingPanel,
+            miniCard = { miniPlayerFragment?.view?.findViewById(R.id.imageTextContainer) },
+            bigCover = { if (this::playerFragment.isInitialized) playerFragment.bigCoverImage() else null }
+        )
         bottomSheetBehavior.addBottomSheetCallback(bottomSheetCallbackList)
         bottomSheetBehavior.isHideable = PreferenceUtil.swipeDownToDismiss
         bottomSheetBehavior.significantVelocityThreshold = 300
