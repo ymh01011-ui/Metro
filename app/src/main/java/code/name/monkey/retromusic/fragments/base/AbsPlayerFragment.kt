@@ -252,6 +252,8 @@ abstract class AbsPlayerFragment(@LayoutRes layout: Int) : AbsMusicServiceFragme
         item.icon = drawable
     }
 
+    fun bigCoverImage(): View? = playerAlbumCoverFragment?.currentCoverImage()
+
     abstract fun playerToolbar(): Toolbar?
 
     abstract fun onShow()
