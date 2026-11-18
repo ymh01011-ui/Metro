@@ -14,6 +14,7 @@ import com.google.android.material.card.MaterialCardView
 import com.google.android.material.imageview.ShapeableImageView
 import kotlin.math.abs
 import kotlin.math.max
+import kotlin.math.pow
 
 /**
  * The ONE place that decides how the mini player turns into the full player (and back).
@@ -88,43 +89,48 @@ class NowPlayingChoreographer(
     )
 
     /**
-     * The sheet travels about 1200px, so p = 0.1 is only ~120px of finger movement. The whole
-     * transformation lives in the first third of the travel: it starts almost at once and the
-     * rest of the way is the finished player rising into place.
+     * The sheet travels about 1200px, so p = 0.1 is only ~120px of finger movement.
+     *
+     * The tab bar's fade is the clock of the whole transformation: the full player is 100% there
+     * at the very moment the tab bar is 100% gone ([glassArrive] / [plainArrive]). Everything
+     * that belongs to the player is derived from it, so changing the tab bar timing moves the
+     * player with it.
      */
+    private val glassArrive = 0.06f
+    private val plainArrive = 0.20f
 
-    /** glass on: the glass body stays until the player backdrop is in, then dissolves under it */
+    /** glass on: the glass body is pulled over the tab bar, the player takes it over at [glassArrive] */
     private val glassTimes = Times(
-        miniOut = Span(0f, 0.06f),
-        playerIn = Span(0.05f, 0.30f),
-        controlsIn = Span(0.14f, 0.42f),
-        toolbarIn = Span(0.22f, 0.52f),
-        navFade = Span(0.01f, 0.06f),
-        navSlide = Span(0.06f, 0.25f), // moves away only once it is invisible
-        backdropIn = Span(0.08f, 0.32f),
+        miniOut = Span(0f, 0.035f),
+        playerIn = Span(0f, glassArrive),
+        controlsIn = Span(0.015f, glassArrive),
+        toolbarIn = Span(0.025f, glassArrive),
+        navFade = Span(0.01f, glassArrive),
+        navSlide = Span(glassArrive, 0.25f), // moves away only once it is invisible
+        backdropIn = Span(0f, glassArrive),
         cornerIn = Span(0f, 0.10f),
         cornerOut = Span(0.60f, 1f),
     )
 
     /** glass off: opaque panel */
     private val plainTimes = Times(
-        miniOut = Span(0f, 0.12f),
-        playerIn = Span(0.04f, 0.30f),
-        controlsIn = Span(0.12f, 0.42f),
-        toolbarIn = Span(0.22f, 0.52f),
-        navFade = Span(0f, 0.20f),
-        navSlide = Span(0f, 0.40f),
-        backdropIn = Span(0f, 0.15f),
+        miniOut = Span(0f, 0.10f),
+        playerIn = Span(0.02f, plainArrive),
+        controlsIn = Span(0.06f, plainArrive),
+        toolbarIn = Span(0.10f, plainArrive),
+        navFade = Span(0f, plainArrive),
+        navSlide = Span(plainArrive, 0.40f),
+        backdropIn = Span(0f, plainArrive),
         cornerIn = Span(0f, 0.10f),
         cornerOut = Span(0.60f, 1f),
     )
 
-    // the glass body
+    // the glass body (only needed until the player has taken over)
     private val bodyStretch = Span(0f, 0.04f) // pill is pulled down over the tab bar
     private val bodyGrow = Span(0f, 0.14f) // sides and top open up to the screen edges
     private val bodyFloor = Span(0.02f, 0.16f) // bottom goes from the tab bar to the screen bottom
     private val bodyCorner = Span(0.20f, 0.60f)
-    private val bodyOut = Span(0.22f, 0.45f) // dissolves under the player
+    private val bodyOut = Span(0.03f, glassArrive) // gone as soon as the player is fully there
 
     private val density = panel.resources.displayMetrics.density
     private fun dp(v: Float) = v * density
@@ -369,9 +375,9 @@ class NowPlayingChoreographer(
             }
         }
 
-        // the artwork gets to its place early (ease-out), the sheet keeps rising under it
+        // the artwork grows steadily with the sheet and lands exactly when the sheet does
         val t = (p / ART_END).coerceIn(0f, 1f)
-        val e = 1f - (1f - t) * (1f - t)
+        val e = 1f - (1f - t).pow(ART_EASE)
         val w = lerp(from.width().toFloat(), to.width().toFloat(), e)
         val h = lerp(from.height().toFloat(), to.height().toFloat(), e)
         val sx = w / to.width()
@@ -435,8 +441,11 @@ class NowPlayingChoreographer(
     private fun lerp(a: Float, b: Float, t: Float) = a + (b - a) * t
 
     private companion object {
-        /** progress at which the artwork has reached the big artwork's place */
-        const val ART_END = 0.6f
+        /** progress at which the artwork has reached the big artwork's place (1 = with the sheet) */
+        const val ART_END = 1f
+
+        /** 1 = constant speed; a little more = starts a bit quicker, settles gently */
+        const val ART_EASE = 1.25f
 
         /** must stay above the 9dp that GlassHelper.setMiniInsets gives the mini player */
         const val BASE_Z_DP = 14f
