@@ -159,6 +159,11 @@ class NowPlayingChoreographer(
     private val bodyStretch = Span(0f, 0.22f) // bottom edge goes down to the screen bottom
     private val bodyOut = Span(0f, glassPlayerFull, Ease.LINEAR) // glass leaves with the player's arrival
 
+    // Normal pill: the sides (left AND right) open to the screen edges together with the player's
+    // arrival, so no gap is left on either side while the player is already showing. Raise the
+    // end value to open them more slowly.
+    private val sideGrowSpan = Span(0f, glassPlayerFull, Ease.OUT)
+
     // Folded tab bar (a circle on the left, the pill in the same row): the pill starts ~180px away
     // from the left edge, so its sides open much faster than the normal pill's (0 .. 0.60) ...
     private val foldedSideGrow = Span(0.01f, 0.20f, Ease.OUT)
@@ -396,7 +401,7 @@ class NowPlayingChoreographer(
         val navView = host.nav
         val navPill = host.navGlass
         val folded = navView != null && navPill != null && isFolded(navView, navPill)
-        val sideGrow = if (folded) foldedSideGrow.at(p) else grow
+        val sideGrow = if (folded) foldedSideGrow.at(p) else sideGrowSpan.at(p)
 
         val parent = panel.parent as? View
         val parentTop = if (parent != null) screenY(parent) else 0
