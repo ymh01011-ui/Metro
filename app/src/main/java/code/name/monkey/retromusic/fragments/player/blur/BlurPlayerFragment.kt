@@ -18,7 +18,6 @@ import android.animation.ObjectAnimator
 import android.animation.ValueAnimator
 import android.content.SharedPreferences
 import android.graphics.Color
-import android.graphics.PorterDuff
 import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.Drawable
 import android.os.Bundle
@@ -59,10 +58,6 @@ class BlurPlayerFragment : AbsPlayerFragment(R.layout.fragment_blur),
 
     private var lastColor: Int = 0
 
-    // Multiply filter: black stays black, white becomes this gray (so white text stays readable).
-    // Lower the value (e.g. 0xFF999999) for darker whites, raise it (0xFFC8C8C8) for lighter.
-    private val whiteCap = 0xFFB0B0B0.toInt()
-
     // Slow drifting motion of the blurred cover (rotate / slide / breathe). Different durations
     // per property so the pattern never visibly repeats. Runs only while music is playing.
     private var bgAnimators: List<ObjectAnimator> = emptyList()
@@ -74,7 +69,6 @@ class BlurPlayerFragment : AbsPlayerFragment(R.layout.fragment_blur),
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
         _binding = FragmentBlurBinding.bind(view)
-        binding.colorBackground.setColorFilter(whiteCap, PorterDuff.Mode.MULTIPLY)
         setUpSubFragments()
         setUpPlayerToolbar()
         binding.playerToolbar.drawAboveSystemBars()
@@ -161,7 +155,7 @@ class BlurPlayerFragment : AbsPlayerFragment(R.layout.fragment_blur),
             if (_binding == null || bg.width == 0 || bg.height == 0) return@post
             val w = bg.width.toFloat()
             val h = bg.height.toFloat()
-            val minScale = 1.7f // big enough that edges never show while it moves
+            val minScale = 1.35f // just enough to hide edges while moving, so the cover keeps all its colors
 
             fun motion(prop: String, from: Float, to: Float, ms: Long) =
                 ObjectAnimator.ofFloat(bg, prop, from, to).apply {
@@ -174,11 +168,11 @@ class BlurPlayerFragment : AbsPlayerFragment(R.layout.fragment_blur),
             bg.scaleX = minScale
             bg.scaleY = minScale
             bgAnimators = listOf(
-                motion("rotation", -10f, 10f, 17_000),
-                motion("translationX", -w * 0.08f, w * 0.08f, 23_000),
-                motion("translationY", -h * 0.05f, h * 0.05f, 29_000),
-                motion("scaleX", minScale, minScale + 0.25f, 19_000),
-                motion("scaleY", minScale, minScale + 0.25f, 19_000)
+                motion("rotation", -5f, 5f, 17_000),
+                motion("translationX", -w * 0.04f, w * 0.04f, 23_000),
+                motion("translationY", -h * 0.025f, h * 0.025f, 29_000),
+                motion("scaleX", minScale, minScale + 0.15f, 19_000),
+                motion("scaleY", minScale, minScale + 0.15f, 19_000)
             )
             bgAnimators.forEach { it.start() }
             updateMotionState()
