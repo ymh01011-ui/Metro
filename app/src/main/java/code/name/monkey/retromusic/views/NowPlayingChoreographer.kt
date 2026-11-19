@@ -119,9 +119,11 @@ class NowPlayingChoreographer(
      *               fade in over the glass. It starts with the very first pixel of the drag and
      *               is 100% visible at [glassPlayerFull]. To move the point where it is complete,
      *               change only that one number.
-     *   0.28 .. 0.42 : the glass is dropped, once it is completely covered
+     *   0 .. [glassPlayerFull] : the glass pill is dropped in the same window. The glass is drawn
+     *               above the player (it has elevation), so while it was still there the player
+     *               looked unfinished even with alpha = 1.
      */
-    private val glassPlayerFull = 0.12f
+    private val glassPlayerFull = 0.13f
 
     private val glassTimes = Times(
         miniOut = Span(0f, 0.09f),
@@ -153,7 +155,7 @@ class NowPlayingChoreographer(
     // the glass body
     private val bodyGrow = Span(0f, 0.60f) // sides, top and corners open up
     private val bodyStretch = Span(0f, 0.22f) // bottom edge goes down to the screen bottom
-    private val bodyOut = Span(0.28f, 0.42f) // glass is dropped once the player covers it
+    private val bodyOut = Span(0f, glassPlayerFull, Ease.LINEAR) // glass leaves with the player's arrival
 
     private val density = panel.resources.displayMetrics.density
     private fun dp(v: Float) = v * density
