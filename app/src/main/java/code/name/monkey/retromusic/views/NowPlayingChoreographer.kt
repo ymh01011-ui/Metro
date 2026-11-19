@@ -103,8 +103,11 @@ class NowPlayingChoreographer(
      *   2. [glassExpand] .. [glassArrive]: the player appears on top, quickly. The glass is
      *      dropped once the player is opaque.
      */
-    private val glassExpand = 0.07f // how fast the glass grows to the player's size (smaller = faster)
-    private val playerFade = 0.28f // how long the transformation into the player takes (bigger = slower)
+    // Measured from the screenshots: the player starts to show when the sheet's top is at y = 1230
+    // (progress 0.044) and is 100% there at y = 1097 (progress 0.147); the sheet's rest position is
+    // y = 1286 on that page, so progress = (1286 - y) / 1286.
+    private val glassExpand = 0.044f // where the player starts to show
+    private val playerFade = 0.103f // length of the transformation: it is complete at 0.147
     private val glassArrive = glassExpand + playerFade
     private val plainArrive = 0.20f
 
@@ -112,8 +115,8 @@ class NowPlayingChoreographer(
         miniOut = Span(0f, 0.035f),
         // linear: starts showing the instant the expansion is done and fades in evenly
         playerIn = Span(glassExpand, glassArrive, linear = true),
-        controlsIn = Span(glassExpand + 0.05f, glassArrive + 0.05f),
-        toolbarIn = Span(glassExpand + 0.10f, glassArrive + 0.10f),
+        controlsIn = Span(glassExpand + 0.02f, glassArrive),
+        toolbarIn = Span(glassExpand + 0.04f, glassArrive),
         navFade = Span(0.01f, 0.06f), // inside the expansion; moves away once it is invisible
         navSlide = Span(0.06f, 0.25f),
         backdropIn = Span(glassExpand, glassArrive, linear = true),
@@ -138,7 +141,7 @@ class NowPlayingChoreographer(
     private val bodyStretch = Span(0f, 0.04f) // pill is pulled down over the tab bar
     private val bodyGrow = Span(0f, glassExpand) // sides and top open up to the screen edges
     private val bodyFloor = Span(0.02f, glassExpand) // bottom goes down to the screen bottom
-    private val bodyOut = Span(glassArrive - 0.04f, glassArrive) // gone under the player
+    private val bodyOut = Span(glassArrive - 0.02f, glassArrive) // gone under the player
 
     private val density = panel.resources.displayMetrics.density
     private fun dp(v: Float) = v * density
