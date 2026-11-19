@@ -1,77 +1,173 @@
-<?xml version="1.0" encoding="utf-8"?>
-<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:app="http://schemas.android.com/apk/res-auto"
-    xmlns:tools="http://schemas.android.com/tools"
-    android:layout_width="match_parent"
-    android:layout_height="match_parent"
-    android:clickable="true"
-    android:focusable="true">
+/*
+ * Copyright (c) 2020 Hemanth Savarla.
+ *
+ * Licensed under the GNU General Public License v3
+ *
+ * This is free software: you can redistribute it and/or modify it
+ * under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
+ *
+ * This software is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
+ * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ * See the GNU General Public License for more details.
+ *
+ */
+package code.name.monkey.retromusic.fragments.player.blur
 
-    <androidx.appcompat.widget.AppCompatImageView
-        android:id="@+id/colorBackground"
-        android:layout_width="0dp"
-        android:layout_height="0dp"
-        android:scaleType="centerCrop"
-        app:layout_constraintBottom_toBottomOf="parent"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toTopOf="parent"
-        app:srcCompat="@color/black_color" />
-
-    <View
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:background="@drawable/shadow_blur_theme"
-        app:layout_constraintBottom_toBottomOf="parent"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toTopOf="parent" />
-
-
-    <FrameLayout
-        android:id="@+id/statusBarContainer"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toTopOf="parent">
-
-        <include layout="@layout/status_bar" />
-    </FrameLayout>
-
-
-    <androidx.fragment.app.FragmentContainerView
-        android:id="@+id/playerAlbumCoverFragment"
-        android:name="code.name.monkey.retromusic.fragments.player.PlayerAlbumCoverFragment"
-        android:layout_width="0dp"
-        android:layout_height="0dp"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintHeight_percent="0.5"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@id/statusBarContainer" />
-
-    <androidx.fragment.app.FragmentContainerView
-        android:id="@+id/playbackControlsFragment"
-        android:name="code.name.monkey.retromusic.fragments.player.blur.BlurPlaybackControlsFragment"
-        android:layout_width="0dp"
-        android:layout_height="0dp"
-        app:layout_constraintBottom_toTopOf="@id/playerToolbar"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@id/playerAlbumCoverFragment"
-        tools:layout="@layout/fragment_player_playback_controls" />
+import android.content.SharedPreferences
+import android.graphics.Color
+import android.graphics.PorterDuff
+import android.graphics.drawable.ColorDrawable
+import android.graphics.drawable.Drawable
+import android.os.Bundle
+import android.view.View
+import androidx.appcompat.widget.Toolbar
+import androidx.preference.PreferenceManager
+import code.name.monkey.appthemehelper.util.ToolbarContentTintHelper
+import code.name.monkey.retromusic.NEW_BLUR_AMOUNT
+import code.name.monkey.retromusic.R
+import code.name.monkey.retromusic.databinding.FragmentBlurBinding
+import code.name.monkey.retromusic.extensions.drawAboveSystemBars
+import code.name.monkey.retromusic.extensions.whichFragment
+import code.name.monkey.retromusic.fragments.base.AbsPlayerFragment
+import code.name.monkey.retromusic.fragments.player.PlayerAlbumCoverFragment
+import code.name.monkey.retromusic.glide.BlurTransformation
+import code.name.monkey.retromusic.glide.RetroGlideExtension
+import code.name.monkey.retromusic.glide.RetroGlideExtension.simpleSongCoverOptions
+import code.name.monkey.retromusic.glide.crossfadeListener
+import code.name.monkey.retromusic.helper.MusicPlayerRemote
+import code.name.monkey.retromusic.model.Song
+import code.name.monkey.retromusic.util.PreferenceUtil.blurAmount
+import code.name.monkey.retromusic.util.color.MediaNotificationProcessor
+import com.bumptech.glide.Glide
+import com.bumptech.glide.RequestBuilder
 
 
-    <com.google.android.material.appbar.MaterialToolbar
-        android:id="@+id/playerToolbar"
-        style="@style/Toolbar"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_gravity="bottom"
-        app:layout_constraintBottom_toBottomOf="parent"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@id/playbackControlsFragment"
-        app:navigationIcon="@drawable/ic_keyboard_arrow_down" />
+class BlurPlayerFragment : AbsPlayerFragment(R.layout.fragment_blur),
+    SharedPreferences.OnSharedPreferenceChangeListener {
 
-</androidx.constraintlayout.widget.ConstraintLayout>
+    private var lastRequest: RequestBuilder<Drawable>? = null
+
+    override fun playerToolbar(): Toolbar {
+        return binding.playerToolbar
+    }
+
+    private lateinit var playbackControlsFragment: BlurPlaybackControlsFragment
+
+    private var lastColor: Int = 0
+
+    // Multiply filter: black stays black, white becomes this gray (so white text stays readable).
+    // Lower the value (e.g. 0xFF999999) for darker whites, raise it (0xFFC8C8C8) for lighter.
+    private val whiteCap = 0xFFB0B0B0.toInt()
+
+    private var _binding: FragmentBlurBinding? = null
+    private val binding get() = _binding!!
+
+
+    override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
+        super.onViewCreated(view, savedInstanceState)
+        _binding = FragmentBlurBinding.bind(view)
+        binding.colorBackground.setColorFilter(whiteCap, PorterDuff.Mode.MULTIPLY)
+        setUpSubFragments()
+        setUpPlayerToolbar()
+        binding.playerToolbar.drawAboveSystemBars()
+    }
+
+    private fun setUpSubFragments() {
+        playbackControlsFragment = whichFragment(R.id.playbackControlsFragment)
+        val playerAlbumCoverFragment: PlayerAlbumCoverFragment =
+            whichFragment(R.id.playerAlbumCoverFragment)
+        playerAlbumCoverFragment.setCallbacks(this)
+    }
+
+    private fun setUpPlayerToolbar() {
+        binding.playerToolbar.apply {
+            inflateMenu(R.menu.menu_player)
+            setNavigationOnClickListener { requireActivity().onBackPressedDispatcher.onBackPressed() }
+            ToolbarContentTintHelper.colorizeToolbar(this, Color.WHITE, activity)
+        }.setOnMenuItemClickListener(this)
+    }
+
+    override fun onFavoriteToggled() {
+        toggleFavorite(MusicPlayerRemote.currentSong)
+    }
+
+    override fun onColorChanged(color: MediaNotificationProcessor) {
+        playbackControlsFragment.setColor(color)
+        lastColor = color.backgroundColor
+        libraryViewModel.updateColor(color.backgroundColor)
+        ToolbarContentTintHelper.colorizeToolbar(binding.playerToolbar, Color.WHITE, activity)
+    }
+
+    override fun toggleFavorite(song: Song) {
+        super.toggleFavorite(song)
+        if (song.id == MusicPlayerRemote.currentSong.id) {
+            updateIsFavorite()
+        }
+    }
+
+    override fun onShow() {
+    }
+
+    override fun onHide() {
+    }
+
+    override fun toolbarIconColor(): Int {
+        return Color.WHITE
+    }
+
+    override val paletteColor: Int
+        get() = lastColor
+
+    private fun updateBlur() {
+        // https://github.com/bumptech/glide/issues/527#issuecomment-148840717
+        Glide.with(this)
+            .load(RetroGlideExtension.getSongModel(MusicPlayerRemote.currentSong))
+            .simpleSongCoverOptions(MusicPlayerRemote.currentSong)
+            .override(64, 64)
+            .transform(
+                BlurTransformation.Builder(requireContext()).blurRadius(25f)
+                    .build()
+            ).thumbnail(lastRequest)
+            .error(Glide.with(this).load(ColorDrawable(Color.DKGRAY)).fitCenter())
+            .also {
+                lastRequest = it.clone()
+                it.crossfadeListener()
+                    .into(binding.colorBackground)
+            }
+    }
+
+    override fun onServiceConnected() {
+        updateIsFavorite()
+        updateBlur()
+    }
+
+    override fun onPlayingMetaChanged() {
+        updateIsFavorite()
+        updateBlur()
+    }
+
+    override fun onPause() {
+        super.onPause()
+        lastRequest = null
+    }
+
+    override fun onResume() {
+        super.onResume()
+        PreferenceManager.getDefaultSharedPreferences(requireContext())
+            .registerOnSharedPreferenceChangeListener(this)
+    }
+
+    override fun onDestroyView() {
+        super.onDestroyView()
+        PreferenceManager.getDefaultSharedPreferences(requireContext())
+            .unregisterOnSharedPreferenceChangeListener(this)
+        _binding = null
+    }
+
+    override fun onSharedPreferenceChanged(sharedPreferences: SharedPreferences?, key: String?) {
+        if (key == NEW_BLUR_AMOUNT) {
+            updateBlur()
+        }
+    }
+}
