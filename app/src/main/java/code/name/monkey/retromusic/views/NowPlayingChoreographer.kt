@@ -77,7 +77,7 @@ class NowPlayingChoreographer(
 
     // ------------------------------------------------------------------ timeline
 
-    private enum class Ease { LINEAR, SMOOTH, SMOOTHER }
+    private enum class Ease { LINEAR, SMOOTH, SMOOTHER, OUT }
 
     private class Span(
         private val from: Float,
@@ -92,6 +92,8 @@ class NowPlayingChoreographer(
                 Ease.SMOOTH -> t * t * (3f - 2f * t)
                 // zero speed AND zero acceleration at both ends: the softest curve
                 Ease.SMOOTHER -> t * t * t * (t * (t * 6f - 15f) + 10f)
+                // fast start, gentle landing
+                Ease.OUT -> 1f - (1f - t) * (1f - t) * (1f - t)
             }
         }
     }
@@ -156,6 +158,14 @@ class NowPlayingChoreographer(
     private val bodyGrow = Span(0f, 0.60f) // sides, top and corners open up
     private val bodyStretch = Span(0f, 0.22f) // bottom edge goes down to the screen bottom
     private val bodyOut = Span(0f, glassPlayerFull, Ease.LINEAR) // glass leaves with the player's arrival
+
+    // Folded tab bar (a circle on the left, the pill in the same row): the pill starts ~180px away
+    // from the left edge, so its sides open much faster than the normal pill's (0 .. 0.60) ...
+    private val foldedSideGrow = Span(0.01f, 0.20f, Ease.OUT)
+
+    // ... and the circle leaves first (slides down off the screen and fades), before the body's
+    // left edge can reach it
+    private val circleOut = Span(0f, 0.04f)
 
     private val density = panel.resources.displayMetrics.density
     private fun dp(v: Float) = v * density
@@ -382,6 +392,11 @@ class NowPlayingChoreographer(
 
         val grow = bodyGrow.at(p)
         val stretch = bodyStretch.at(p)
+        // folded bar: the sides open fast (the pill has to cross the circle's place)
+        val navView = host.nav
+        val navPill = host.navGlass
+        val folded = navView != null && navPill != null && isFolded(navView, navPill)
+        val sideGrow = if (folded) foldedSideGrow.at(p) else grow
 
         val parent = panel.parent as? View
         val parentTop = if (parent != null) screenY(parent) else 0
@@ -405,8 +420,8 @@ class NowPlayingChoreographer(
 
         val top = lerp(baseTop.toFloat(), 0f, grow)
         val height = max(baseHeight.toFloat(), bottomRel - top).toInt()
-        val start = lerp(baseStart.toFloat(), 0f, grow).toInt()
-        val end = lerp(baseEnd.toFloat(), 0f, grow).toInt()
+        val start = lerp(baseStart.toFloat(), 0f, sideGrow).toInt()
+        val end = lerp(baseEnd.toFloat(), 0f, sideGrow).toInt()
         val topPx = top.toInt()
 
         if (lp.marginStart != start || lp.marginEnd != end ||
@@ -445,14 +460,26 @@ class NowPlayingChoreographer(
         val ref = host.navGlass ?: nav
         // where the bar would be without the push
         val navTop = screenY(ref) - nav.translationY
+
+        if (isFolded(nav, ref)) {
+            // Folded into a circle, the bar sits beside the pill in the same row, so the body's
+            // bottom edge never meets it. It leaves on its own: slides down off the screen while
+            // it fades. Off the screen also means out of touch (it is clickable when folded).
+            val out = circleOut.at(p)
+            val screenBottom = panel.rootView.height.toFloat()
+            nav.translationY = out * (screenBottom - navTop + dp(12f))
+            nav.alpha = 1f - out
+            return
+        }
+
         val layoutGap = navTop - restBottomScreen
         val gap = min(layoutGap, dp(NAV_GAP_DP))
         nav.translationY = (bodyBottom + gap - navTop).coerceAtLeast(0f)
-
-        // folded into a circle, the bar sits in the same row as the pill: it just fades
-        val folded = nav.width > 0 && ref.width < nav.width / 2
-        nav.alpha = if (folded) 1f - glassTimes.navFade.at(p) else 1f
+        nav.alpha = 1f
     }
+
+    /** true when the tab bar has shrunk into the circle */
+    private fun isFolded(nav: View, ref: View) = nav.width > 0 && ref.width < nav.width / 2
 
     /** Back to the pill the layout gave it (and to applyCompact's control). */
     private fun restoreGlass() {
