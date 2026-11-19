@@ -68,11 +68,16 @@ class NowPlayingChoreographer(
 
     // ------------------------------------------------------------------ timeline
 
-    private class Span(private val from: Float, private val to: Float) {
-        /** 0 before [from], 1 after [to], smooth in between */
+    private class Span(
+        private val from: Float,
+        private val to: Float,
+        /** true: constant speed, visible from the very first frame (no slow start) */
+        private val linear: Boolean = false,
+    ) {
+        /** 0 before [from], 1 after [to], smooth (or linear) in between */
         fun at(p: Float): Float {
             val t = ((p - from) / (to - from)).coerceIn(0f, 1f)
-            return t * t * (3f - 2f * t)
+            return if (linear) t else t * t * (3f - 2f * t)
         }
     }
 
@@ -99,18 +104,19 @@ class NowPlayingChoreographer(
      *      dropped once the player is opaque.
      */
     private val glassExpand = 0.07f // how fast the glass grows to the player's size (smaller = faster)
-    private val playerFade = 0.16f // how long the transformation into the player takes (bigger = slower)
+    private val playerFade = 0.28f // how long the transformation into the player takes (bigger = slower)
     private val glassArrive = glassExpand + playerFade
     private val plainArrive = 0.20f
 
     private val glassTimes = Times(
         miniOut = Span(0f, 0.035f),
-        playerIn = Span(glassExpand, glassArrive),
-        controlsIn = Span(glassExpand + 0.03f, glassArrive + 0.04f),
-        toolbarIn = Span(glassExpand + 0.06f, glassArrive + 0.08f),
+        // linear: starts showing the instant the expansion is done and fades in evenly
+        playerIn = Span(glassExpand, glassArrive, linear = true),
+        controlsIn = Span(glassExpand + 0.05f, glassArrive + 0.05f),
+        toolbarIn = Span(glassExpand + 0.10f, glassArrive + 0.10f),
         navFade = Span(0.01f, 0.06f), // inside the expansion; moves away once it is invisible
         navSlide = Span(0.06f, 0.25f),
-        backdropIn = Span(glassExpand, glassArrive),
+        backdropIn = Span(glassExpand, glassArrive, linear = true),
         cornerIn = Span(glassExpand - 0.04f, glassExpand),
         cornerOut = Span(0.60f, 1f),
     )
@@ -132,7 +138,7 @@ class NowPlayingChoreographer(
     private val bodyStretch = Span(0f, 0.04f) // pill is pulled down over the tab bar
     private val bodyGrow = Span(0f, glassExpand) // sides and top open up to the screen edges
     private val bodyFloor = Span(0.02f, glassExpand) // bottom goes down to the screen bottom
-    private val bodyOut = Span(glassArrive - 0.03f, glassArrive) // gone under the player
+    private val bodyOut = Span(glassArrive - 0.04f, glassArrive) // gone under the player
 
     private val density = panel.resources.displayMetrics.density
     private fun dp(v: Float) = v * density
