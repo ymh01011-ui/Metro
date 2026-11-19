@@ -187,10 +187,11 @@ abstract class AbsSlidingMusicPanelActivity : AbsMusicServiceActivity(),
 
             override fun onStateChanged(bottomSheet: View, newState: Int) {
                 onBackPressedCallback.isEnabled = newState == STATE_EXPANDED
-                // The fold is frozen while the sheet moves: it only changes at rest, and the
-                // choreographer lifts the folded panel back to y = 0 with the sheet.
-                if (newState == STATE_EXPANDED) resetGlassCompact()
-                else if (newState == STATE_COLLAPSED) setGlassCompact(glassDetailMode)
+                // The fold belongs to the page, not to the sheet: it stays as it is while the
+                // player is open (the choreographer lifts the folded panel back to y = 0 and
+                // sends the circle away), so the closing drag starts from and returns to the
+                // same circle + pill row. It only changes at rest.
+                if (newState == STATE_COLLAPSED) setGlassCompact(glassDetailMode)
                 if (newState == STATE_HIDDEN) setMiniPlayerAlphaProgress(0F)
                 if (PreferenceUtil.glassEnabled) {
                     if (newState == STATE_EXPANDED) {
@@ -273,7 +274,7 @@ abstract class AbsSlidingMusicPanelActivity : AbsMusicServiceActivity(),
                 override val mini: View?
                     get() = miniPlayerFragment?.view
                 override val miniCard: View?
-                    get() = miniPlayerFragment?.view?.findViewById(R.id.imageTextContainer)
+                    get() = miniPlayerFragment?.view?.findViewById<View>(R.id.imageTextContainer)
                 override val player: View
                     get() = binding.playerFragmentContainer
                 override val bigArtwork: View?
@@ -513,20 +514,23 @@ abstract class AbsSlidingMusicPanelActivity : AbsMusicServiceActivity(),
      */
     private fun computeCompactShift(): Float {
         val navLayer = GlassHelper.layerOf(binding.navigationView) ?: return compactShiftY
-        val pill = panelGlass ?: return compactShiftY
+        if (panelGlass == null) return compactShiftY
         val parent = binding.slidingPanel.parent as? View ?: return compactShiftY
-        val params = pill.layoutParams as? ViewGroup.MarginLayoutParams ?: return compactShiftY
         if (!ViewCompat.isLaidOut(navLayer) || navLayer.height == 0 || parent.height == 0) {
             return compactShiftY
         }
         val xy = IntArray(2)
         navLayer.getLocationOnScreen(xy)
-        val navCenter = xy[1] + navLayer.height / 2f
+        // (the tab bar may be pushed away by the open player right now: ignore that offset)
+        val navCenter = xy[1] + navLayer.height / 2f - binding.navigationView.translationY
         parent.getLocationOnScreen(xy)
-        val pillHeight = params.height.takeIf { it > 0 } ?: pill.height
+        // Fixed numbers, NOT the pill's live layout params: while the sheet is open the pill is
+        // stretched to the whole screen, and reading its height / margin gave a wrong shift
+        // (the pill then sat higher than the circle).
+        val pillHeight = miniPillHeight()
         val peek = windowInsets.getBottomInsets() +
             dip(R.dimen.mini_player_height) + dip(R.dimen.bottom_nav_height)
-        val miniCenter = xy[1] + parent.height - peek + params.topMargin + pillHeight / 2f
+        val miniCenter = xy[1] + parent.height - peek + GlassHelper.dp(this, 2) + pillHeight / 2f
         return navCenter - miniCenter
     }
 
@@ -583,9 +587,14 @@ abstract class AbsSlidingMusicPanelActivity : AbsMusicServiceActivity(),
         renderCompact()
     }
 
+    /** height of the closed mini player pill = diameter of the folded circle */
+    private fun miniPillHeight() = dip(R.dimen.mini_player_height) - 2 * GlassHelper.dp(this, 2)
+
     private fun renderCompact() {
-        val circle = panelGlass?.layoutParams?.height?.takeIf { it > 0 }
-            ?: (dip(R.dimen.mini_player_height) - 2 * GlassHelper.dp(this, 2))
+        // Always the fixed size. It used to be read from the pill's layout params, which the
+        // choreographer stretches while the sheet moves: the circle then grew with the sheet and
+        // covered the whole bottom of the screen.
+        val circle = miniPillHeight()
         GlassHelper.applyCompact(
             binding.navigationView,
             binding.slidingPanel,
@@ -632,6 +641,9 @@ abstract class AbsSlidingMusicPanelActivity : AbsMusicServiceActivity(),
         // the folded panel's own offset depends on the sheet, so refresh it first
         if (compactProgress > 0f) renderCompact()
         choreographer?.render(progress)
+        // At rest the choreographer gives the pill back with the margins it remembered, which can
+        // be older than the fold: put the fold's margins on it again.
+        if (progress <= 0f && compactProgress > 0f) renderCompact()
     }
 
     private fun animateNavigationBarColor(color: Int) {
