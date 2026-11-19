@@ -109,6 +109,9 @@ class NowPlayingChoreographer(
     private val glassArrive = 0.044f // player 100% here, tab bar 100% gone here
     private val glassExpand = 0.015f // the glass has taken the player's size, the player starts to show
 
+    /** glass off: the panel is opaque, so everything is done a bit later than with glass */
+    private val plainArrive = 0.20f
+
     private val glassTimes = Times(
         miniOut = Span(0f, 0.012f),
         // linear: starts showing the instant the expansion is done and fades in evenly
@@ -267,8 +270,8 @@ class NowPlayingChoreographer(
         val root = host.player
         if (root === cachedPlayerRoot && controls != null) return
         cachedPlayerRoot = root
-        controls = root.findViewById(R.id.playbackControlsFragment)
-        toolbar = root.findViewById(R.id.playerToolbar)
+        controls = root.findViewById<View>(R.id.playbackControlsFragment)
+        toolbar = root.findViewById<View>(R.id.playerToolbar)
     }
 
     // ------------------------------------------------------------------ glass body
