@@ -14,6 +14,8 @@
  */
 package code.name.monkey.retromusic.fragments.player.blur
 
+import android.animation.ObjectAnimator
+import android.animation.ValueAnimator
 import android.content.SharedPreferences
 import android.graphics.Color
 import android.graphics.PorterDuff
@@ -21,6 +23,7 @@ import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.Drawable
 import android.os.Bundle
 import android.view.View
+import android.view.animation.AccelerateDecelerateInterpolator
 import androidx.appcompat.widget.Toolbar
 import androidx.preference.PreferenceManager
 import code.name.monkey.appthemehelper.util.ToolbarContentTintHelper
@@ -59,6 +62,10 @@ class BlurPlayerFragment : AbsPlayerFragment(R.layout.fragment_blur),
     // Multiply filter: black stays black, white becomes this gray (so white text stays readable).
     // Lower the value (e.g. 0xFF999999) for darker whites, raise it (0xFFC8C8C8) for lighter.
     private val whiteCap = 0xFFB0B0B0.toInt()
+
+    // Slow drifting motion of the blurred cover (rotate / slide / breathe). Different durations
+    // per property so the pattern never visibly repeats. Runs only while music is playing.
+    private var bgAnimators: List<ObjectAnimator> = emptyList()
 
     private var _binding: FragmentBlurBinding? = null
     private val binding get() = _binding!!
@@ -147,18 +154,73 @@ class BlurPlayerFragment : AbsPlayerFragment(R.layout.fragment_blur),
         updateBlur()
     }
 
+    private fun startBackgroundMotion() {
+        stopBackgroundMotion()
+        val bg = binding.colorBackground
+        bg.post {
+            if (_binding == null || bg.width == 0 || bg.height == 0) return@post
+            val w = bg.width.toFloat()
+            val h = bg.height.toFloat()
+            val minScale = 1.7f // big enough that edges never show while it moves
+
+            fun motion(prop: String, from: Float, to: Float, ms: Long) =
+                ObjectAnimator.ofFloat(bg, prop, from, to).apply {
+                    duration = ms
+                    repeatCount = ValueAnimator.INFINITE
+                    repeatMode = ValueAnimator.REVERSE
+                    interpolator = AccelerateDecelerateInterpolator()
+                }
+
+            bg.scaleX = minScale
+            bg.scaleY = minScale
+            bgAnimators = listOf(
+                motion("rotation", -10f, 10f, 17_000),
+                motion("translationX", -w * 0.08f, w * 0.08f, 23_000),
+                motion("translationY", -h * 0.05f, h * 0.05f, 29_000),
+                motion("scaleX", minScale, minScale + 0.25f, 19_000),
+                motion("scaleY", minScale, minScale + 0.25f, 19_000)
+            )
+            bgAnimators.forEach { it.start() }
+            updateMotionState()
+        }
+    }
+
+    private fun stopBackgroundMotion() {
+        bgAnimators.forEach { it.cancel() }
+        bgAnimators = emptyList()
+    }
+
+    // Move while playing, freeze in place when paused
+    private fun updateMotionState() {
+        bgAnimators.forEach {
+            if (MusicPlayerRemote.isPlaying) {
+                if (it.isPaused) it.resume()
+            } else if (it.isRunning) {
+                it.pause()
+            }
+        }
+    }
+
+    override fun onPlayStateChanged() {
+        super.onPlayStateChanged()
+        updateMotionState()
+    }
+
     override fun onPause() {
         super.onPause()
         lastRequest = null
+        stopBackgroundMotion()
     }
 
     override fun onResume() {
         super.onResume()
         PreferenceManager.getDefaultSharedPreferences(requireContext())
             .registerOnSharedPreferenceChangeListener(this)
+        startBackgroundMotion()
     }
 
     override fun onDestroyView() {
+        stopBackgroundMotion()
         super.onDestroyView()
         PreferenceManager.getDefaultSharedPreferences(requireContext())
             .unregisterOnSharedPreferenceChangeListener(this)
