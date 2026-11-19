@@ -115,17 +115,22 @@ class NowPlayingChoreographer(
      *   0 .. 0.60 : sides, top and corners of the body open up to the screen
      *   0 .. 0.22 : the bottom edge stretches down to the screen bottom (the tab bar is pushed
      *               down with it, 1:1)
-     *   0.02 .. 0.34 : the player and the panel colour fade in over the glass (very soft curve)
+     *   0 .. [glassPlayerFull] : the player (backdrop, controls, toolbar) and the panel colour
+     *               fade in over the glass. It starts with the very first pixel of the drag and
+     *               is 100% visible at [glassPlayerFull]. To move the point where it is complete,
+     *               change only that one number.
      *   0.28 .. 0.42 : the glass is dropped, once it is completely covered
      */
+    private val glassPlayerFull = 0.12f
+
     private val glassTimes = Times(
         miniOut = Span(0f, 0.09f),
-        playerIn = Span(0.02f, 0.34f, Ease.SMOOTHER),
-        controlsIn = Span(0.12f, 0.42f),
-        toolbarIn = Span(0.18f, 0.44f),
+        playerIn = Span(0f, glassPlayerFull, Ease.LINEAR),
+        controlsIn = Span(0f, glassPlayerFull, Ease.LINEAR),
+        toolbarIn = Span(0f, glassPlayerFull, Ease.LINEAR),
         navFade = Span(0f, 0.05f), // only used when the tab bar is folded to a circle
         navSlide = Span(0f, 1f), // unused in glass mode (the tab bar is pushed by the body)
-        backdropIn = Span(0.02f, 0.34f, Ease.SMOOTHER),
+        backdropIn = Span(0f, glassPlayerFull, Ease.LINEAR),
         cornerIn = Span(0f, 0.01f), // unused in glass mode (the body owns the corners)
         cornerOut = Span(0.80f, 1f),
     )
