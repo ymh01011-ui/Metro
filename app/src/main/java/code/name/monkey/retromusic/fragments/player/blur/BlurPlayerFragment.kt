@@ -24,6 +24,7 @@ import android.os.Bundle
 import android.view.View
 import android.view.animation.AccelerateDecelerateInterpolator
 import androidx.appcompat.widget.Toolbar
+import androidx.core.content.ContextCompat
 import androidx.preference.PreferenceManager
 import code.name.monkey.appthemehelper.util.ToolbarContentTintHelper
 import code.name.monkey.retromusic.NEW_BLUR_AMOUNT
@@ -58,6 +59,9 @@ class BlurPlayerFragment : AbsPlayerFragment(R.layout.fragment_blur),
 
     private var lastColor: Int = 0
 
+    // Light gray used for the bottom icon row (heart, queue, ...), like the design
+    private val iconColor = Color.rgb(214, 214, 214)
+
     // Slow drifting motion of the blurred cover (rotate / slide / breathe). Different durations
     // per property so the pattern never visibly repeats. Runs only while music is playing.
     private var bgAnimators: List<ObjectAnimator> = emptyList()
@@ -83,9 +87,11 @@ class BlurPlayerFragment : AbsPlayerFragment(R.layout.fragment_blur),
 
     private fun setUpPlayerToolbar() {
         binding.playerToolbar.apply {
-            inflateMenu(R.menu.menu_player)
+            inflateMenu(R.menu.menu_player_blur)
+            // (no back arrow in portrait; kept for the landscape layout which still has one)
             setNavigationOnClickListener { requireActivity().onBackPressedDispatcher.onBackPressed() }
-            ToolbarContentTintHelper.colorizeToolbar(this, Color.WHITE, activity)
+            overflowIcon = ContextCompat.getDrawable(requireContext(), R.drawable.ic_more_horiz)
+            ToolbarContentTintHelper.colorizeToolbar(this, iconColor, activity)
         }.setOnMenuItemClickListener(this)
     }
 
@@ -97,7 +103,7 @@ class BlurPlayerFragment : AbsPlayerFragment(R.layout.fragment_blur),
         playbackControlsFragment.setColor(color)
         lastColor = color.backgroundColor
         libraryViewModel.updateColor(color.backgroundColor)
-        ToolbarContentTintHelper.colorizeToolbar(binding.playerToolbar, Color.WHITE, activity)
+        ToolbarContentTintHelper.colorizeToolbar(binding.playerToolbar, iconColor, activity)
     }
 
     override fun toggleFavorite(song: Song) {
@@ -114,8 +120,11 @@ class BlurPlayerFragment : AbsPlayerFragment(R.layout.fragment_blur),
     }
 
     override fun toolbarIconColor(): Int {
-        return Color.WHITE
+        return iconColor
     }
+
+    // Closed-caption icon for the lyrics button, as in the design
+    override fun lyricsIconRes(isShowing: Boolean): Int = R.drawable.ic_closed_caption
 
     override val paletteColor: Int
         get() = lastColor
