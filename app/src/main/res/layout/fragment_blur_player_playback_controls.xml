@@ -19,38 +19,69 @@
     android:layout_height="match_parent"
     tools:ignore="MissingPrefix">
 
-    <!-- Title: bold, white, left aligned -->
+    <!-- Horizontal anchors for the transport row (Apple Music positions) -->
+    <androidx.constraintlayout.widget.Guideline
+        android:id="@+id/guidePrev"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        app:layout_constraintGuide_begin="73dp" />
+
+    <androidx.constraintlayout.widget.Guideline
+        android:id="@+id/guideNext"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        app:layout_constraintGuide_end="73dp" />
+
+    <androidx.constraintlayout.widget.Guideline
+        android:id="@+id/guideRepeat"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        app:layout_constraintGuide_begin="24dp" />
+
+    <androidx.constraintlayout.widget.Guideline
+        android:id="@+id/guideShuffle"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        app:layout_constraintGuide_end="24dp" />
+
+    <!-- Title: 18sp medium, near white. Right side is kept free for the favorite / more circles -->
     <com.google.android.material.textview.MaterialTextView
         android:id="@+id/title"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
-        android:layout_marginStart="24dp"
-        android:layout_marginTop="38dp"
-        android:layout_marginEnd="24dp"
+        android:layout_marginStart="32dp"
+        android:layout_marginTop="44dp"
+        android:layout_marginEnd="112dp"
         android:clickable="true"
         android:ellipsize="marquee"
         android:focusable="true"
+        android:fontFamily="sans-serif-medium"
         android:freezesText="true"
         android:gravity="start"
         android:marqueeRepeatLimit="marquee_forever"
         android:scrollHorizontally="true"
         android:singleLine="true"
         android:textAppearance="@style/TextViewHeadline6"
-        android:textColor="@android:color/white"
-        android:textSize="22sp"
-        android:textStyle="bold"
+        android:textColor="#EEFFFFFF"
+        android:textSize="18sp"
+        android:textStyle="normal"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent"
-        tools:text="That's So True" />
+        tools:text="BIRDS OF A FEATHER" />
 
-    <!-- Artist: lighter, left aligned -->
+    <!-- Artist: 18sp regular, 50% white -->
     <com.google.android.material.textview.MaterialTextView
         android:id="@+id/text"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
-        android:layout_marginStart="24dp"
-        android:layout_marginEnd="24dp"
+        android:layout_marginStart="32dp"
+        android:layout_marginTop="1dp"
+        android:layout_marginEnd="112dp"
         android:clickable="true"
         android:ellipsize="marquee"
         android:focusable="true"
@@ -60,65 +91,70 @@
         android:scrollHorizontally="true"
         android:singleLine="true"
         android:textAppearance="@style/TextViewBody1"
-        android:textColor="#B3FFFFFF"
-        android:textSize="16sp"
+        android:textColor="#80FFFFFF"
+        android:textSize="18sp"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toBottomOf="@+id/title"
-        tools:text="Gracie Abrams" />
+        tools:text="Billie Eilish" />
 
-    <!-- Thick rounded progress bar -->
+    <!-- Progress bar: 7dp track, no visible thumb, no halo (track starts 32dp from the edge,
+         the slider adds ~14dp of its own side padding) -->
     <com.google.android.material.slider.Slider
         android:id="@+id/progressSlider"
         style="@style/Widget.Retro.Slider"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
-        android:layout_marginStart="6dp"
-        android:layout_marginTop="8dp"
-        android:layout_marginEnd="6dp"
+        android:layout_marginStart="18dp"
+        android:layout_marginTop="3dp"
+        android:layout_marginEnd="18dp"
+        app:haloTintList="@android:color/transparent"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toBottomOf="@+id/text"
         app:thumbElevation="0dp"
         app:thumbRadius="4dp"
-        app:trackHeight="8dp" />
+        app:thumbTintList="@android:color/transparent"
+        app:trackHeight="7dp" />
 
     <com.google.android.material.textview.MaterialTextView
         android:id="@+id/songCurrentProgress"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_marginStart="30dp"
+        android:layout_marginStart="32dp"
+        android:layout_marginTop="-7dp"
         android:singleLine="true"
-        android:textColor="#B3FFFFFF"
+        android:textColor="#59FFFFFF"
         android:textSize="12sp"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toBottomOf="@+id/progressSlider"
-        tools:text="0:04" />
+        tools:text="1:01" />
 
     <com.google.android.material.textview.MaterialTextView
         android:id="@+id/songTotalTime"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_marginEnd="30dp"
+        android:layout_marginTop="-7dp"
+        android:layout_marginEnd="32dp"
         android:singleLine="true"
-        android:textColor="#B3FFFFFF"
+        android:textColor="#59FFFFFF"
         android:textSize="12sp"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintTop_toBottomOf="@+id/progressSlider"
-        tools:text="2:46" />
+        tools:text="3:30" />
 
-    <!-- Transport row: repeat, previous, big white play, next, shuffle -->
+    <!-- Transport row: repeat, previous, play/pause, next, shuffle (same look as before, new positions).
+         No ripple / halo on any of them. -->
     <androidx.appcompat.widget.AppCompatImageButton
         android:id="@+id/repeatButton"
         android:layout_width="48dp"
         android:layout_height="48dp"
-        android:background="?attr/roundSelector"
+        android:background="@android:color/transparent"
         android:padding="9dp"
         android:scaleType="fitCenter"
         app:layout_constraintBottom_toBottomOf="@+id/playPauseButton"
-        app:layout_constraintEnd_toStartOf="@+id/previousButton"
-        app:layout_constraintHorizontal_chainStyle="packed"
-        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="@+id/guideRepeat"
+        app:layout_constraintStart_toStartOf="@+id/guideRepeat"
         app:layout_constraintTop_toTopOf="@+id/playPauseButton"
         app:srcCompat="@drawable/ic_repeat"
         tools:tint="@color/md_grey_500" />
@@ -127,13 +163,12 @@
         android:id="@+id/previousButton"
         android:layout_width="54dp"
         android:layout_height="54dp"
-        android:layout_marginStart="13dp"
-        android:background="?attr/roundSelector"
+        android:background="@android:color/transparent"
         android:padding="8dp"
         android:scaleType="fitCenter"
         app:layout_constraintBottom_toBottomOf="@+id/playPauseButton"
-        app:layout_constraintEnd_toStartOf="@+id/playPauseButton"
-        app:layout_constraintStart_toEndOf="@+id/repeatButton"
+        app:layout_constraintEnd_toEndOf="@+id/guidePrev"
+        app:layout_constraintStart_toStartOf="@+id/guidePrev"
         app:layout_constraintTop_toTopOf="@+id/playPauseButton"
         app:srcCompat="@drawable/ic_skip_previous"
         tools:tint="@android:color/white" />
@@ -142,16 +177,17 @@
         android:id="@+id/playPauseButton"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_marginStart="17dp"
-        android:layout_marginTop="53dp"
+        android:layout_marginTop="44dp"
         app:borderWidth="0dp"
         app:elevation="0dp"
         app:fabCustomSize="64dp"
-        app:layout_constraintEnd_toStartOf="@+id/nextButton"
-        app:layout_constraintStart_toEndOf="@+id/previousButton"
+        app:hoveredFocusedTranslationZ="0dp"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toBottomOf="@+id/songCurrentProgress"
         app:maxImageSize="32dp"
         app:pressedTranslationZ="0dp"
+        app:rippleColor="@android:color/transparent"
         app:srcCompat="@drawable/ic_pause_white_64dp"
         tools:tint="@android:color/black" />
 
@@ -159,13 +195,12 @@
         android:id="@+id/nextButton"
         android:layout_width="54dp"
         android:layout_height="54dp"
-        android:layout_marginStart="17dp"
-        android:background="?attr/roundSelector"
+        android:background="@android:color/transparent"
         android:padding="8dp"
         android:scaleType="fitCenter"
         app:layout_constraintBottom_toBottomOf="@+id/playPauseButton"
-        app:layout_constraintEnd_toStartOf="@+id/shuffleButton"
-        app:layout_constraintStart_toEndOf="@+id/playPauseButton"
+        app:layout_constraintEnd_toEndOf="@+id/guideNext"
+        app:layout_constraintStart_toStartOf="@+id/guideNext"
         app:layout_constraintTop_toTopOf="@+id/playPauseButton"
         app:srcCompat="@drawable/ic_skip_next"
         tools:tint="@android:color/white" />
@@ -174,13 +209,12 @@
         android:id="@+id/shuffleButton"
         android:layout_width="48dp"
         android:layout_height="48dp"
-        android:layout_marginStart="13dp"
-        android:background="?attr/roundSelector"
+        android:background="@android:color/transparent"
         android:padding="9dp"
         android:scaleType="fitCenter"
         app:layout_constraintBottom_toBottomOf="@+id/playPauseButton"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintStart_toEndOf="@+id/nextButton"
+        app:layout_constraintEnd_toEndOf="@+id/guideShuffle"
+        app:layout_constraintStart_toStartOf="@+id/guideShuffle"
         app:layout_constraintTop_toTopOf="@+id/playPauseButton"
         app:srcCompat="@drawable/ic_shuffle"
         tools:tint="@color/md_grey_500" />
