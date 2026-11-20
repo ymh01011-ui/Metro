@@ -23,7 +23,9 @@ import android.graphics.drawable.Drawable
 import android.os.Bundle
 import android.view.View
 import android.view.animation.AccelerateDecelerateInterpolator
+import androidx.appcompat.widget.ActionMenuView
 import androidx.appcompat.widget.Toolbar
+import androidx.core.view.children
 import androidx.core.content.ContextCompat
 import androidx.preference.PreferenceManager
 import code.name.monkey.appthemehelper.util.ToolbarContentTintHelper
@@ -93,6 +95,32 @@ class BlurPlayerFragment : AbsPlayerFragment(R.layout.fragment_blur),
             overflowIcon = ContextCompat.getDrawable(requireContext(), R.drawable.ic_more_horiz)
             ToolbarContentTintHelper.colorizeToolbar(this, iconColor, activity)
         }.setOnMenuItemClickListener(this)
+        spaceToolbarIcons()
+    }
+
+    // Spreads the bottom icons so their centers are exactly 54dp apart (Oto Music spacing),
+    // even for the narrower overflow "..." button.
+    private fun spaceToolbarIcons() {
+        val toolbar = binding.playerToolbar
+        toolbar.clipChildren = false
+        toolbar.post {
+            val menuView = toolbar.children.firstOrNull { it is ActionMenuView } as? ActionMenuView
+                ?: return@post
+            menuView.clipChildren = false
+            val stepPx = 54f * resources.displayMetrics.density
+            val apply = {
+                val items = menuView.children.filter { it.visibility == View.VISIBLE }.toList()
+                if (items.size > 1) {
+                    val centers = items.map { it.left + it.width / 2f }
+                    val mid = (centers.first() + centers.last()) / 2f
+                    items.forEachIndexed { i, v ->
+                        v.translationX = mid + (i - (items.size - 1) / 2f) * stepPx - centers[i]
+                    }
+                }
+            }
+            menuView.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> apply() }
+            apply()
+        }
     }
 
     override fun onFavoriteToggled() {
@@ -124,7 +152,7 @@ class BlurPlayerFragment : AbsPlayerFragment(R.layout.fragment_blur),
     }
 
     // Closed-caption icon for the lyrics button, as in the design
-    override fun lyricsIconRes(isShowing: Boolean): Int = R.drawable.ic_closed_caption
+    override fun lyricsIconRes(isShowing: Boolean): Int = R.drawable.ic_lyrics_blur
 
     override val paletteColor: Int
         get() = lastColor
