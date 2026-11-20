@@ -114,8 +114,8 @@ class BlurPlaybackControlsFragment :
 
     override fun setColor(color: MediaNotificationProcessor) {
         lastPlaybackControlsColor = Color.WHITE
-        lastDisabledPlaybackControlsColor =
-            ContextCompat.getColor(requireContext(), code.name.monkey.appthemehelper.R.color.md_grey_500)
+        // Disabled repeat/shuffle = 40% white (same as Oto Music), visible on light covers too
+        lastDisabledPlaybackControlsColor = ColorUtils.setAlphaComponent(Color.WHITE, 102)
 
         // Title is full white; artist and times are softer white (70%)
         val softWhite = ColorUtils.setAlphaComponent(Color.WHITE, 179)
