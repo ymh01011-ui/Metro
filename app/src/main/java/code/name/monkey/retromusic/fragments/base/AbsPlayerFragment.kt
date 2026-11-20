@@ -292,6 +292,9 @@ abstract class AbsPlayerFragment(@LayoutRes layout: Int) : AbsMusicServiceFragme
         }
     }
 
+    /** Players with their own favorite button can override this to mirror the state. */
+    protected open fun onFavoriteStateUpdated(isFavorite: Boolean) {}
+
     fun updateIsFavorite(animate: Boolean = false) {
         lifecycleScope.launch(IO) {
             val isFavorite: Boolean =
@@ -319,6 +322,7 @@ abstract class AbsPlayerFragment(@LayoutRes layout: Int) : AbsMusicServiceFragme
                         }
                     }
                 }
+                onFavoriteStateUpdated(isFavorite)
             }
         }
     }
