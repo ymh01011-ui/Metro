@@ -6,7 +6,7 @@
     <item
         android:id="@+id/action_toggle_lyrics"
         android:checkable="true"
-        android:icon="@drawable/ic_closed_caption"
+        android:icon="@drawable/ic_lyrics_blur"
         android:orderInCategory="0"
         android:title="@string/lyrics"
         app:showAsAction="always" />
@@ -25,7 +25,7 @@
         app:showAsAction="always" />
     <item
         android:id="@+id/now_playing"
-        android:icon="@drawable/ic_queue_music"
+        android:icon="@drawable/ic_queue_play_blur"
         android:orderInCategory="3"
         android:title="@string/now_playing_queue"
         app:showAsAction="always" />
