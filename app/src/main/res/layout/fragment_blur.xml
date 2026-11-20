@@ -41,14 +41,14 @@
     </FrameLayout>
 
 
-    <!-- Cover starts at ~9% of the screen height. The cover page itself already has a 16dp
+    <!-- Cover starts at ~12% of the screen height. The cover page itself already has a 16dp
          inner margin, so an 8dp margin here gives the 24dp side gap of the design. -->
     <androidx.constraintlayout.widget.Guideline
         android:id="@+id/coverTopGuideline"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:orientation="horizontal"
-        app:layout_constraintGuide_percent="0.09" />
+        app:layout_constraintGuide_percent="0.121" />
 
     <androidx.fragment.app.FragmentContainerView
         android:id="@+id/playerAlbumCoverFragment"
@@ -73,13 +73,45 @@
         app:layout_constraintTop_toBottomOf="@id/playerAlbumCoverFragment"
         tools:layout="@layout/fragment_blur_player_playback_controls" />
 
-    <!-- Bottom icon row (lyrics, favorite, equalizer, queue, more), centered, no back arrow -->
+    <!-- Favorite + "more" circles at the right of the title (Apple Music style). The circle
+         centers sit 65.5dp below the top of the controls area, between title and artist. -->
+    <ImageButton
+        android:id="@+id/favoriteCircleButton"
+        android:layout_width="28dp"
+        android:layout_height="28dp"
+        android:layout_marginTop="51.5dp"
+        android:layout_marginEnd="16dp"
+        android:background="@drawable/bg_blur_circle_button"
+        android:contentDescription="@string/favorites"
+        android:padding="6dp"
+        android:scaleType="fitCenter"
+        app:layout_constraintEnd_toStartOf="@+id/moreCircleButton"
+        app:layout_constraintTop_toTopOf="@+id/playbackControlsFragment"
+        app:srcCompat="@drawable/ic_favorite_border"
+        app:tint="@android:color/white" />
+
+    <ImageButton
+        android:id="@+id/moreCircleButton"
+        android:layout_width="28dp"
+        android:layout_height="28dp"
+        android:layout_marginTop="51.5dp"
+        android:layout_marginEnd="32dp"
+        android:background="@drawable/bg_blur_circle_button"
+        android:contentDescription="More"
+        android:padding="6dp"
+        android:scaleType="fitCenter"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintTop_toTopOf="@+id/playbackControlsFragment"
+        app:srcCompat="@drawable/ic_more_vert_blur"
+        app:tint="@android:color/white" />
+
+    <!-- Bottom icon row (lyrics, equalizer, queue), centered, 103dp between icon centers -->
     <com.google.android.material.appbar.MaterialToolbar
         android:id="@+id/playerToolbar"
         style="@style/Toolbar"
-        android:layout_width="wrap_content"
+        android:layout_width="0dp"
         android:layout_height="wrap_content"
-        android:layout_marginBottom="-8dp"
+        android:layout_marginBottom="11dp"
         android:background="@android:color/transparent"
         app:contentInsetEnd="0dp"
         app:contentInsetLeft="0dp"
