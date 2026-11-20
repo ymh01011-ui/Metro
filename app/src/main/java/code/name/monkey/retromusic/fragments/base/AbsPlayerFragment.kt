@@ -241,9 +241,12 @@ abstract class AbsPlayerFragment(@LayoutRes layout: Int) : AbsMusicServiceFragme
         return false
     }
 
+    /** Players can override this to use another lyrics icon. */
+    protected open fun lyricsIconRes(isShowing: Boolean): Int =
+        if (isShowing) R.drawable.ic_lyrics else R.drawable.ic_lyrics_outline
+
     private fun showLyricsIcon(item: MenuItem) {
-        val icon =
-            if (PreferenceUtil.showLyrics) R.drawable.ic_lyrics else R.drawable.ic_lyrics_outline
+        val icon = lyricsIconRes(PreferenceUtil.showLyrics)
         val drawable = requireContext().getTintedDrawable(
             icon,
             toolbarIconColor()
