@@ -129,9 +129,14 @@ class BlurPlaybackControlsFragment :
         updatePrevNextColor()
 
         binding.progressSlider.applyColor(Color.WHITE)
-        // visible translucent track behind the white progress
+        // Apple Music look: translucent white progress (44%) on a fainter track (19%),
+        // no visible thumb and no halo
+        binding.progressSlider.trackActiveTintList =
+            ColorStateList.valueOf(ColorUtils.setAlphaComponent(Color.WHITE, 112))
         binding.progressSlider.trackInactiveTintList =
-            ColorStateList.valueOf(ColorUtils.setAlphaComponent(Color.WHITE, 80))
+            ColorStateList.valueOf(ColorUtils.setAlphaComponent(Color.WHITE, 48))
+        binding.progressSlider.thumbTintList = ColorStateList.valueOf(Color.TRANSPARENT)
+        binding.progressSlider.haloTintList = ColorStateList.valueOf(Color.TRANSPARENT)
         volumeFragment?.setTintableColor(lastPlaybackControlsColor)
         setFabColor(lastPlaybackControlsColor)
     }
