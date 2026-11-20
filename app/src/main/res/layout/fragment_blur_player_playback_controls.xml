@@ -108,13 +108,13 @@
         android:layout_marginStart="18dp"
         android:layout_marginTop="3dp"
         android:layout_marginEnd="18dp"
-        app:haloTintList="@android:color/transparent"
+        app:haloColor="@android:color/transparent"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toBottomOf="@+id/text"
         app:thumbElevation="0dp"
         app:thumbRadius="4dp"
-        app:thumbTintList="@android:color/transparent"
+        app:thumbColor="@android:color/transparent"
         app:trackHeight="7dp" />
 
     <com.google.android.material.textview.MaterialTextView
