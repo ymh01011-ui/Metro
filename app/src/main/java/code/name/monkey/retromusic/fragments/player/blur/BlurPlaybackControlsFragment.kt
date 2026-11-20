@@ -14,6 +14,7 @@
  */
 package code.name.monkey.retromusic.fragments.player.blur
 
+import android.content.res.ColorStateList
 import android.graphics.Color
 import android.os.Bundle
 import android.view.View
@@ -21,21 +22,20 @@ import android.view.animation.DecelerateInterpolator
 import android.widget.ImageButton
 import android.widget.TextView
 import androidx.core.content.ContextCompat
+import androidx.core.graphics.ColorUtils
 import code.name.monkey.appthemehelper.util.ColorUtil
 import code.name.monkey.appthemehelper.util.MaterialValueHelper
 import code.name.monkey.appthemehelper.util.TintHelper
 import code.name.monkey.retromusic.R
 import code.name.monkey.retromusic.databinding.FragmentBlurPlayerPlaybackControlsBinding
 import code.name.monkey.retromusic.extensions.applyColor
-import code.name.monkey.retromusic.extensions.getSongInfo
-import code.name.monkey.retromusic.extensions.hide
-import code.name.monkey.retromusic.extensions.show
 import code.name.monkey.retromusic.fragments.base.AbsPlayerControlsFragment
 import code.name.monkey.retromusic.fragments.base.goToAlbum
 import code.name.monkey.retromusic.fragments.base.goToArtist
 import code.name.monkey.retromusic.helper.MusicPlayerRemote
-import code.name.monkey.retromusic.util.PreferenceUtil
 import code.name.monkey.retromusic.util.color.MediaNotificationProcessor
+import com.google.android.material.shape.RelativeCornerSize
+import com.google.android.material.shape.ShapeAppearanceModel
 import com.google.android.material.slider.Slider
 
 class BlurPlaybackControlsFragment :
@@ -68,6 +68,10 @@ class BlurPlaybackControlsFragment :
         super.onViewCreated(view, savedInstanceState)
         _binding = FragmentBlurPlayerPlaybackControlsBinding.bind(view)
         setUpPlayPauseFab()
+        // Always a perfect circle, whatever the "circle play button" preference says
+        binding.playPauseButton.shapeAppearanceModel = ShapeAppearanceModel.builder()
+            .setAllCornerSizes(RelativeCornerSize(0.5f))
+            .build()
         binding.title.isSelected = true
         binding.text.isSelected = true
         binding.title.setOnClickListener {
@@ -81,14 +85,7 @@ class BlurPlaybackControlsFragment :
     private fun updateSong() {
         val song = MusicPlayerRemote.currentSong
         binding.title.text = song.title
-        binding.text.text = String.format("%s • %s", song.artistName, song.albumName)
-
-        if (PreferenceUtil.isSongInfo) {
-            binding.songInfo.show()
-            binding.songInfo.text = getSongInfo(song)
-        } else {
-            binding.songInfo.hide()
-        }
+        binding.text.text = song.artistName
     }
 
     override fun onServiceConnected() {
@@ -120,19 +117,21 @@ class BlurPlaybackControlsFragment :
         lastDisabledPlaybackControlsColor =
             ContextCompat.getColor(requireContext(), code.name.monkey.appthemehelper.R.color.md_grey_500)
 
-        binding.title.setTextColor(lastPlaybackControlsColor)
-
-        binding.songCurrentProgress.setTextColor(lastPlaybackControlsColor)
-        binding.songTotalTime.setTextColor(lastPlaybackControlsColor)
+        // Title is full white; artist and times are softer white (70%)
+        val softWhite = ColorUtils.setAlphaComponent(Color.WHITE, 179)
+        binding.title.setTextColor(Color.WHITE)
+        binding.text.setTextColor(softWhite)
+        binding.songCurrentProgress.setTextColor(softWhite)
+        binding.songTotalTime.setTextColor(softWhite)
 
         updateRepeatState()
         updateShuffleState()
         updatePrevNextColor()
 
-        binding.text.setTextColor(lastPlaybackControlsColor)
-        binding.songInfo.setTextColor(lastDisabledPlaybackControlsColor)
-
-        binding.progressSlider.applyColor(lastPlaybackControlsColor)
+        binding.progressSlider.applyColor(Color.WHITE)
+        // visible translucent track behind the white progress
+        binding.progressSlider.trackInactiveTintList =
+            ColorStateList.valueOf(ColorUtils.setAlphaComponent(Color.WHITE, 80))
         volumeFragment?.setTintableColor(lastPlaybackControlsColor)
         setFabColor(lastPlaybackControlsColor)
     }
