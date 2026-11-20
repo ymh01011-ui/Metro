@@ -23,7 +23,9 @@ import android.graphics.drawable.Drawable
 import android.os.Bundle
 import android.view.View
 import android.view.animation.AccelerateDecelerateInterpolator
+import android.view.ViewGroup
 import androidx.appcompat.widget.ActionMenuView
+import androidx.appcompat.widget.PopupMenu
 import androidx.appcompat.widget.Toolbar
 import androidx.core.view.children
 import androidx.core.content.ContextCompat
@@ -61,8 +63,8 @@ class BlurPlayerFragment : AbsPlayerFragment(R.layout.fragment_blur),
 
     private var lastColor: Int = 0
 
-    // Light gray used for the bottom icon row (heart, queue, ...), like the design
-    private val iconColor = Color.rgb(214, 214, 214)
+    // 50% white used for the bottom icon row (Apple Music style)
+    private val iconColor = Color.argb(128, 255, 255, 255)
 
     // Slow drifting motion of the blurred cover (rotate / slide / breathe). Different durations
     // per property so the pattern never visibly repeats. Runs only while music is playing.
@@ -77,6 +79,7 @@ class BlurPlayerFragment : AbsPlayerFragment(R.layout.fragment_blur),
         _binding = FragmentBlurBinding.bind(view)
         setUpSubFragments()
         setUpPlayerToolbar()
+        setUpCircleButtons()
         binding.playerToolbar.drawAboveSystemBars()
     }
 
@@ -92,14 +95,33 @@ class BlurPlayerFragment : AbsPlayerFragment(R.layout.fragment_blur),
             inflateMenu(R.menu.menu_player_blur)
             // (no back arrow in portrait; kept for the landscape layout which still has one)
             setNavigationOnClickListener { requireActivity().onBackPressedDispatcher.onBackPressed() }
-            overflowIcon = ContextCompat.getDrawable(requireContext(), R.drawable.ic_more_horiz)
             ToolbarContentTintHelper.colorizeToolbar(this, iconColor, activity)
         }.setOnMenuItemClickListener(this)
         spaceToolbarIcons()
     }
 
-    // Spreads the bottom icons so their centers are exactly 54dp apart (Oto Music spacing),
-    // even for the narrower overflow "..." button.
+    // Favorite + "more" circles next to the title. "More" opens the overflow items in a popup.
+    private fun setUpCircleButtons() {
+        binding.favoriteCircleButton.setOnClickListener {
+            toggleFavorite(MusicPlayerRemote.currentSong)
+        }
+        binding.moreCircleButton.setOnClickListener { anchor ->
+            PopupMenu(requireContext(), anchor).apply {
+                menuInflater.inflate(R.menu.menu_player_blur_overflow, menu)
+                setOnMenuItemClickListener { onMenuItemClick(it) }
+                show()
+            }
+        }
+    }
+
+    override fun onFavoriteStateUpdated(isFavorite: Boolean) {
+        _binding?.favoriteCircleButton?.setImageResource(
+            if (isFavorite) R.drawable.ic_favorite else R.drawable.ic_favorite_border
+        )
+    }
+
+    // Spreads the bottom icons so their centers are exactly 103dp apart (Apple Music spacing),
+    // centered on the screen, with no press ripple.
     private fun spaceToolbarIcons() {
         val toolbar = binding.playerToolbar
         toolbar.clipChildren = false
@@ -107,13 +129,16 @@ class BlurPlayerFragment : AbsPlayerFragment(R.layout.fragment_blur),
             val menuView = toolbar.children.firstOrNull { it is ActionMenuView } as? ActionMenuView
                 ?: return@post
             menuView.clipChildren = false
-            val stepPx = 54f * resources.displayMetrics.density
+            // Full-width menu view so the spread-out icons stay inside its bounds (touch area)
+            menuView.layoutParams = menuView.layoutParams.apply { width = ViewGroup.LayoutParams.MATCH_PARENT }
+            val stepPx = 103f * resources.displayMetrics.density
             val apply = {
                 val items = menuView.children.filter { it.visibility == View.VISIBLE }.toList()
                 if (items.size > 1) {
                     val centers = items.map { it.left + it.width / 2f }
-                    val mid = (centers.first() + centers.last()) / 2f
+                    val mid = menuView.width / 2f
                     items.forEachIndexed { i, v ->
+                        v.background = null // no white press halo
                         v.translationX = mid + (i - (items.size - 1) / 2f) * stepPx - centers[i]
                     }
                 }
