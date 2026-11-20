@@ -41,14 +41,14 @@
     </FrameLayout>
 
 
-    <!-- Cover starts at ~15% of the screen height. The cover page itself already has a 16dp
+    <!-- Cover starts at ~11% of the screen height. The cover page itself already has a 16dp
          inner margin, so an 8dp margin here gives the 24dp side gap of the design. -->
     <androidx.constraintlayout.widget.Guideline
         android:id="@+id/coverTopGuideline"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:orientation="horizontal"
-        app:layout_constraintGuide_percent="0.15" />
+        app:layout_constraintGuide_percent="0.11" />
 
     <androidx.fragment.app.FragmentContainerView
         android:id="@+id/playerAlbumCoverFragment"
