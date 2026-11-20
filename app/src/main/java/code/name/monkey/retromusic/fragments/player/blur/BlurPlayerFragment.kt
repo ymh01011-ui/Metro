@@ -102,10 +102,10 @@ class BlurPlayerFragment : AbsPlayerFragment(R.layout.fragment_blur),
 
     // Favorite + "more" circles next to the title. "More" opens the overflow items in a popup.
     private fun setUpCircleButtons() {
-        binding.favoriteCircleButton.setOnClickListener {
+        binding.favoriteCircleButton?.setOnClickListener {
             toggleFavorite(MusicPlayerRemote.currentSong)
         }
-        binding.moreCircleButton.setOnClickListener { anchor ->
+        binding.moreCircleButton?.setOnClickListener { anchor ->
             PopupMenu(requireContext(), anchor).apply {
                 menuInflater.inflate(R.menu.menu_player_blur_overflow, menu)
                 setOnMenuItemClickListener { onMenuItemClick(it) }
