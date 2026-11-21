@@ -17,6 +17,7 @@ package code.name.monkey.retromusic.fragments.player.blur
 import android.animation.ObjectAnimator
 import android.animation.ValueAnimator
 import android.content.SharedPreferences
+import android.graphics.Bitmap
 import android.graphics.Color
 import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.Drawable
@@ -48,12 +49,19 @@ import code.name.monkey.retromusic.util.PreferenceUtil.blurAmount
 import code.name.monkey.retromusic.util.color.MediaNotificationProcessor
 import com.bumptech.glide.Glide
 import com.bumptech.glide.RequestBuilder
+import com.bumptech.glide.request.target.CustomTarget
+import com.bumptech.glide.request.transition.Transition
 
 
 class BlurPlayerFragment : AbsPlayerFragment(R.layout.fragment_blur),
     SharedPreferences.OnSharedPreferenceChangeListener {
 
     private var lastRequest: RequestBuilder<Drawable>? = null
+
+    // Liquid background (rotating, saturated, blurred cover). The view only exists in layouts
+    // that include it; where it is missing (e.g. landscape) the old blur background is used.
+    private var liquidTarget: CustomTarget<Bitmap>? = null
+    private var liquidSongId: Long = -1L
 
     override fun playerToolbar(): Toolbar {
         return binding.playerToolbar
@@ -182,7 +190,35 @@ class BlurPlayerFragment : AbsPlayerFragment(R.layout.fragment_blur),
     override val paletteColor: Int
         get() = lastColor
 
+    private fun updateLiquid() {
+        val song = MusicPlayerRemote.currentSong
+        if (song.id == liquidSongId) return
+        liquidTarget?.let { Glide.with(this).clear(it) }
+        val target = object : CustomTarget<Bitmap>(256, 256) {
+            override fun onResourceReady(resource: Bitmap, transition: Transition<in Bitmap>?) {
+                liquidSongId = song.id
+                _binding?.liquidBackground?.setArtwork(resource)
+            }
+
+            override fun onLoadFailed(errorDrawable: Drawable?) {
+                liquidSongId = -1L
+                _binding?.liquidBackground?.setArtwork(null)
+            }
+
+            override fun onLoadCleared(placeholder: Drawable?) {}
+        }
+        liquidTarget = target
+        Glide.with(this)
+            .asBitmap()
+            .load(RetroGlideExtension.getSongModel(song))
+            .into(target)
+    }
+
     private fun updateBlur() {
+        if (binding.liquidBackground != null) {
+            updateLiquid()
+            return
+        }
         // https://github.com/bumptech/glide/issues/527#issuecomment-148840717
         Glide.with(this)
             .load(RetroGlideExtension.getSongModel(MusicPlayerRemote.currentSong))
@@ -212,6 +248,7 @@ class BlurPlayerFragment : AbsPlayerFragment(R.layout.fragment_blur),
 
     private fun startBackgroundMotion() {
         stopBackgroundMotion()
+        if (binding.liquidBackground != null) return // Liquid view animates itself
         val bg = binding.colorBackground
         bg.post {
             if (_binding == null || bg.width == 0 || bg.height == 0) return@post
@@ -260,12 +297,14 @@ class BlurPlayerFragment : AbsPlayerFragment(R.layout.fragment_blur),
     override fun onPlayStateChanged() {
         super.onPlayStateChanged()
         updateMotionState()
+        _binding?.liquidBackground?.setPlaying(MusicPlayerRemote.isPlaying)
     }
 
     override fun onPause() {
         super.onPause()
         lastRequest = null
         stopBackgroundMotion()
+        _binding?.liquidBackground?.setPlaying(false)
     }
 
     override fun onResume() {
@@ -273,10 +312,14 @@ class BlurPlayerFragment : AbsPlayerFragment(R.layout.fragment_blur),
         PreferenceManager.getDefaultSharedPreferences(requireContext())
             .registerOnSharedPreferenceChangeListener(this)
         startBackgroundMotion()
+        _binding?.liquidBackground?.setPlaying(MusicPlayerRemote.isPlaying)
     }
 
     override fun onDestroyView() {
         stopBackgroundMotion()
+        liquidTarget?.let { Glide.with(this).clear(it) }
+        liquidTarget = null
+        liquidSongId = -1L
         super.onDestroyView()
         PreferenceManager.getDefaultSharedPreferences(requireContext())
             .unregisterOnSharedPreferenceChangeListener(this)
