@@ -71,8 +71,8 @@ class BlurPlayerFragment : AbsPlayerFragment(R.layout.fragment_blur),
 
     private var lastColor: Int = 0
 
-    // 50% white used for the bottom icon row (Apple Music style)
-    private val iconColor = Color.argb(128, 255, 255, 255)
+    // ~85% white for the bottom icon row (matches Oto Music; was 50%)
+    private val iconColor = Color.argb(217, 255, 255, 255)
 
     // Slow drifting motion of the blurred cover (rotate / slide / breathe). Different durations
     // per property so the pattern never visibly repeats. Runs only while music is playing.
