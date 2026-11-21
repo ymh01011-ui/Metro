@@ -43,6 +43,13 @@ class LiquidBackgroundView @JvmOverloads constructor(
             }
         }
 
+    /** Black layer over the covers, 0f..1f. Lower = brighter background (Metrolist uses 0.5). */
+    var scrimAlpha: Float = 0.32f
+        set(value) {
+            field = value.coerceIn(0f, 1f)
+            invalidate()
+        }
+
     private var active: Bitmap? = null
     private var previous: Bitmap? = null
     private var crossfade = 1f
@@ -208,7 +215,7 @@ class LiquidBackgroundView @JvmOverloads constructor(
         active?.let { drawLayers(c, it, crossfade, sw, sh, rotA, rotB, rotC) }
 
         // Darken so white text stays readable, plus a faint white lift.
-        fillPaint.color = SCRIM_DARK
+        fillPaint.color = Color.argb((scrimAlpha * 255f).roundToInt(), 0, 0, 0)
         c.drawPaint(fillPaint)
         fillPaint.color = SCRIM_LIGHT
         c.drawPaint(fillPaint)
@@ -277,7 +284,6 @@ class LiquidBackgroundView @JvmOverloads constructor(
         const val FRAME_MS = 50L
         const val CROSSFADE_MS = 1000L
         const val MAX_ART_HEIGHT = 256
-        const val SCRIM_DARK = 0x80000000.toInt()
         const val SCRIM_LIGHT = 0x0DFFFFFF
 
         fun boxPass(src: IntArray, dst: IntArray, w: Int, h: Int, radius: Int, horizontal: Boolean) {
