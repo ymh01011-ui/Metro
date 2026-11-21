@@ -7,10 +7,22 @@
     android:clickable="true"
     android:focusable="true">
 
+    <!-- Liquid background (rotating blurred cover). Must stay first, behind everything. -->
+    <code.name.monkey.retromusic.views.LiquidBackgroundView
+        android:id="@+id/liquidBackground"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent" />
+
+    <!-- Old blur background, kept hidden so existing references still compile. -->
     <androidx.appcompat.widget.AppCompatImageView
         android:id="@+id/colorBackground"
         android:layout_width="0dp"
         android:layout_height="0dp"
+        android:visibility="gone"
         android:scaleType="centerCrop"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
