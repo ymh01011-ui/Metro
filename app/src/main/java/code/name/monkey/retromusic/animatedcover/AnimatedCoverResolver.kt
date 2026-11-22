@@ -95,7 +95,7 @@ class AnimatedCoverResolver private constructor(context: Context) {
                 for (id in ids) {
                     when (val m = fetchMotion(id, token, country)) {
                         is Motion.Found -> {
-                            writeCache(key, m.cover)
+                            // Found videos are stored by the caller in the shared album cache.
                             return@withContext m.cover
                         }
                         Motion.Failed -> failed = true
