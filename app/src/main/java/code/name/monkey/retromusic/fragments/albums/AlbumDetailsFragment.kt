@@ -611,6 +611,47 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
             posterFile(app, albumId).delete()
             posterMemoryCache.remove(albumId)
         }
+
+        /** صورة أول فريم المخزنة للألبوم (لو موجودة). اندهها من thread خلفي لو هتفكها. */
+        internal fun sharedPosterFile(context: Context, albumId: Long): File? {
+            val f = posterFile(context.applicationContext, albumId)
+            return if (f.exists() && f.length() > 0) f else null
+        }
+
+        /**
+         * بيحفظ أول فريم التقطه البلاير بنفس طريقة capturePosterIfNeeded: صورة دايمة + نسبة الإطار
+         * + لون الصفحة، فصفحة الألبوم تفتح بيهم فورًا. بيرجع اللون أو null. اندهه من thread خلفي.
+         */
+        internal fun sharedStorePoster(context: Context, albumId: Long, frame: Bitmap, heightOverWidth: Float): Int? {
+            val app = context.applicationContext
+            val entry = loadAnimatedArtworkCache(app)[albumId] ?: return null
+            if (entry.url == null) return null
+            val file = posterFile(app, albumId)
+            if (file.exists() && entry.posterColor != null && entry.ratio != null) return entry.posterColor
+            return try {
+                val color = extractPageColor(frame)
+                file.parentFile?.mkdirs()
+                val tmp = File(file.parentFile, "$albumId.tmp")
+                FileOutputStream(tmp).use { frame.compress(Bitmap.CompressFormat.JPEG, 92, it) }
+                if (!tmp.renameTo(file)) {
+                    tmp.delete()
+                    return null
+                }
+                posterMemoryCache.remove(albumId)
+                val cache = loadAnimatedArtworkCache(app)
+                cache[albumId]?.let { e ->
+                    if (e.url != null) {
+                        cache[albumId] = e.copy(ratio = heightOverWidth.coerceIn(0.9f, 1.6f), posterColor = color)
+                        persistAnimatedArtworkCache(app)
+                    }
+                }
+                color
+            } catch (e: Exception) {
+                e.printStackTrace()
+                file.delete()
+                null
+            }
+        }
     }
 
     private val savedSortOrder: String
