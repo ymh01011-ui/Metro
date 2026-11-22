@@ -76,6 +76,16 @@ class PlayerAlbumCoverFragment : AbsMusicServiceFragment(R.layout.fragment_playe
 
     var lyrics: Lyrics? = null
 
+    /**
+     * When true the cover pager keeps handling swipes and colors but draws nothing, because a
+     * full-screen cover is drawn behind it by the player fragment.
+     */
+    var invisiblePager: Boolean = false
+        set(value) {
+            field = value
+            _binding?.viewPager?.alpha = if (value) 0f else 1f
+        }
+
     /** The big artwork of the page that is currently centred (used by the mini->full morph). */
     fun currentCoverImage(): View? {
         val pager = _binding?.viewPager ?: return null
@@ -237,11 +247,12 @@ class PlayerAlbumCoverFragment : AbsMusicServiceFragment(R.layout.fragment_playe
         binding.coverLyrics.isVisible = false
         binding.lyricsView.isVisible = false
         binding.viewPager.isVisible = true
+        val coverAlpha = if (invisiblePager) 0F else 1F
         val lyrics: View = if (PreferenceUtil.lyricsType == CoverLyricsType.REPLACE_COVER) {
-            ObjectAnimator.ofFloat(viewPager, View.ALPHA, if (visible) 0F else 1F).start()
+            ObjectAnimator.ofFloat(viewPager, View.ALPHA, if (visible) 0F else coverAlpha).start()
             lrcView
         } else {
-            ObjectAnimator.ofFloat(viewPager, View.ALPHA, 1F).start()
+            ObjectAnimator.ofFloat(viewPager, View.ALPHA, coverAlpha).start()
             binding.coverLyrics
         }
         ObjectAnimator.ofFloat(lyrics, View.ALPHA, if (visible) 1F else 0F).apply {
