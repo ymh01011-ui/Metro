@@ -26,14 +26,14 @@
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:orientation="vertical"
-        app:layout_constraintGuide_begin="104dp" />
+        app:layout_constraintGuide_begin="99dp" />
 
     <androidx.constraintlayout.widget.Guideline
         android:id="@+id/guideNext"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:orientation="vertical"
-        app:layout_constraintGuide_end="104dp" />
+        app:layout_constraintGuide_end="99dp" />
 
     <androidx.constraintlayout.widget.Guideline
         android:id="@+id/guideRepeat"
@@ -162,48 +162,45 @@
 
     <androidx.appcompat.widget.AppCompatImageButton
         android:id="@+id/previousButton"
-        android:layout_width="54dp"
-        android:layout_height="54dp"
+        android:layout_width="64dp"
+        android:layout_height="64dp"
         android:background="@android:color/transparent"
-        android:padding="8dp"
+        android:padding="12dp"
         android:scaleType="fitCenter"
         app:layout_constraintBottom_toBottomOf="@+id/playPauseButton"
         app:layout_constraintEnd_toEndOf="@+id/guidePrev"
         app:layout_constraintStart_toStartOf="@+id/guidePrev"
         app:layout_constraintTop_toTopOf="@+id/playPauseButton"
-        app:srcCompat="@drawable/ic_skip_previous"
+        app:srcCompat="@drawable/ic_blur_rewind"
         tools:tint="@android:color/white" />
 
-    <com.google.android.material.floatingactionbutton.FloatingActionButton
+    <!-- Apple Music style: just the white icon (no circle), ~38dp glyph in an 80dp touch area.
+         marginTop 36dp keeps the row at the same height as the old 64dp circle (44dp). -->
+    <androidx.appcompat.widget.AppCompatImageButton
         android:id="@+id/playPauseButton"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="44dp"
-        app:borderWidth="0dp"
-        app:elevation="6dp"
-        app:fabCustomSize="64dp"
-        app:hoveredFocusedTranslationZ="0dp"
+        android:layout_width="80dp"
+        android:layout_height="80dp"
+        android:layout_marginTop="36dp"
+        android:background="@android:color/transparent"
+        android:padding="21dp"
+        android:scaleType="fitCenter"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toBottomOf="@+id/songCurrentProgress"
-        app:maxImageSize="32dp"
-        app:pressedTranslationZ="0dp"
-        app:rippleColor="@android:color/transparent"
-        app:srcCompat="@drawable/ic_pause_white_64dp"
-        tools:tint="@android:color/black" />
+        app:srcCompat="@drawable/ic_blur_pause" />
 
     <androidx.appcompat.widget.AppCompatImageButton
         android:id="@+id/nextButton"
-        android:layout_width="54dp"
-        android:layout_height="54dp"
+        android:layout_width="64dp"
+        android:layout_height="64dp"
         android:background="@android:color/transparent"
-        android:padding="8dp"
+        android:padding="12dp"
         android:scaleType="fitCenter"
         app:layout_constraintBottom_toBottomOf="@+id/playPauseButton"
         app:layout_constraintEnd_toEndOf="@+id/guideNext"
         app:layout_constraintStart_toStartOf="@+id/guideNext"
         app:layout_constraintTop_toTopOf="@+id/playPauseButton"
-        app:srcCompat="@drawable/ic_skip_next"
+        app:srcCompat="@drawable/ic_blur_forward"
         tools:tint="@android:color/white" />
 
     <androidx.appcompat.widget.AppCompatImageButton
