@@ -97,12 +97,15 @@ class BlurPlayerFragment : AbsPlayerFragment(R.layout.fragment_blur),
     }
 
     private fun setUpFullCover() {
+        val container = binding.fullCoverContainer ?: return
         val image = binding.fullCoverImage ?: return
         val video = binding.fullCoverVideo ?: return
-        fullCover = FullCoverController(this, image, video)
-        // The pager still handles swipes and colors, but the full-screen cover draws the art.
         val cover: PlayerAlbumCoverFragment = whichFragment(R.id.playerAlbumCoverFragment)
-        cover.invisiblePager = true
+        // Full mode (video playing): the pager keeps swipes/colors but draws nothing.
+        // No video: the original square cover is shown, exactly as before.
+        fullCover = FullCoverController(this, container, image, video) { full ->
+            cover.invisiblePager = full
+        }
     }
 
     private fun setUpSubFragments() {
