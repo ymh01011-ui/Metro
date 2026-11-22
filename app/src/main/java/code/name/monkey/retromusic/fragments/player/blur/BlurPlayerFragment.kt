@@ -67,6 +67,9 @@ class BlurPlayerFragment : AbsPlayerFragment(R.layout.fragment_blur),
     // Full-screen cover (image + animated Apple Music video). Only exists in the portrait layout.
     private var fullCover: FullCoverController? = null
 
+    // Album whose video first frame currently colors the Liquid background (-1 = use the cover).
+    private var liquidPosterAlbumId: Long = -1L
+
     override fun playerToolbar(): Toolbar {
         return binding.playerToolbar
     }
@@ -103,9 +106,22 @@ class BlurPlayerFragment : AbsPlayerFragment(R.layout.fragment_blur),
         val cover: PlayerAlbumCoverFragment = whichFragment(R.id.playerAlbumCoverFragment)
         // Full mode (video playing): the pager keeps swipes/colors but draws nothing.
         // No video: the original square cover is shown, exactly as before.
-        fullCover = FullCoverController(this, container, image, video) { full ->
-            cover.invisiblePager = full
-        }
+        fullCover = FullCoverController(
+            fragment = this,
+            container = container,
+            image = image,
+            videoView = video,
+            onFullModeChanged = { full -> cover.invisiblePager = full },
+            onFrame = { bitmap, albumId ->
+                if (bitmap == null) {
+                    liquidPosterAlbumId = -1L // no video frame yet: the cover colors the background
+                } else {
+                    // The video's first frame colors the background, not the album cover.
+                    liquidPosterAlbumId = albumId
+                    _binding?.liquidBackground?.setArtwork(bitmap)
+                }
+            },
+        )
     }
 
     private fun setUpSubFragments() {
@@ -214,6 +230,7 @@ class BlurPlayerFragment : AbsPlayerFragment(R.layout.fragment_blur),
         val target = object : CustomTarget<Bitmap>(256, 256) {
             override fun onResourceReady(resource: Bitmap, transition: Transition<in Bitmap>?) {
                 liquidSongId = song.id
+                if (liquidPosterAlbumId == song.albumId) return // the video frame already colors it
                 _binding?.liquidBackground?.setArtwork(resource)
             }
 
@@ -317,7 +334,6 @@ class BlurPlayerFragment : AbsPlayerFragment(R.layout.fragment_blur),
         super.onPlayStateChanged()
         updateMotionState()
         _binding?.liquidBackground?.setPlaying(MusicPlayerRemote.isPlaying)
-        fullCover?.setPlaying(MusicPlayerRemote.isPlaying)
     }
 
     override fun onPause() {
@@ -334,7 +350,7 @@ class BlurPlayerFragment : AbsPlayerFragment(R.layout.fragment_blur),
             .registerOnSharedPreferenceChangeListener(this)
         startBackgroundMotion()
         _binding?.liquidBackground?.setPlaying(MusicPlayerRemote.isPlaying)
-        fullCover?.onResume(MusicPlayerRemote.isPlaying)
+        fullCover?.onResume()
     }
 
     override fun onDestroyView() {
