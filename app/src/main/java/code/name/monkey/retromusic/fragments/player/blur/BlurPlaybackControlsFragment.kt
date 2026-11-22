@@ -75,12 +75,6 @@ class BlurPlaybackControlsFragment :
         super.onViewCreated(view, savedInstanceState)
         _binding = FragmentBlurPlayerPlaybackControlsBinding.bind(view)
         setUpPlayPauseFab()
-        // Needed so the play/pause icon can punch a transparent hole in the circle
-        binding.playPauseButton.setLayerType(View.LAYER_TYPE_HARDWARE, null)
-        // Always a perfect circle, whatever the "circle play button" preference says
-        binding.playPauseButton.shapeAppearanceModel = ShapeAppearanceModel.builder()
-            .setAllCornerSizes(RelativeCornerSize(0.5f))
-            .build()
         binding.title.isSelected = true
         binding.text.isSelected = true
         binding.title.setOnClickListener {
@@ -147,16 +141,6 @@ class BlurPlaybackControlsFragment :
         binding.progressSlider.thumbTintList = ColorStateList.valueOf(Color.TRANSPARENT)
         binding.progressSlider.haloTintList = ColorStateList.valueOf(Color.TRANSPARENT)
         volumeFragment?.setTintableColor(lastPlaybackControlsColor)
-        setFabColor(lastPlaybackControlsColor)
-    }
-
-    private fun setFabColor(i: Int) {
-        TintHelper.setTintAuto(
-            binding.playPauseButton,
-            MaterialValueHelper.getPrimaryTextColor(context, ColorUtil.isColorLight(i)),
-            false
-        )
-        TintHelper.setTintAuto(binding.playPauseButton, i, true)
     }
 
     private fun setUpPlayPauseFab() {
@@ -171,14 +155,9 @@ class BlurPlaybackControlsFragment :
     }
 
     private fun updatePlayPauseDrawableState() {
-        val res = if (MusicPlayerRemote.isPlaying) {
-            R.drawable.ic_pause
-        } else {
-            R.drawable.ic_play_arrow_white_32dp
-        }
-        ContextCompat.getDrawable(requireContext(), res)?.let {
-            binding.playPauseButton.setImageDrawable(CutoutDrawable(it.mutate()))
-        }
+        binding.playPauseButton.setImageResource(
+            if (MusicPlayerRemote.isPlaying) R.drawable.ic_blur_pause else R.drawable.ic_blur_play
+        )
     }
 
     public override fun show() {
@@ -202,38 +181,4 @@ class BlurPlaybackControlsFragment :
         super.onDestroyView()
         _binding = null
     }
-}
-
-/**
- * Draws [icon] as a "hole": wherever the icon is opaque, the pixels already drawn under it
- * (the white circle of the FAB) are erased, so the blurred background shows through.
- * The FAB must use a hardware layer, otherwise the erase would hit the window itself.
- */
-private class CutoutDrawable(private val icon: Drawable) : Drawable() {
-    private val paint = Paint().apply {
-        xfermode = PorterDuffXfermode(PorterDuff.Mode.DST_OUT)
-    }
-
-    override fun draw(canvas: Canvas) {
-        val b = bounds
-        val saved = canvas.saveLayer(
-            b.left.toFloat(), b.top.toFloat(), b.right.toFloat(), b.bottom.toFloat(), paint
-        )
-        icon.bounds = b
-        icon.draw(canvas)
-        canvas.restoreToCount(saved)
-    }
-
-    override fun getIntrinsicWidth() = icon.intrinsicWidth
-    override fun getIntrinsicHeight() = icon.intrinsicHeight
-    override fun setAlpha(alpha: Int) {
-        icon.alpha = alpha
-    }
-
-    override fun setColorFilter(colorFilter: ColorFilter?) {
-        icon.colorFilter = colorFilter
-    }
-
-    @Deprecated("Deprecated in Java")
-    override fun getOpacity() = PixelFormat.TRANSLUCENT
 }
