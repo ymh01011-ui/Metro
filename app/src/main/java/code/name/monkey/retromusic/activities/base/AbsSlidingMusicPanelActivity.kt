@@ -273,8 +273,13 @@ abstract class AbsSlidingMusicPanelActivity : AbsMusicServiceActivity(),
             object : NowPlayingChoreographer.Host {
                 override val mini: View?
                     get() = miniPlayerFragment?.view
+                // In video mode the cover is not a square card that flies to the big artwork:
+                // the video itself opens from the mini card (see FullCoverController).
                 override val miniCard: View?
-                    get() = miniPlayerFragment?.view?.findViewById<View>(R.id.imageTextContainer)
+                    get() = if (this@AbsSlidingMusicPanelActivity::playerFragment.isInitialized &&
+                        playerFragment.isFullCoverActive()
+                    ) null
+                    else miniPlayerFragment?.view?.findViewById<View>(R.id.imageTextContainer)
                 override val player: View
                     get() = binding.playerFragmentContainer
                 override val bigArtwork: View?
@@ -641,6 +646,12 @@ abstract class AbsSlidingMusicPanelActivity : AbsMusicServiceActivity(),
         // the folded panel's own offset depends on the sheet, so refresh it first
         if (compactProgress > 0f) renderCompact()
         choreographer?.render(progress)
+        if (this::playerFragment.isInitialized) {
+            playerFragment.onSheetProgress(
+                progress,
+                miniPlayerFragment?.view?.findViewById(R.id.imageTextContainer)
+            )
+        }
         // At rest the choreographer gives the pill back with the margins it remembered, which can
         // be older than the fold: put the fold's margins on it again.
         if (progress <= 0f && compactProgress > 0f) renderCompact()
