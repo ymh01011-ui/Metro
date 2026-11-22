@@ -41,6 +41,42 @@
         app:layout_constraintTop_toTopOf="parent" />
 
 
+    <!-- Full-screen cover: static image + animated video, fading into the Liquid background.
+         It ends at 57.5% of the screen height; the bottom 200dp (fadeHeightDp) is the blend. -->
+    <androidx.constraintlayout.widget.Guideline
+        android:id="@+id/fullCoverBottomGuideline"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        app:layout_constraintGuide_percent="0.575" />
+
+    <code.name.monkey.retromusic.views.BottomFadeFrameLayout
+        android:id="@+id/fullCoverContainer"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        app:layout_constraintBottom_toBottomOf="@id/fullCoverBottomGuideline"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent">
+
+        <ImageView
+            android:id="@+id/fullCoverImage"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:importantForAccessibility="no"
+            android:scaleType="centerCrop" />
+
+        <androidx.media3.ui.PlayerView
+            android:id="@+id/fullCoverVideo"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:alpha="0"
+            app:resize_mode="zoom"
+            app:shutter_background_color="@android:color/transparent"
+            app:surface_type="texture_view"
+            app:use_controller="false" />
+    </code.name.monkey.retromusic.views.BottomFadeFrameLayout>
+
     <FrameLayout
         android:id="@+id/statusBarContainer"
         android:layout_width="match_parent"
