@@ -340,6 +340,7 @@ class BlurPlayerFragment : AbsPlayerFragment(R.layout.fragment_blur),
         super.onPlayStateChanged()
         updateMotionState()
         _binding?.liquidBackground?.setPlaying(MusicPlayerRemote.isPlaying)
+        fullCover?.setPlaying(MusicPlayerRemote.isPlaying)
     }
 
     override fun onPause() {
@@ -356,7 +357,7 @@ class BlurPlayerFragment : AbsPlayerFragment(R.layout.fragment_blur),
             .registerOnSharedPreferenceChangeListener(this)
         startBackgroundMotion()
         _binding?.liquidBackground?.setPlaying(MusicPlayerRemote.isPlaying)
-        fullCover?.onResume()
+        fullCover?.onResume(MusicPlayerRemote.isPlaying)
     }
 
     override fun onDestroyView() {
