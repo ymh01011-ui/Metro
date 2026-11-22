@@ -82,9 +82,14 @@ class PlayerAlbumCoverFragment : AbsMusicServiceFragment(R.layout.fragment_playe
      */
     var invisiblePager: Boolean = false
         set(value) {
+            if (field == value) return
             field = value
-            _binding?.viewPager?.alpha = if (value) 0f else 1f
+            val pager = _binding?.viewPager ?: return
+            val hiddenByLyrics = lyricsShown && PreferenceUtil.lyricsType == CoverLyricsType.REPLACE_COVER
+            pager.animate().alpha(if (value || hiddenByLyrics) 0f else 1f).setDuration(300).start()
         }
+
+    private var lyricsShown = false
 
     /** The big artwork of the page that is currently centred (used by the mini->full morph). */
     fun currentCoverImage(): View? {
@@ -247,6 +252,7 @@ class PlayerAlbumCoverFragment : AbsMusicServiceFragment(R.layout.fragment_playe
         binding.coverLyrics.isVisible = false
         binding.lyricsView.isVisible = false
         binding.viewPager.isVisible = true
+        lyricsShown = visible
         val coverAlpha = if (invisiblePager) 0F else 1F
         val lyrics: View = if (PreferenceUtil.lyricsType == CoverLyricsType.REPLACE_COVER) {
             ObjectAnimator.ofFloat(viewPager, View.ALPHA, if (visible) 0F else coverAlpha).start()
