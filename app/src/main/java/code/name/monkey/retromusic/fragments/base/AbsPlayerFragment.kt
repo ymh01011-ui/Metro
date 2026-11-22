@@ -257,6 +257,12 @@ abstract class AbsPlayerFragment(@LayoutRes layout: Int) : AbsMusicServiceFragme
 
     fun bigCoverImage(): View? = playerAlbumCoverFragment?.currentCoverImage()
 
+    /** True while this player shows a full-screen animated cover (video) instead of the square one. */
+    open fun isFullCoverActive(): Boolean = false
+
+    /** Called on every sheet progress change (0 = mini player, 1 = open). */
+    open fun onSheetProgress(progress: Float, miniCard: View?) {}
+
     abstract fun playerToolbar(): Toolbar?
 
     abstract fun onShow()
