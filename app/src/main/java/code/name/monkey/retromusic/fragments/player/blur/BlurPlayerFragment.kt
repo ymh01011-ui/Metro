@@ -32,6 +32,7 @@ import androidx.core.view.children
 import androidx.core.content.ContextCompat
 import androidx.preference.PreferenceManager
 import code.name.monkey.appthemehelper.util.ToolbarContentTintHelper
+import code.name.monkey.retromusic.animatedcover.FullCoverController
 import code.name.monkey.retromusic.NEW_BLUR_AMOUNT
 import code.name.monkey.retromusic.R
 import code.name.monkey.retromusic.databinding.FragmentBlurBinding
@@ -63,6 +64,9 @@ class BlurPlayerFragment : AbsPlayerFragment(R.layout.fragment_blur),
     private var liquidTarget: CustomTarget<Bitmap>? = null
     private var liquidSongId: Long = -1L
 
+    // Full-screen cover (image + animated Apple Music video). Only exists in the portrait layout.
+    private var fullCover: FullCoverController? = null
+
     override fun playerToolbar(): Toolbar {
         return binding.playerToolbar
     }
@@ -89,6 +93,16 @@ class BlurPlayerFragment : AbsPlayerFragment(R.layout.fragment_blur),
         setUpPlayerToolbar()
         setUpCircleButtons()
         binding.playerToolbar.drawAboveSystemBars()
+        setUpFullCover()
+    }
+
+    private fun setUpFullCover() {
+        val image = binding.fullCoverImage ?: return
+        val video = binding.fullCoverVideo ?: return
+        fullCover = FullCoverController(this, image, video)
+        // The pager still handles swipes and colors, but the full-screen cover draws the art.
+        val cover: PlayerAlbumCoverFragment = whichFragment(R.id.playerAlbumCoverFragment)
+        cover.invisiblePager = true
     }
 
     private fun setUpSubFragments() {
@@ -239,11 +253,13 @@ class BlurPlayerFragment : AbsPlayerFragment(R.layout.fragment_blur),
     override fun onServiceConnected() {
         updateIsFavorite()
         updateBlur()
+        fullCover?.onSongChanged(MusicPlayerRemote.currentSong)
     }
 
     override fun onPlayingMetaChanged() {
         updateIsFavorite()
         updateBlur()
+        fullCover?.onSongChanged(MusicPlayerRemote.currentSong)
     }
 
     private fun startBackgroundMotion() {
@@ -298,6 +314,7 @@ class BlurPlayerFragment : AbsPlayerFragment(R.layout.fragment_blur),
         super.onPlayStateChanged()
         updateMotionState()
         _binding?.liquidBackground?.setPlaying(MusicPlayerRemote.isPlaying)
+        fullCover?.setPlaying(MusicPlayerRemote.isPlaying)
     }
 
     override fun onPause() {
@@ -305,6 +322,7 @@ class BlurPlayerFragment : AbsPlayerFragment(R.layout.fragment_blur),
         lastRequest = null
         stopBackgroundMotion()
         _binding?.liquidBackground?.setPlaying(false)
+        fullCover?.onPause()
     }
 
     override fun onResume() {
@@ -313,6 +331,7 @@ class BlurPlayerFragment : AbsPlayerFragment(R.layout.fragment_blur),
             .registerOnSharedPreferenceChangeListener(this)
         startBackgroundMotion()
         _binding?.liquidBackground?.setPlaying(MusicPlayerRemote.isPlaying)
+        fullCover?.onResume(MusicPlayerRemote.isPlaying)
     }
 
     override fun onDestroyView() {
@@ -320,6 +339,8 @@ class BlurPlayerFragment : AbsPlayerFragment(R.layout.fragment_blur),
         liquidTarget?.let { Glide.with(this).clear(it) }
         liquidTarget = null
         liquidSongId = -1L
+        fullCover?.release()
+        fullCover = null
         super.onDestroyView()
         PreferenceManager.getDefaultSharedPreferences(requireContext())
             .unregisterOnSharedPreferenceChangeListener(this)
@@ -329,6 +350,9 @@ class BlurPlayerFragment : AbsPlayerFragment(R.layout.fragment_blur),
     override fun onSharedPreferenceChanged(sharedPreferences: SharedPreferences?, key: String?) {
         if (key == NEW_BLUR_AMOUNT) {
             updateBlur()
+        }
+        if (key == FullCoverController.PREF_KEY) {
+            fullCover?.refresh(MusicPlayerRemote.currentSong)
         }
     }
 }
