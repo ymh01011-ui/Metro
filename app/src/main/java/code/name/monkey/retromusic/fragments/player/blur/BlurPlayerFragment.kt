@@ -70,6 +70,12 @@ class BlurPlayerFragment : AbsPlayerFragment(R.layout.fragment_blur),
     // Album whose video first frame currently colors the Liquid background (-1 = use the cover).
     private var liquidPosterAlbumId: Long = -1L
 
+    override fun isFullCoverActive() = fullCover?.isFull == true
+
+    override fun onSheetProgress(progress: Float, miniCard: View?) {
+        fullCover?.applySheetProgress(progress, miniCard)
+    }
+
     override fun playerToolbar(): Toolbar {
         return binding.playerToolbar
     }
