@@ -216,7 +216,7 @@ class FullCoverController(
 
     fun setPlaying(playing: Boolean) {
         isPlaying = playing
-        player?.playWhenReady = playing && resumed
+        player?.playWhenReady = resumed
     }
 
     fun onResume(playing: Boolean) {
@@ -225,7 +225,7 @@ class FullCoverController(
         if (videoUrl != null && player == null) {
             startVideo()
         } else {
-            player?.playWhenReady = playing
+            player?.playWhenReady = true
         }
     }
 
@@ -290,7 +290,7 @@ class FullCoverController(
             .createMediaSource(MediaItem.fromUri(url))
         exo.setMediaSource(source)
         exo.prepare()
-        exo.playWhenReady = isPlaying && resumed
+        exo.playWhenReady = resumed
     }
 
     private fun createPlayer(): ExoPlayer {
