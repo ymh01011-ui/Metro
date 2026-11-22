@@ -559,6 +559,58 @@ class AlbumDetailsFragment : AbsMainActivityFragment(R.layout.fragment_album_det
                 }
             }
         }
+
+        // ------------------------------------------------------------------------------------
+        // جسر للبلاير (FullCoverController): نفس الكاش ونفس التنزيلات ونفس الملفات، فأي ألبوم
+        // اتحمّل من هنا بيظهر في البلاير من غير تحميل تاني، والعكس.
+        // ------------------------------------------------------------------------------------
+
+        internal fun sharedEntry(context: Context, albumId: Long): AnimatedEntry? =
+            loadAnimatedArtworkCache(context.applicationContext)[albumId]
+
+        /** الألبوم اتفحص وتأكدنا إن معندوش فيديو (والإجابة لسه صالحة). */
+        internal fun sharedKnownNoVideo(context: Context, albumId: Long): Boolean {
+            val e = sharedEntry(context, albumId) ?: return false
+            return e.url == null && System.currentTimeMillis() - e.checkedAt < NO_VIDEO_RECHECK_MS
+        }
+
+        /**
+         * بيخزن فيديو لقاه البلاير ويبدأ تنزيله كامل. مبيكتبش فوق فيديو الألبوم لو متخزن بالفعل،
+         * وبيرجع الرابط المعتمد في الكاش.
+         */
+        internal fun sharedStoreFound(context: Context, albumId: Long, url: String): String {
+            val app = context.applicationContext
+            val cache = loadAnimatedArtworkCache(app)
+            val existing = cache[albumId]?.url
+            if (existing != null) return existing
+            cache[albumId] = AnimatedEntry(url, checkedAt = System.currentTimeMillis(), appleBgChecked = true)
+            persistAnimatedArtworkCache(app)
+            ensureVideoDownloaded(app, albumId, url)
+            return url
+        }
+
+        /** لو الفيديو متخزن رابطه بس لسه مش منزّل كامل، كمّل التنزيل. */
+        internal fun sharedEnsureDownloaded(context: Context, albumId: Long) {
+            val app = context.applicationContext
+            val e = loadAnimatedArtworkCache(app)[albumId] ?: return
+            val url = e.url ?: return
+            if (!e.ready) ensureVideoDownloaded(app, albumId, url)
+        }
+
+        internal fun sharedResolveVariant(masterUrl: String, widthPx: Int): String =
+            resolveBestVariantUrl(masterUrl, widthPx)
+
+        internal fun sharedCacheFactory(context: Context): CacheDataSource.Factory =
+            cacheDataSourceFactory(context.applicationContext)
+
+        /** رابط الفيديو مبقاش شغال (404/403): نمسحه عشان يتجاب من جديد. */
+        internal fun sharedForget(context: Context, albumId: Long) {
+            val app = context.applicationContext
+            loadAnimatedArtworkCache(app).remove(albumId)
+            persistAnimatedArtworkCache(app)
+            posterFile(app, albumId).delete()
+            posterMemoryCache.remove(albumId)
+        }
     }
 
     private val savedSortOrder: String
