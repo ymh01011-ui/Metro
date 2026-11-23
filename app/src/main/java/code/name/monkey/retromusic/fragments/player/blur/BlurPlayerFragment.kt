@@ -17,24 +17,32 @@ package code.name.monkey.retromusic.fragments.player.blur
 import android.animation.ObjectAnimator
 import android.animation.ValueAnimator
 import android.content.SharedPreferences
+import android.content.res.ColorStateList
 import android.graphics.Bitmap
 import android.graphics.Color
 import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.Drawable
 import android.os.Bundle
+import android.view.MenuItem
 import android.view.View
 import android.view.animation.AccelerateDecelerateInterpolator
+import android.view.animation.DecelerateInterpolator
 import android.view.ViewGroup
+import android.widget.ImageView
+import android.widget.TextView
 import androidx.appcompat.widget.ActionMenuView
 import androidx.appcompat.widget.PopupMenu
 import androidx.appcompat.widget.Toolbar
 import androidx.core.view.children
 import androidx.core.content.ContextCompat
 import androidx.preference.PreferenceManager
+import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.recyclerview.widget.RecyclerView
 import code.name.monkey.appthemehelper.util.ToolbarContentTintHelper
 import code.name.monkey.retromusic.animatedcover.FullCoverController
 import code.name.monkey.retromusic.NEW_BLUR_AMOUNT
 import code.name.monkey.retromusic.R
+import code.name.monkey.retromusic.adapter.song.PlayingQueueAdapter
 import code.name.monkey.retromusic.databinding.FragmentBlurBinding
 import code.name.monkey.retromusic.extensions.drawAboveSystemBars
 import code.name.monkey.retromusic.extensions.whichFragment
@@ -46,12 +54,18 @@ import code.name.monkey.retromusic.glide.RetroGlideExtension.simpleSongCoverOpti
 import code.name.monkey.retromusic.glide.crossfadeListener
 import code.name.monkey.retromusic.helper.MusicPlayerRemote
 import code.name.monkey.retromusic.model.Song
+import code.name.monkey.retromusic.util.PreferenceUtil
 import code.name.monkey.retromusic.util.PreferenceUtil.blurAmount
 import code.name.monkey.retromusic.util.color.MediaNotificationProcessor
 import com.bumptech.glide.Glide
 import com.bumptech.glide.RequestBuilder
 import com.bumptech.glide.request.target.CustomTarget
 import com.bumptech.glide.request.transition.Transition
+import com.h6ah4i.android.widget.advrecyclerview.animator.DraggableItemAnimator
+import com.h6ah4i.android.widget.advrecyclerview.draggable.RecyclerViewDragDropManager
+import com.h6ah4i.android.widget.advrecyclerview.swipeable.RecyclerViewSwipeManager
+import com.h6ah4i.android.widget.advrecyclerview.touchguard.RecyclerViewTouchActionGuardManager
+import com.h6ah4i.android.widget.advrecyclerview.utils.WrapperAdapterUtils
 
 
 class BlurPlayerFragment : AbsPlayerFragment(R.layout.fragment_blur),
@@ -195,6 +209,237 @@ class BlurPlayerFragment : AbsPlayerFragment(R.layout.fragment_blur),
         }
     }
 
+    // ---------------------------------------------------------------------------------------
+    // Inline queue (instead of opening the queue page): the cover shrinks next to the title, the
+    // title block + controls slide down and get closer, and the queue list appears above them.
+    // ---------------------------------------------------------------------------------------
+    private var queueMode = false
+    private var queueAdapter: PlayingQueueAdapter? = null
+    private var queueWrappedAdapter: RecyclerView.Adapter<*>? = null
+    private var queueDragDropManager: RecyclerViewDragDropManager? = null
+    private var queueSwipeManager: RecyclerViewSwipeManager? = null
+    private var queueTouchGuardManager: RecyclerViewTouchActionGuardManager? = null
+    private var savedFullCoverAlpha = 0f
+    private var savedInvisiblePager = false
+
+    // scale, translationX, translationY of the cover and the downward shift of the controls
+    private var queueGeometry: FloatArray? = null
+
+    override fun onMenuItemClick(item: MenuItem): Boolean {
+        when (item.itemId) {
+            R.id.now_playing -> {
+                // Landscape layout has no inline queue: keep the old behaviour there
+                if (_binding?.queueRecyclerView == null) return super.onMenuItemClick(item)
+                setQueueMode(!queueMode)
+                return true
+            }
+            // lyrics and queue use the same space
+            R.id.action_toggle_lyrics -> if (queueMode) setQueueMode(false)
+        }
+        return super.onMenuItemClick(item)
+    }
+
+    private fun setQueueMode(show: Boolean, animate: Boolean = true) {
+        if (queueMode == show || _binding == null) return
+        val list = binding.queueRecyclerView ?: return
+        val target = binding.queueCoverTarget ?: return
+        val guide = binding.queueListBottomGuideline ?: return
+        val rootView = requireView()
+        val coverView = rootView.findViewById<View>(R.id.playerAlbumCoverFragment) ?: return
+        val controlsView = rootView.findViewById<View>(R.id.playbackControlsFragment) ?: return
+        val cover: PlayerAlbumCoverFragment = whichFragment(R.id.playerAlbumCoverFragment)
+        val d = resources.displayMetrics.density
+        val duration = if (animate) 350L else 0L
+        val interpolator = DecelerateInterpolator(1.6f)
+        val movers = listOfNotNull<View>(
+            controlsView, binding.favoriteCircleButton, binding.moreCircleButton, target
+        )
+
+        if (show) {
+            // The queue needs at least one song
+            if (MusicPlayerRemote.playingQueue.isEmpty()) return
+            queueMode = true
+            if (PreferenceUtil.showLyrics) {
+                PreferenceUtil.showLyrics = false
+                binding.playerToolbar.menu.findItem(R.id.action_toggle_lyrics)?.isChecked = false
+            }
+            ensureQueueList(list)
+
+            // The small cover is drawn by the (scaled) cover pager, so make sure it is visible even
+            // when the full-screen animated cover is active
+            savedInvisiblePager = cover.invisiblePager
+            cover.invisiblePager = false
+            binding.fullCoverContainer?.let {
+                savedFullCoverAlpha = it.alpha
+                it.animate().setStartDelay(0).alpha(0f).setDuration(duration).start()
+            }
+
+            // Geometry is measured while the cover is untouched; reused if we re-enter mid-animation
+            var geo = queueGeometry
+            if (geo == null || (coverView.scaleX == 1f && coverView.translationX == 0f)) {
+                val playBtn = controlsView.findViewById<View>(R.id.playPauseButton)
+                val dy = if (playBtn != null) {
+                    // free space under the transport row once it has moved 20dp up (see
+                    // BlurPlaybackControlsFragment.setQueueMode), keeping a 12dp gap above the toolbar
+                    val slack = controlsView.height - (playBtn.bottom - 20 * d)
+                    (slack - 12 * d).coerceIn(0f, 48 * d)
+                } else {
+                    32 * d
+                }
+                var scale = 0.18f
+                var tx = 0f
+                var ty = 0f
+                val img = cover.currentCoverImage()
+                if (img != null && img.width > 0 && target.width > 0) {
+                    val a = IntArray(2)
+                    val c = IntArray(2)
+                    img.getLocationInWindow(a)
+                    coverView.getLocationInWindow(c)
+                    val ix = (a[0] - c[0]).toFloat()
+                    val iy = (a[1] - c[1]).toFloat()
+                    scale = target.width.toFloat() / img.width
+                    tx = target.left - coverView.left - ix * scale
+                    ty = target.top + dy - coverView.top - iy * scale
+                }
+                geo = floatArrayOf(scale, tx, ty, dy)
+                queueGeometry = geo
+            }
+            val g = geo ?: return
+            val scale = g[0]
+            val tx = g[1]
+            val ty = g[2]
+            val dy = g[3]
+
+            // The list ends just above the small cover
+            guide.setGuidelineBegin((target.top + dy - 12 * d).toInt())
+
+            coverView.pivotX = 0f
+            coverView.pivotY = 0f
+            coverView.animate().setStartDelay(0).scaleX(scale).scaleY(scale)
+                .translationX(tx).translationY(ty)
+                .setDuration(duration).setInterpolator(interpolator).start()
+            movers.forEach {
+                it.animate().setStartDelay(0).translationY(dy)
+                    .setDuration(duration).setInterpolator(interpolator).start()
+            }
+            playbackControlsFragment.setQueueMode(true, animate)
+
+            // Swallow touches on the small cover so it cannot be swiped by accident
+            target.visibility = View.VISIBLE
+            target.isClickable = true
+
+            list.visibility = View.VISIBLE
+            list.animate().setStartDelay(duration / 4).alpha(1f).setDuration(duration).start()
+            (list.layoutManager as? LinearLayoutManager)
+                ?.scrollToPositionWithOffset(MusicPlayerRemote.position + 1, 0)
+        } else {
+            queueMode = false
+            coverView.animate().setStartDelay(0).scaleX(1f).scaleY(1f)
+                .translationX(0f).translationY(0f)
+                .setDuration(duration).setInterpolator(interpolator).start()
+            movers.forEach {
+                it.animate().setStartDelay(0).translationY(0f)
+                    .setDuration(duration).setInterpolator(interpolator).start()
+            }
+            playbackControlsFragment.setQueueMode(false, animate)
+
+            target.visibility = View.INVISIBLE
+            target.isClickable = false
+
+            list.animate().setStartDelay(0).alpha(0f).setDuration(duration * 2 / 3)
+                .withEndAction { if (!queueMode) list.visibility = View.GONE }
+                .start()
+
+            cover.invisiblePager = savedInvisiblePager
+            binding.fullCoverContainer?.animate()?.setStartDelay(0)
+                ?.alpha(savedFullCoverAlpha)?.setDuration(duration)?.start()
+        }
+    }
+
+    private fun ensureQueueList(list: RecyclerView) {
+        val existing = queueAdapter
+        if (existing != null) {
+            existing.swapDataSet(MusicPlayerRemote.playingQueue, MusicPlayerRemote.position)
+            return
+        }
+        val guard = RecyclerViewTouchActionGuardManager()
+        val dragDrop = RecyclerViewDragDropManager()
+        val swipe = RecyclerViewSwipeManager()
+        val songAdapter = PlayingQueueAdapter(
+            requireActivity(),
+            MusicPlayerRemote.playingQueue.toMutableList(),
+            MusicPlayerRemote.position,
+            R.layout.item_queue
+        )
+        var wrapped: RecyclerView.Adapter<*>? = dragDrop.createWrappedAdapter(songAdapter)
+        wrapped = wrapped?.let { swipe.createWrappedAdapter(it) }
+
+        queueAdapter = songAdapter
+        queueWrappedAdapter = wrapped
+        queueTouchGuardManager = guard
+        queueDragDropManager = dragDrop
+        queueSwipeManager = swipe
+
+        list.layoutManager = LinearLayoutManager(requireContext())
+        list.adapter = wrapped
+        list.itemAnimator = DraggableItemAnimator()
+        guard.attachRecyclerView(list)
+        dragDrop.attachRecyclerView(list)
+        swipe.attachRecyclerView(list)
+        // The queue row layout follows the app theme; the player is always white-on-cover
+        list.addOnChildAttachStateChangeListener(object : RecyclerView.OnChildAttachStateChangeListener {
+            override fun onChildViewAttachedToWindow(view: View) {
+                view.background = null
+                styleQueueRow(view)
+            }
+
+            override fun onChildViewDetachedFromWindow(view: View) {}
+        })
+    }
+
+    private fun styleQueueRow(v: View) {
+        val name = if (v.id != View.NO_ID) {
+            try {
+                resources.getResourceEntryName(v.id)
+            } catch (e: Exception) {
+                ""
+            }
+        } else ""
+        val soft = Color.argb(153, 255, 255, 255)
+        if (name.contains("dummy", ignoreCase = true)) v.background = null
+        when {
+            v is TextView -> v.setTextColor(if (name == "title") Color.WHITE else soft)
+            v is ImageView && (name == "menu" || name.startsWith("drag")) ->
+                v.imageTintList = ColorStateList.valueOf(soft)
+        }
+        if (v is ViewGroup) {
+            for (i in 0 until v.childCount) styleQueueRow(v.getChildAt(i))
+        }
+    }
+
+    private fun releaseQueueList() {
+        queueDragDropManager?.cancelDrag()
+        queueDragDropManager?.release()
+        queueDragDropManager = null
+        queueSwipeManager?.release()
+        queueSwipeManager = null
+        queueTouchGuardManager = null
+        queueWrappedAdapter?.let { WrapperAdapterUtils.releaseAll(it) }
+        queueWrappedAdapter = null
+        queueAdapter = null
+        queueGeometry = null
+        queueMode = false
+    }
+
+    override fun onQueueChanged() {
+        super.onQueueChanged()
+        if (queueMode && MusicPlayerRemote.playingQueue.isEmpty()) {
+            setQueueMode(false)
+            return
+        }
+        queueAdapter?.swapDataSet(MusicPlayerRemote.playingQueue, MusicPlayerRemote.position)
+    }
+
     override fun onFavoriteToggled() {
         toggleFavorite(MusicPlayerRemote.currentSong)
     }
@@ -286,6 +531,11 @@ class BlurPlayerFragment : AbsPlayerFragment(R.layout.fragment_blur),
         updateIsFavorite()
         updateBlur()
         fullCover?.onSongChanged(MusicPlayerRemote.currentSong)
+        queueAdapter?.setCurrent(MusicPlayerRemote.position)
+        if (queueMode) {
+            (_binding?.queueRecyclerView?.layoutManager as? LinearLayoutManager)
+                ?.scrollToPositionWithOffset(MusicPlayerRemote.position + 1, 0)
+        }
     }
 
     private fun startBackgroundMotion() {
@@ -345,6 +595,7 @@ class BlurPlayerFragment : AbsPlayerFragment(R.layout.fragment_blur),
 
     override fun onPause() {
         super.onPause()
+        queueDragDropManager?.cancelDrag()
         lastRequest = null
         stopBackgroundMotion()
         _binding?.liquidBackground?.setPlaying(false)
@@ -361,6 +612,7 @@ class BlurPlayerFragment : AbsPlayerFragment(R.layout.fragment_blur),
     }
 
     override fun onDestroyView() {
+        releaseQueueList()
         stopBackgroundMotion()
         liquidTarget?.let { Glide.with(this).clear(it) }
         liquidTarget = null
