@@ -17,12 +17,14 @@ package code.name.monkey.retromusic.fragments.player.blur
 import android.animation.Animator
 import android.animation.AnimatorListenerAdapter
 import android.animation.ObjectAnimator
+import android.animation.TimeInterpolator
 import android.animation.ValueAnimator
 import android.content.SharedPreferences
 import android.content.res.ColorStateList
 import android.graphics.Bitmap
 import android.graphics.Color
 import android.graphics.Outline
+import android.graphics.Rect
 import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.Drawable
 import android.os.Bundle
@@ -32,6 +34,7 @@ import android.view.animation.AccelerateDecelerateInterpolator
 import android.view.animation.DecelerateInterpolator
 import android.view.ViewGroup
 import android.view.ViewOutlineProvider
+import android.view.ViewTreeObserver
 import android.widget.ImageView
 import android.widget.TextView
 import androidx.appcompat.widget.ActionMenuView
@@ -70,10 +73,33 @@ import com.h6ah4i.android.widget.advrecyclerview.draggable.RecyclerViewDragDropM
 import com.h6ah4i.android.widget.advrecyclerview.swipeable.RecyclerViewSwipeManager
 import com.h6ah4i.android.widget.advrecyclerview.touchguard.RecyclerViewTouchActionGuardManager
 import com.h6ah4i.android.widget.advrecyclerview.utils.WrapperAdapterUtils
+import kotlin.math.abs
 
 
 class BlurPlayerFragment : AbsPlayerFragment(R.layout.fragment_blur),
     SharedPreferences.OnSharedPreferenceChangeListener {
+
+    private companion object {
+        // Queue rows are shifted left by this much so the small covers line up with the progress
+        // bar's left edge (32dp). Row metrics below were measured from item_queue.
+        const val ROW_SHIFT_DP = 9f
+
+        // Center of the drag handle inside a row (before the shift) ...
+        const val ROW_HANDLE_CENTER_DP = 21f
+
+        // ... and where it should end up: distance of its center from the screen's right edge
+        // (right edge of the handle lines up with the progress bar's right edge)
+        const val ROW_HANDLE_RIGHT_DP = 40f
+
+        // The handle takes the place of the row's three dots, which are hidden
+        const val HIDE_ROW_MENU = true
+
+        // Corner radius of the small cover
+        const val COVER_CORNER_DP = 8f
+
+        // Gap between the end of the list (where its fade reaches zero) and the small cover
+        const val LIST_BOTTOM_GAP_DP = 6f
+    }
 
     private var lastRequest: RequestBuilder<Drawable>? = null
 
@@ -90,13 +116,18 @@ class BlurPlayerFragment : AbsPlayerFragment(R.layout.fragment_blur),
 
     override fun isFullCoverActive() = fullCover?.isFull == true
 
+    // Queue open: no artwork for the choreographer, so the cover never flies to the mini player
+    override fun bigCoverImage(): View? = if (queueMode) null else super.bigCoverImage()
+
+    // Last sheet state, so the full cover can be re-synced when the queue closes mid-drag
+    private var lastSheetProgress = 1f
+    private var lastMiniCard: View? = null
+
     override fun onSheetProgress(progress: Float, miniCard: View?) {
-        if (queueMode) {
-            // While the queue is open the cover must not fly to the mini player (it would be drawn
-            // over the list). Only when the player is fully collapsed: reset and let it run normally.
-            if (progress > 0.01f) return
-            setQueueMode(false, animate = false)
-        }
+        lastSheetProgress = progress
+        lastMiniCard = miniCard
+        // Queue open: the cover must not fly to the mini player; the queue layout stays as it is
+        if (queueMode) return
         fullCover?.applySheetProgress(progress, miniCard)
     }
 
@@ -222,12 +253,9 @@ class BlurPlayerFragment : AbsPlayerFragment(R.layout.fragment_blur),
     // ---------------------------------------------------------------------------------------
     // Inline queue (instead of opening the queue page): the cover shrinks next to the title, the
     // title block + controls slide down and get closer, and the queue list appears above them.
-    // Everything is driven by one progress value (0 = normal player, 1 = queue) and re-applied on
-    // every layout pass, so the small cover always follows the real position of the title row.
     // ---------------------------------------------------------------------------------------
     private var queueMode = false
-    private var queueProgress = 0f
-    private var queueAnimator: ValueAnimator? = null
+    private var queueSettled = false
     private var queueAdapter: PlayingQueueAdapter? = null
     private var queueWrappedAdapter: RecyclerView.Adapter<*>? = null
     private var queueDragDropManager: RecyclerViewDragDropManager? = null
@@ -235,31 +263,10 @@ class BlurPlayerFragment : AbsPlayerFragment(R.layout.fragment_blur),
     private var queueTouchGuardManager: RecyclerViewTouchActionGuardManager? = null
     private var savedFullCoverAlpha = 0f
     private var savedInvisiblePager = false
-    private var savedOutlineProvider: ViewOutlineProvider? = null
 
-    // Measured when the queue opens (cover untouched): scale of the cover, where the artwork sits
-    // inside the cover container, the artwork size and how far the controls slide down
-    private var qScale = 0.15f
-    private var qIx = 0f
-    private var qIy = 0f
-    private var qImgW = 0
-    private var qImgH = 0
-    private var qDy = 0f
-    private var qGuideBegin = -1
-    private var qRadius = 0f
-
-    private val queueOutline = object : ViewOutlineProvider() {
-        override fun getOutline(view: View, outline: Outline) {
-            outline.setRoundRect(
-                qIx.toInt(), qIy.toInt(), (qIx + qImgW).toInt(), (qIy + qImgH).toInt(), qRadius
-            )
-        }
-    }
-
-    private val queueLayoutListener =
-        View.OnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
-            if (queueMode && queueAnimator?.isRunning != true) applyQueueState(queueProgress)
-        }
+    // scale, translationX, translationY of the cover, the downward shift of the controls, then the
+    // cover image rect inside the cover view (x, y, width, height) used for the rounded clip
+    private var queueGeometry: FloatArray? = null
 
     override fun onMenuItemClick(item: MenuItem): Boolean {
         when (item.itemId) {
@@ -279,169 +286,281 @@ class BlurPlayerFragment : AbsPlayerFragment(R.layout.fragment_blur),
         if (queueMode == show || _binding == null) return
         val list = binding.queueRecyclerView ?: return
         val target = binding.queueCoverTarget ?: return
+        val guide = binding.queueListBottomGuideline ?: return
         val rootView = requireView()
         val coverView = rootView.findViewById<View>(R.id.playerAlbumCoverFragment) ?: return
         val controlsView = rootView.findViewById<View>(R.id.playbackControlsFragment) ?: return
         val cover: PlayerAlbumCoverFragment = whichFragment(R.id.playerAlbumCoverFragment)
+        val d = resources.displayMetrics.density
+        val duration = if (animate) 350L else 0L
+        val interpolator = DecelerateInterpolator(1.6f)
+        val movers = listOfNotNull<View>(
+            controlsView, binding.favoriteCircleButton, binding.moreCircleButton, target
+        )
 
         if (show) {
             // The queue needs at least one song
             if (MusicPlayerRemote.playingQueue.isEmpty()) return
+            queueMode = true
+            queueSettled = false
             if (PreferenceUtil.showLyrics) {
                 PreferenceUtil.showLyrics = false
                 binding.playerToolbar.menu.findItem(R.id.action_toggle_lyrics)?.isChecked = false
             }
             ensureQueueList(list)
+            // Rows are shifted left so the small covers line up with the progress bar's left edge
+            list.translationX = -ROW_SHIFT_DP * d
 
-            if (queueProgress == 0f) {
-                // Measure while everything is in its normal place
-                measureQueueGeometry(coverView, controlsView, target, cover)
-                savedFullCoverAlpha = binding.fullCoverContainer?.alpha ?: 0f
-                savedOutlineProvider = coverView.outlineProvider
-                qGuideBegin = -1
-            }
-            queueMode = true
-
-            // The small cover is drawn by the cover pager, so it must be visible even when the
-            // full-screen animated cover is active (that one is faded out by applyQueueState)
+            // The small cover is drawn by the (scaled) cover pager, so make sure it is visible even
+            // when the full-screen animated cover is active
             savedInvisiblePager = cover.invisiblePager
             cover.invisiblePager = false
+            binding.fullCoverContainer?.let {
+                savedFullCoverAlpha = it.alpha
+                it.animate().setStartDelay(0).alpha(0f).setDuration(duration).start()
+            }
 
+            // Geometry is measured while the cover is untouched; reused if we re-enter mid-animation
+            var geo = queueGeometry
+            if (geo == null || (coverView.scaleX == 1f && coverView.translationX == 0f)) {
+                val playBtn = controlsView.findViewById<View>(R.id.playPauseButton)
+                val dy = if (playBtn != null) {
+                    // free space under the transport row once it has moved 20dp up (see
+                    // BlurPlaybackControlsFragment.setQueueMode), keeping a 12dp gap above the toolbar
+                    val slack = controlsView.height - (playBtn.bottom - 20 * d)
+                    (slack - 12 * d).coerceIn(0f, 48 * d)
+                } else {
+                    32 * d
+                }
+                var scale = 0.18f
+                var tx = 0f
+                var ty = 0f
+                var ix = 0f
+                var iy = 0f
+                var iw = coverView.width.toFloat()
+                var ih = coverView.height.toFloat()
+                val img = cover.currentCoverImage()
+                if (img != null && img.width > 0 && target.width > 0) {
+                    val a = IntArray(2)
+                    val c = IntArray(2)
+                    img.getLocationInWindow(a)
+                    coverView.getLocationInWindow(c)
+                    ix = (a[0] - c[0]).toFloat()
+                    iy = (a[1] - c[1]).toFloat()
+                    iw = img.width.toFloat()
+                    ih = img.height.toFloat()
+                    scale = target.width.toFloat() / img.width
+                    tx = target.left - coverView.left - ix * scale
+                    ty = target.top + dy - coverView.top - iy * scale
+                }
+                geo = floatArrayOf(scale, tx, ty, dy, ix, iy, iw, ih)
+                queueGeometry = geo
+            }
+            val g = geo ?: return
+            val scale = g[0]
+            val tx = g[1]
+            val ty = g[2]
+            val dy = g[3]
+
+            // The list ends right above the small cover; the fade reaches zero exactly at that edge
+            guide.setGuidelineBegin((target.top + dy - LIST_BOTTOM_GAP_DP * d).toInt())
+
+            coverView.pivotX = 0f
+            coverView.pivotY = 0f
+            coverView.animate().setStartDelay(0).scaleX(scale).scaleY(scale)
+                .translationX(tx).translationY(ty)
+                .setDuration(duration).setInterpolator(interpolator).start()
+            movers.forEach {
+                it.animate().setStartDelay(0).translationY(dy)
+                    .setDuration(duration).setInterpolator(interpolator).start()
+            }
             playbackControlsFragment.setQueueMode(true, animate)
+
+            // Rounded corners on the small cover: clip the cover image area with a rounded rect.
+            // The radius is given in the cover's own (unscaled) coordinates.
+            coverClipRect.set(
+                g[4].toInt(), g[5].toInt(), (g[4] + g[6]).toInt(), (g[5] + g[7]).toInt()
+            )
+            startCoverClip(coverView, COVER_CORNER_DP * d / scale, duration, interpolator, false)
+
             // Swallow touches on the small cover so it cannot be swiped by accident
             target.visibility = View.VISIBLE
             target.isClickable = true
+
+            list.visibility = View.VISIBLE
+            list.animate().setStartDelay(duration / 4).alpha(1f).setDuration(duration).start()
             (list.layoutManager as? LinearLayoutManager)
                 ?.scrollToPositionWithOffset(MusicPlayerRemote.position + 1, 0)
 
-            rootView.removeOnLayoutChangeListener(queueLayoutListener)
-            rootView.addOnLayoutChangeListener(queueLayoutListener)
-            animateQueueTo(1f, animate)
+            // After the opening animation, keep the queue layout pinned against anything that
+            // moves these views (sheet drag, etc.)
+            rootView.removeCallbacks(queueSettleRunnable)
+            rootView.postDelayed(queueSettleRunnable, duration + 60)
+            startPinning()
         } else {
             queueMode = false
+            queueSettled = false
+            rootView.removeCallbacks(queueSettleRunnable)
+            stopPinning()
+            coverView.animate().setStartDelay(0).scaleX(1f).scaleY(1f)
+                .translationX(0f).translationY(0f)
+                .setDuration(duration).setInterpolator(interpolator).start()
+            movers.forEach {
+                it.animate().setStartDelay(0).translationY(0f)
+                    .setDuration(duration).setInterpolator(interpolator).start()
+            }
             playbackControlsFragment.setQueueMode(false, animate)
+            startCoverClip(coverView, 0f, duration, interpolator, true)
+
             target.visibility = View.INVISIBLE
             target.isClickable = false
+
+            list.animate().setStartDelay(0).alpha(0f).setDuration(duration * 2 / 3)
+                .withEndAction { if (!queueMode) list.visibility = View.GONE }
+                .start()
+
             cover.invisiblePager = savedInvisiblePager
-            animateQueueTo(0f, animate) {
-                if (!queueMode) {
-                    list.visibility = View.GONE
-                    rootView.removeOnLayoutChangeListener(queueLayoutListener)
-                    coverView.clipToOutline = false
-                    coverView.outlineProvider = savedOutlineProvider ?: ViewOutlineProvider.BACKGROUND
-                }
+            binding.fullCoverContainer?.animate()?.setStartDelay(0)
+                ?.alpha(savedFullCoverAlpha)?.setDuration(duration)?.start()
+            // The sheet may have been dragged while the queue was open: re-sync the full cover
+            if (lastSheetProgress < 1f) fullCover?.applySheetProgress(lastSheetProgress, lastMiniCard)
+        }
+    }
+
+    // ---- Queue layout pinning -------------------------------------------------------------
+    // While the queue is open, the sheet drag (or anything else) must not reset the transforms
+    // of the cover / controls / circle buttons. Re-applied right before every frame is drawn.
+    private val queueSettleRunnable = Runnable { if (queueMode) queueSettled = true }
+
+    private val pinListener = ViewTreeObserver.OnPreDrawListener {
+        if (queueMode) {
+            enforceQueueRows()
+            if (queueSettled) pinQueueLayout()
+        }
+        true
+    }
+
+    // Row views are re-bound / recycled all the time, so the row tweaks (menu hidden, handle on
+    // the right) are re-asserted before every frame instead of only when a row is attached.
+    private val queueIdNames = HashMap<Int, String>()
+
+    private fun queueViewName(v: View): String {
+        if (v.id == View.NO_ID) return ""
+        return queueIdNames.getOrPut(v.id) {
+            try {
+                resources.getResourceEntryName(v.id)
+            } catch (e: Exception) {
+                ""
             }
         }
     }
 
-    private fun animateQueueTo(end: Float, animate: Boolean, onFinished: (() -> Unit)? = null) {
-        queueAnimator?.cancel()
-        if (!animate) {
-            queueProgress = end
-            applyQueueState(end)
-            onFinished?.invoke()
+    private fun enforceQueueRows() {
+        val list = _binding?.queueRecyclerView ?: return
+        val shift = handleShiftPx()
+        fun walk(v: View) {
+            val name = queueViewName(v)
+            if (HIDE_ROW_MENU && name.contains("menu", ignoreCase = true)) {
+                if (v.visibility != View.INVISIBLE) v.visibility = View.INVISIBLE
+                if (v.isClickable) v.isClickable = false
+                return
+            }
+            if (name.startsWith("drag") && abs(v.translationX - shift) > 0.5f) {
+                v.translationX = shift
+            }
+            if (v is ViewGroup) for (i in 0 until v.childCount) walk(v.getChildAt(i))
+        }
+        for (i in 0 until list.childCount) walk(list.getChildAt(i))
+    }
+
+    private fun startPinning() {
+        stopPinning()
+        val vto = view?.viewTreeObserver ?: return
+        if (vto.isAlive) vto.addOnPreDrawListener(pinListener)
+    }
+
+    private fun stopPinning() {
+        val vto = view?.viewTreeObserver ?: return
+        if (vto.isAlive) vto.removeOnPreDrawListener(pinListener)
+    }
+
+    private fun differs(a: Float, b: Float, eps: Float) = abs(a - b) > eps
+
+    private fun pinQueueLayout() {
+        val g = queueGeometry ?: return
+        val root = view ?: return
+        root.findViewById<View>(R.id.playerAlbumCoverFragment)?.let { c ->
+            if (c.pivotX != 0f) c.pivotX = 0f
+            if (c.pivotY != 0f) c.pivotY = 0f
+            if (differs(c.scaleX, g[0], 0.001f)) c.scaleX = g[0]
+            if (differs(c.scaleY, g[0], 0.001f)) c.scaleY = g[0]
+            if (differs(c.translationX, g[1], 0.5f)) c.translationX = g[1]
+            if (differs(c.translationY, g[2], 0.5f)) c.translationY = g[2]
+        }
+        val b = _binding ?: return
+        listOfNotNull<View>(
+            root.findViewById(R.id.playbackControlsFragment),
+            b.favoriteCircleButton, b.moreCircleButton, b.queueCoverTarget
+        ).forEach {
+            if (differs(it.translationY, g[3], 0.5f)) it.translationY = g[3]
+        }
+    }
+
+    // ---- Rounded corners of the small cover --------------------------------------------------
+    private val coverClipRect = Rect()
+    private var coverClipRadiusLocal = 0f
+    private var coverClipAnimator: ValueAnimator? = null
+
+    private val coverClipProvider = object : ViewOutlineProvider() {
+        override fun getOutline(view: View, outline: Outline) {
+            outline.setRoundRect(coverClipRect, coverClipRadiusLocal)
+        }
+    }
+
+    private fun startCoverClip(
+        coverView: View,
+        toRadius: Float,
+        duration: Long,
+        interpolator: TimeInterpolator,
+        disableAtEnd: Boolean
+    ) {
+        coverClipAnimator?.cancel()
+        coverClipAnimator = null
+        coverView.outlineProvider = coverClipProvider
+        coverView.clipToOutline = true
+        if (duration <= 0L) {
+            coverClipRadiusLocal = toRadius
+            coverView.invalidateOutline()
+            if (disableAtEnd) disableCoverClip(coverView)
             return
         }
-        queueAnimator = ValueAnimator.ofFloat(queueProgress, end).apply {
-            duration = 350
-            interpolator = DecelerateInterpolator(1.6f)
+        coverClipAnimator = ValueAnimator.ofFloat(coverClipRadiusLocal, toRadius).apply {
+            this.duration = duration
+            this.interpolator = interpolator
             addUpdateListener {
-                queueProgress = it.animatedValue as Float
-                applyQueueState(queueProgress)
+                coverClipRadiusLocal = it.animatedValue as Float
+                coverView.invalidateOutline()
             }
-            addListener(object : AnimatorListenerAdapter() {
-                private var cancelled = false
-                override fun onAnimationCancel(animation: Animator) {
-                    cancelled = true
-                }
+            if (disableAtEnd) {
+                addListener(object : AnimatorListenerAdapter() {
+                    private var cancelled = false
+                    override fun onAnimationCancel(animation: Animator) {
+                        cancelled = true
+                    }
 
-                override fun onAnimationEnd(animation: Animator) {
-                    if (!cancelled) onFinished?.invoke()
-                }
-            })
+                    override fun onAnimationEnd(animation: Animator) {
+                        if (!cancelled) disableCoverClip(coverView)
+                    }
+                })
+            }
             start()
         }
     }
 
-    private fun measureQueueGeometry(
-        coverView: View,
-        controlsView: View,
-        target: View,
-        cover: PlayerAlbumCoverFragment,
-    ) {
-        val d = resources.displayMetrics.density
-        val playBtn = controlsView.findViewById<View>(R.id.playPauseButton)
-        qDy = if (playBtn != null) {
-            // free space under the transport row once it has moved 20dp up (see
-            // BlurPlaybackControlsFragment.setQueueMode), keeping a 12dp gap above the toolbar
-            val slack = controlsView.height - (playBtn.bottom - 20 * d)
-            (slack - 12 * d).coerceIn(0f, 48 * d)
-        } else {
-            32 * d
-        }
-        val img = cover.currentCoverImage()
-        if (img != null && img.width > 0 && target.width > 0) {
-            val a = IntArray(2)
-            val c = IntArray(2)
-            img.getLocationInWindow(a)
-            coverView.getLocationInWindow(c)
-            qIx = (a[0] - c[0]).toFloat()
-            qIy = (a[1] - c[1]).toFloat()
-            qImgW = img.width
-            qImgH = img.height
-            qScale = target.width.toFloat() / img.width
-        } else {
-            qIx = 0f
-            qIy = 0f
-            qImgW = coverView.width
-            qImgH = coverView.height
-            qScale = if (coverView.width > 0) target.width.toFloat() / coverView.width else 0.15f
-        }
-    }
-
-    /** Puts every moving part at its place for progress p (0 = normal, 1 = queue). */
-    private fun applyQueueState(p: Float) {
-        val b = _binding ?: return
-        val list = b.queueRecyclerView ?: return
-        val target = b.queueCoverTarget ?: return
-        val guide = b.queueListBottomGuideline ?: return
-        val rootView = view ?: return
-        val coverView = rootView.findViewById<View>(R.id.playerAlbumCoverFragment) ?: return
-        val controlsView = rootView.findViewById<View>(R.id.playbackControlsFragment) ?: return
-        val d = resources.displayMetrics.density
-
-        // Small cover: lands exactly on the target (left of the title), measured live
-        val s = 1f + (qScale - 1f) * p
-        coverView.pivotX = 0f
-        coverView.pivotY = 0f
-        coverView.scaleX = s
-        coverView.scaleY = s
-        coverView.translationX = p * (target.left - coverView.left - qIx * qScale)
-        coverView.translationY = p * (target.top + qDy - coverView.top - qIy * qScale)
-
-        // Rounded corners (10dp on screen at the end), only around the artwork
-        if (p > 0f) {
-            qRadius = 16f * d + (10f * d / qScale - 16f * d) * p
-            coverView.outlineProvider = queueOutline
-            coverView.clipToOutline = true
-            coverView.invalidateOutline()
-        }
-
-        // Title block, favorite/more buttons and controls slide down together
-        listOfNotNull<View>(controlsView, b.favoriteCircleButton, b.moreCircleButton, target)
-            .forEach { it.translationY = p * qDy }
-
-        // The list ends just above the small cover; the fade at its edge is part of the view
-        if (p > 0f) {
-            val gb = (target.top + qDy - 12 * d).toInt()
-            if (gb != qGuideBegin) {
-                guide.setGuidelineBegin(gb)
-                qGuideBegin = gb
-            }
-            list.visibility = View.VISIBLE
-        }
-        list.alpha = ((p - 0.3f) / 0.7f).coerceIn(0f, 1f)
-        b.fullCoverContainer?.alpha = savedFullCoverAlpha * (1f - p)
+    private fun disableCoverClip(coverView: View) {
+        coverClipRadiusLocal = 0f
+        coverView.clipToOutline = false
+        coverView.outlineProvider = ViewOutlineProvider.BACKGROUND
     }
 
     private fun ensureQueueList(list: RecyclerView) {
@@ -457,7 +576,7 @@ class BlurPlayerFragment : AbsPlayerFragment(R.layout.fragment_blur),
             requireActivity(),
             MusicPlayerRemote.playingQueue.toMutableList(),
             MusicPlayerRemote.position,
-            R.layout.item_queue_blur
+            R.layout.item_queue
         )
         var wrapped: RecyclerView.Adapter<*>? = dragDrop.createWrappedAdapter(songAdapter)
         wrapped = wrapped?.let { swipe.createWrappedAdapter(it) }
@@ -474,12 +593,52 @@ class BlurPlayerFragment : AbsPlayerFragment(R.layout.fragment_blur),
         guard.attachRecyclerView(list)
         dragDrop.attachRecyclerView(list)
         swipe.attachRecyclerView(list)
+        // The queue row layout follows the app theme; the player is always white-on-cover
+        list.addOnChildAttachStateChangeListener(object : RecyclerView.OnChildAttachStateChangeListener {
+            override fun onChildViewAttachedToWindow(view: View) {
+                view.background = null
+                styleQueueRow(view)
+            }
+
+            override fun onChildViewDetachedFromWindow(view: View) {}
+        })
+    }
+
+    private fun styleQueueRow(v: View) {
+        val name = if (v.id != View.NO_ID) {
+            try {
+                resources.getResourceEntryName(v.id)
+            } catch (e: Exception) {
+                ""
+            }
+        } else ""
+        val soft = Color.argb(153, 255, 255, 255)
+        if (name.contains("dummy", ignoreCase = true)) v.background = null
+        when {
+            v is TextView -> v.setTextColor(if (name == "title") Color.WHITE else soft)
+            v is ImageView && (name == "menu" || name.startsWith("drag")) ->
+                v.imageTintList = ColorStateList.valueOf(soft)
+        }
+        // Drag handle moves to the right, where the three dots were; the dots are hidden
+        if (v is ImageView && name.startsWith("drag")) v.translationX = handleShiftPx()
+        if (HIDE_ROW_MENU && name.contains("menu", ignoreCase = true)) v.visibility = View.INVISIBLE
+        if (v is ViewGroup) {
+            for (i in 0 until v.childCount) styleQueueRow(v.getChildAt(i))
+        }
+    }
+
+    private fun handleShiftPx(): Float {
+        val d = resources.displayMetrics.density
+        val w = _binding?.queueRecyclerView?.width?.takeIf { it > 0 }
+            ?: resources.displayMetrics.widthPixels
+        // handle center (list coords) = screen x + ROW_SHIFT; screen x = width - ROW_HANDLE_RIGHT
+        return w - (ROW_HANDLE_RIGHT_DP - ROW_SHIFT_DP) * d - ROW_HANDLE_CENTER_DP * d
     }
 
     private fun releaseQueueList() {
-        queueAnimator?.cancel()
-        queueAnimator = null
-        view?.removeOnLayoutChangeListener(queueLayoutListener)
+        stopPinning()
+        coverClipAnimator?.cancel()
+        coverClipAnimator = null
         queueDragDropManager?.cancelDrag()
         queueDragDropManager?.release()
         queueDragDropManager = null
@@ -489,7 +648,7 @@ class BlurPlayerFragment : AbsPlayerFragment(R.layout.fragment_blur),
         queueWrappedAdapter?.let { WrapperAdapterUtils.releaseAll(it) }
         queueWrappedAdapter = null
         queueAdapter = null
-        queueProgress = 0f
+        queueGeometry = null
         queueMode = false
     }
 
@@ -674,6 +833,7 @@ class BlurPlayerFragment : AbsPlayerFragment(R.layout.fragment_blur),
     }
 
     override fun onDestroyView() {
+        lastMiniCard = null
         releaseQueueList()
         stopBackgroundMotion()
         liquidTarget?.let { Glide.with(this).clear(it) }
