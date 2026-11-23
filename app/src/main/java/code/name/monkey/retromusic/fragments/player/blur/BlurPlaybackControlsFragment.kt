@@ -198,7 +198,7 @@ class BlurPlaybackControlsFragment :
             )
         }
         val d = resources.displayMetrics.density
-        val textStart = ((if (enabled) 100 else 32) * d).toInt()
+        val textStart = ((if (enabled) 88 else 32) * d).toInt()
         b.title.updateLayoutParams<ConstraintLayout.LayoutParams> { marginStart = textStart }
         b.text.updateLayoutParams<ConstraintLayout.LayoutParams> { marginStart = textStart }
         b.playPauseButton.updateLayoutParams<ConstraintLayout.LayoutParams> {
