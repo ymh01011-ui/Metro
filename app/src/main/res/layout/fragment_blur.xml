@@ -89,6 +89,34 @@
     </FrameLayout>
 
 
+    <!-- Inline "Playing queue" list (shown instead of opening the queue page). It sits behind the
+         shrinking cover; its bottom edge is moved from code (BlurPlayerFragment.setQueueMode). -->
+    <androidx.constraintlayout.widget.Guideline
+        android:id="@+id/queueListBottomGuideline"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        app:layout_constraintGuide_begin="0dp" />
+
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/queueRecyclerView"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:layout_marginTop="12dp"
+        android:alpha="0"
+        android:clipToPadding="false"
+        android:fadingEdgeLength="48dp"
+        android:overScrollMode="never"
+        android:paddingBottom="8dp"
+        android:requiresFadingEdge="vertical"
+        android:scrollbars="none"
+        android:visibility="gone"
+        app:layout_constraintBottom_toTopOf="@id/queueListBottomGuideline"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/statusBarContainer"
+        tools:listitem="@layout/item_queue" />
+
     <!-- Cover starts at ~12% of the screen height. The cover page itself already has a 16dp
          inner margin, so an 8dp margin here gives the 24dp side gap of the design. -->
     <androidx.constraintlayout.widget.Guideline
@@ -120,6 +148,19 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toBottomOf="@id/playerAlbumCoverFragment"
         tools:layout="@layout/fragment_blur_player_playback_controls" />
+
+    <!-- Where the small cover lands in queue mode (left of the title, 56dp square). Invisible and
+         non-clickable normally; in queue mode it only swallows touches over the small cover. -->
+    <View
+        android:id="@+id/queueCoverTarget"
+        android:layout_width="56dp"
+        android:layout_height="56dp"
+        android:layout_marginStart="32dp"
+        android:layout_marginTop="40dp"
+        android:alpha="0"
+        android:visibility="invisible"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="@+id/playbackControlsFragment" />
 
     <!-- Favorite + "more" circles at the right of the title (Apple Music style). The circle
          centers sit 65.5dp below the top of the controls area, between title and artist. -->
