@@ -25,11 +25,16 @@ import android.graphics.PorterDuffXfermode
 import android.graphics.drawable.Drawable
 import android.os.Bundle
 import android.view.View
+import android.view.ViewGroup
 import android.view.animation.DecelerateInterpolator
 import android.widget.ImageButton
 import android.widget.TextView
 import androidx.core.content.ContextCompat
+import androidx.constraintlayout.widget.ConstraintLayout
 import androidx.core.graphics.ColorUtils
+import androidx.core.view.updateLayoutParams
+import androidx.transition.ChangeBounds
+import androidx.transition.TransitionManager
 import code.name.monkey.appthemehelper.util.ColorUtil
 import code.name.monkey.appthemehelper.util.MaterialValueHelper
 import code.name.monkey.appthemehelper.util.TintHelper
@@ -174,6 +179,30 @@ class BlurPlaybackControlsFragment :
             scaleX = 0f
             scaleY = 0f
             rotation = 0f
+        }
+    }
+
+    /**
+     * Queue mode (the queue list is shown above): the title/artist make room for the small cover
+     * on their left and the transport row moves closer to the progress bar. Animated.
+     */
+    fun setQueueMode(enabled: Boolean, animate: Boolean = true) {
+        val b = _binding ?: return
+        if (animate) {
+            TransitionManager.beginDelayedTransition(
+                b.root as ViewGroup,
+                ChangeBounds().apply {
+                    duration = 350
+                    interpolator = DecelerateInterpolator(1.6f)
+                }
+            )
+        }
+        val d = resources.displayMetrics.density
+        val textStart = ((if (enabled) 100 else 32) * d).toInt()
+        b.title.updateLayoutParams<ConstraintLayout.LayoutParams> { marginStart = textStart }
+        b.text.updateLayoutParams<ConstraintLayout.LayoutParams> { marginStart = textStart }
+        b.playPauseButton.updateLayoutParams<ConstraintLayout.LayoutParams> {
+            topMargin = ((if (enabled) 16 else 36) * d).toInt()
         }
     }
 
