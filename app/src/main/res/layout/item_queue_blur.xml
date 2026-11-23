@@ -1,0 +1,125 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Queue row used inside the Blur player (white on cover). Same view ids as item_queue.xml so
+     PlayingQueueAdapter / SongAdapter work unchanged. Differences: the drag handle is on the right
+     (where the three dots were; the menu is hidden), and the row is inset 32dp so the cover art
+     and the handle line up with the progress bar (its track also starts/ends 32dp from the edge). -->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:clickable="true"
+    android:focusable="true">
+
+    <FrameLayout
+        android:id="@+id/dummy_view"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent">
+
+        <!-- end margin is 24dp because the handle has 8dp of its own padding (glyph ends at 32dp) -->
+        <androidx.constraintlayout.widget.ConstraintLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="32dp"
+            android:layout_marginEnd="24dp"
+            android:minHeight="?attr/listPreferredItemHeight"
+            tools:ignore="MissingPrefix">
+
+            <com.google.android.material.card.MaterialCardView
+                android:id="@+id/imageContainer"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center_vertical"
+                android:transitionGroup="true"
+                app:cardBackgroundColor="@android:color/transparent"
+                app:cardCornerRadius="4dp"
+                app:cardElevation="0dp"
+                app:layout_constraintBottom_toBottomOf="parent"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintTop_toTopOf="parent">
+
+                <com.google.android.material.imageview.ShapeableImageView
+                    android:id="@+id/image"
+                    android:layout_width="40dp"
+                    android:layout_height="40dp"
+                    android:layout_gravity="center_vertical"
+                    android:gravity="center_vertical"
+                    android:scaleType="centerCrop"
+                    app:shapeAppearance="@style/ShapeAppearance.Material3.Corner.ExtraSmall"
+                    tools:srcCompat="@tools:sample/backgrounds/scenic"
+                    tools:visibility="visible" />
+
+                <com.google.android.material.textview.MaterialTextView
+                    android:id="@+id/imageText"
+                    android:layout_width="wrap_content"
+                    android:layout_height="match_parent"
+                    android:gravity="center"
+                    android:maxLines="1"
+                    android:minWidth="36dp"
+                    android:minHeight="40dp"
+                    android:textAppearance="@style/TextViewSubtitle1"
+                    android:textColor="#99FFFFFF"
+                    android:visibility="gone"
+                    tools:text="100"
+                    tools:visibility="visible" />
+            </com.google.android.material.card.MaterialCardView>
+
+            <com.google.android.material.textview.MaterialTextView
+                android:id="@+id/title"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:ellipsize="end"
+                android:maxLines="1"
+                android:paddingHorizontal="16dp"
+                android:textAppearance="@style/TextViewBody2"
+                android:textColor="#FFFFFFFF"
+                app:layout_constraintBottom_toTopOf="@+id/text"
+                app:layout_constraintEnd_toStartOf="@id/drag_view"
+                app:layout_constraintHorizontal_bias="0.5"
+                app:layout_constraintStart_toEndOf="@id/imageContainer"
+                app:layout_constraintTop_toTopOf="parent"
+                app:layout_constraintVertical_chainStyle="packed"
+                tools:text="@tools:sample/full_names" />
+
+            <com.google.android.material.textview.MaterialTextView
+                android:id="@+id/text"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:ellipsize="end"
+                android:maxLines="1"
+                android:paddingHorizontal="16dp"
+                android:textAppearance="@style/TextViewCaption"
+                android:textColor="#99FFFFFF"
+                app:layout_constraintBottom_toBottomOf="parent"
+                app:layout_constraintEnd_toStartOf="@id/drag_view"
+                app:layout_constraintHorizontal_bias="0.5"
+                app:layout_constraintStart_toEndOf="@id/imageContainer"
+                app:layout_constraintTop_toBottomOf="@+id/title"
+                tools:text="@tools:sample/full_names" />
+
+            <!-- Drag handle: right side, where the three dots used to be -->
+            <androidx.appcompat.widget.AppCompatImageView
+                android:id="@+id/drag_view"
+                android:layout_width="wrap_content"
+                android:layout_height="0dp"
+                android:paddingHorizontal="8dp"
+                app:layout_constraintBottom_toBottomOf="parent"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintTop_toTopOf="parent"
+                app:srcCompat="@drawable/ic_drag_handle"
+                app:tint="#99FFFFFF"
+                tools:ignore="ContentDescription" />
+
+            <!-- Kept (the adapter looks it up by id) but hidden; songs are removed by swiping -->
+            <androidx.appcompat.widget.AppCompatImageView
+                android:id="@+id/menu"
+                style="@style/OverFlowButton"
+                android:visibility="gone"
+                app:layout_constraintBottom_toBottomOf="parent"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintTop_toTopOf="parent" />
+
+        </androidx.constraintlayout.widget.ConstraintLayout>
+    </FrameLayout>
+</FrameLayout>
