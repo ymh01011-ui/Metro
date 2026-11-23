@@ -107,7 +107,6 @@
         android:clipToPadding="false"
         android:fadingEdgeLength="48dp"
         android:overScrollMode="never"
-        android:paddingBottom="8dp"
         android:requiresFadingEdge="vertical"
         android:scrollbars="none"
         android:visibility="gone"
@@ -149,14 +148,15 @@
         app:layout_constraintTop_toBottomOf="@id/playerAlbumCoverFragment"
         tools:layout="@layout/fragment_blur_player_playback_controls" />
 
-    <!-- Where the small cover lands in queue mode (left of the title, 56dp square). Invisible and
+    <!-- Where the small cover lands in queue mode (left of the title, 40dp square, vertically
+         centered on the title/artist block and the circle buttons at 65.5dp). Invisible and
          non-clickable normally; in queue mode it only swallows touches over the small cover. -->
     <View
         android:id="@+id/queueCoverTarget"
-        android:layout_width="56dp"
-        android:layout_height="56dp"
+        android:layout_width="40dp"
+        android:layout_height="40dp"
         android:layout_marginStart="32dp"
-        android:layout_marginTop="40dp"
+        android:layout_marginTop="45.5dp"
         android:alpha="0"
         android:visibility="invisible"
         app:layout_constraintStart_toStartOf="parent"
