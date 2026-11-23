@@ -114,7 +114,7 @@
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toBottomOf="@id/statusBarContainer"
-        tools:listitem="@layout/item_queue" />
+        tools:listitem="@layout/item_queue_blur" />
 
     <!-- Cover starts at ~12% of the screen height. The cover page itself already has a 16dp
          inner margin, so an 8dp margin here gives the 24dp side gap of the design. -->
@@ -148,15 +148,14 @@
         app:layout_constraintTop_toBottomOf="@id/playerAlbumCoverFragment"
         tools:layout="@layout/fragment_blur_player_playback_controls" />
 
-    <!-- Where the small cover lands in queue mode (left of the title, 40dp square, vertically
-         centered on the title/artist block and the circle buttons at 65.5dp). Invisible and
+    <!-- Where the small cover lands in queue mode (left of the title, 48dp square, centered on the title + artist block). Invisible and
          non-clickable normally; in queue mode it only swallows touches over the small cover. -->
     <View
         android:id="@+id/queueCoverTarget"
-        android:layout_width="40dp"
-        android:layout_height="40dp"
+        android:layout_width="48dp"
+        android:layout_height="48dp"
         android:layout_marginStart="32dp"
-        android:layout_marginTop="45.5dp"
+        android:layout_marginTop="43dp"
         android:alpha="0"
         android:visibility="invisible"
         app:layout_constraintStart_toStartOf="parent"
