@@ -255,7 +255,7 @@ abstract class AbsPlayerFragment(@LayoutRes layout: Int) : AbsMusicServiceFragme
         item.icon = drawable
     }
 
-    fun bigCoverImage(): View? = playerAlbumCoverFragment?.currentCoverImage()
+    open fun bigCoverImage(): View? = playerAlbumCoverFragment?.currentCoverImage()
 
     /** True while this player shows a full-screen animated cover (video) instead of the square one. */
     open fun isFullCoverActive(): Boolean = false
