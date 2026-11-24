@@ -86,7 +86,14 @@ class PlayerAlbumCoverFragment : AbsMusicServiceFragment(R.layout.fragment_playe
             field = value
             val pager = _binding?.viewPager ?: return
             val hiddenByLyrics = lyricsShown && PreferenceUtil.lyricsType == CoverLyricsType.REPLACE_COVER
-            pager.animate().alpha(if (value || hiddenByLyrics) 0f else 1f).setDuration(300).start()
+            if (value) {
+                // Hide at once: the caller restores the parent's alpha right after this, and an
+                // animated fade here made the cover reappear over the video for 300ms.
+                pager.animate().cancel()
+                pager.alpha = 0f
+            } else {
+                pager.animate().alpha(if (hiddenByLyrics) 0f else 1f).setDuration(300).start()
+            }
         }
 
     private var lyricsShown = false
