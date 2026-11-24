@@ -182,6 +182,7 @@ class BlurPlayerFragment : AbsPlayerFragment(R.layout.fragment_blur),
                 fullModeNow = full
                 // Queue open: the small cover stays; the video waits until the queue closes
                 if (!queueMode) applyPagerForFullMode(full)
+                cover.refreshPageCovers() // a dropped video gives the cover back to its page
             },
             onFrame = { bitmap, albumId ->
                 if (bitmap == null) {
@@ -193,6 +194,9 @@ class BlurPlayerFragment : AbsPlayerFragment(R.layout.fragment_blur),
                 }
             },
         )
+        // Pages of songs that have a video stay empty (no cover while swiping to them);
+        // with the queue open the small cover must show for every song
+        cover.hideCoverOf = { song -> !queueMode && fullCover?.expectsVideo(song) == true }
     }
 
     // Real state of the full cover (video ready or not), tracked even while the queue is open
@@ -379,6 +383,7 @@ class BlurPlayerFragment : AbsPlayerFragment(R.layout.fragment_blur),
             pagerAlphaAnimator?.cancel()
             coverView.alpha = if (pagerWasHidden) 0f else 1f
             cover.invisiblePager = false
+            cover.refreshPageCovers() // queue open: every song shows its small cover
             // Over a video the cover only appears after the video has mostly faded out
             if (pagerWasHidden) animatePagerAlpha(coverView, 1f, duration / 3, duration * 2 / 3, null)
             fullCover?.setSuppressed(true, animate)
@@ -465,6 +470,8 @@ class BlurPlayerFragment : AbsPlayerFragment(R.layout.fragment_blur),
             queueSettled = false
             rootView.removeCallbacks(queueSettleRunnable)
             stopPinning()
+            // Once the cover is back (or faded out over the video), empty the video songs' pages again
+            coverView.postDelayed({ if (!queueMode) cover.refreshPageCovers() }, duration + 50)
             // The cover flies back; if the current song has a video the cover fades out into it
             coverView.animate().setStartDelay(0).scaleX(1f).scaleY(1f)
                 .translationX(0f).translationY(0f)
@@ -831,6 +838,10 @@ class BlurPlayerFragment : AbsPlayerFragment(R.layout.fragment_blur),
         updateBlur()
         fullCover?.onSongChanged(MusicPlayerRemote.currentSong)
         queueAdapter?.setCurrent(MusicPlayerRemote.position)
+        if (_binding != null) {
+            val cover: PlayerAlbumCoverFragment = whichFragment(R.id.playerAlbumCoverFragment)
+            cover.refreshPageCovers()
+        }
         if (queueMode) {
             (_binding?.queueRecyclerView?.layoutManager as? LinearLayoutManager)
                 ?.scrollToPositionWithOffset(MusicPlayerRemote.position + 1, 0)
