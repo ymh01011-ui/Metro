@@ -72,8 +72,33 @@ class FullCoverController(
 
     private fun shouldPlay() = resumed && !suppressed
 
+    // Set when full mode was entered before the first frame (video already known/cached); if the
+    // frame never comes the container falls back to the normal square cover.
+    private var awaitingFrame = false
+    private val frameTimeout = Runnable {
+        if (awaitingFrame) {
+            awaitingFrame = false
+            dropVideo()
+        }
+    }
+
+    private fun clearFrameWait() {
+        awaitingFrame = false
+        container.removeCallbacks(frameTimeout)
+    }
+
+    /** The video is already known: go full-screen right away instead of waiting for decoder start-up. */
+    private fun enterFullEarly() {
+        if (fullMode) return
+        awaitingFrame = true
+        container.removeCallbacks(frameTimeout)
+        container.postDelayed(frameTimeout, FRAME_TIMEOUT_MS)
+        setFullMode(true)
+    }
+
     private val listener = object : Player.Listener {
         override fun onRenderedFirstFrame() {
+            clearFrameWait()
             setFullMode(true)
         }
 
@@ -194,6 +219,7 @@ class FullCoverController(
 
         resolveJob?.cancel()
         resolveJob = null
+        clearFrameWait()
 
         if (!isEnabled() || song.albumId < 0) {
             dropVideo()
@@ -210,7 +236,10 @@ class FullCoverController(
                 // Otherwise the SAME player gets the new source: the last frame of the previous
                 // video stays visible until the new first frame, no cover image in between.
                 videoUrl = knownUrl
-                if (resumed) startVideo()
+                if (resumed) {
+                    startVideo()
+                    enterFullEarly() // no square-cover phase while the decoder starts
+                }
             }
             AlbumDetailsFragment.sharedKnownNoVideo(context, song.albumId) -> dropVideo()
             else -> {
@@ -266,6 +295,7 @@ class FullCoverController(
     }
 
     fun release() {
+        clearFrameWait()
         resolveJob?.cancel()
         resolveJob = null
         releasePlayer()
@@ -309,6 +339,7 @@ class FullCoverController(
 
     /** There is no video for the current song: fade the container out, then free the player. */
     private fun dropVideo() {
+        clearFrameWait()
         videoUrl = null
         player?.playWhenReady = false
         if (fullMode) setFullMode(false) // releases the player when the fade ends
@@ -363,5 +394,8 @@ class FullCoverController(
         /** SharedPreferences key (boolean, default true) for the settings switch. */
         const val PREF_KEY = "animated_cover_enabled"
         private const val FADE_MS = 350L
+
+        // How long full mode may wait for the first frame before giving up on the video
+        private const val FRAME_TIMEOUT_MS = 4_000L
     }
 }
