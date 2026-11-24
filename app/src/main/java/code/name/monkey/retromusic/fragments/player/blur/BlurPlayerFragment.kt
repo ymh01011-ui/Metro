@@ -102,6 +102,9 @@ class BlurPlayerFragment : AbsPlayerFragment(R.layout.fragment_blur),
 
         // Same as the video container's fade in FullCoverController
         const val PAGER_FADE_MS = 350L
+
+        // Square cover fading out when a video takes over (kept short)
+        const val PAGER_HIDE_MS = 200L
     }
 
     private var lastRequest: RequestBuilder<Drawable>? = null
@@ -231,9 +234,9 @@ class BlurPlayerFragment : AbsPlayerFragment(R.layout.fragment_blur),
         }
         cv.animate().cancel()
         if (full) {
-            // The video container fades in first (same duration); only then does the square cover
-            // dissolve, so the cover never fades out at the same time as the video fades in.
-            cv.animate().setStartDelay(PAGER_FADE_MS).alpha(0f).setDuration(PAGER_FADE_MS).withEndAction {
+            // Short fade: the square cover is over the video only for this brief moment. When it
+            // ends the pager is hidden instantly (see invisiblePager) BEFORE the alpha is restored.
+            cv.animate().setStartDelay(0).alpha(0f).setDuration(PAGER_HIDE_MS).withEndAction {
                 if (fullModeNow && !queueMode) cover.invisiblePager = true
                 cv.alpha = 1f
             }.start()
