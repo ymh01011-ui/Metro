@@ -99,6 +99,9 @@ class BlurPlayerFragment : AbsPlayerFragment(R.layout.fragment_blur),
 
         // Gap between the end of the list (where its fade reaches zero) and the small cover
         const val LIST_BOTTOM_GAP_DP = 6f
+
+        // Same as the video container's fade in FullCoverController
+        const val PAGER_FADE_MS = 350L
     }
 
     private var lastRequest: RequestBuilder<Drawable>? = null
@@ -172,7 +175,11 @@ class BlurPlayerFragment : AbsPlayerFragment(R.layout.fragment_blur),
             container = container,
             image = image,
             videoView = video,
-            onFullModeChanged = { full -> cover.invisiblePager = full },
+            onFullModeChanged = { full ->
+                fullModeNow = full
+                // Queue open: the small cover stays; the video waits until the queue closes
+                if (!queueMode) applyPagerForFullMode(full)
+            },
             onFrame = { bitmap, albumId ->
                 if (bitmap == null) {
                     liquidPosterAlbumId = -1L // no video frame yet: the cover colors the background
@@ -183,6 +190,32 @@ class BlurPlayerFragment : AbsPlayerFragment(R.layout.fragment_blur),
                 }
             },
         )
+    }
+
+    // Real state of the full cover (video ready or not), tracked even while the queue is open
+    private var fullModeNow = false
+
+    // Cross-fades the square cover pager with the full-screen video instead of popping it in/out
+    // (the pager sits above the video, so a pop used to flash the cover over the video).
+    private fun applyPagerForFullMode(full: Boolean) {
+        val cover: PlayerAlbumCoverFragment = whichFragment(R.id.playerAlbumCoverFragment)
+        val cv = view?.findViewById<View>(R.id.playerAlbumCoverFragment)
+        if (cv == null || !cv.isShown) {
+            cover.invisiblePager = full
+            cv?.alpha = 1f
+            return
+        }
+        cv.animate().cancel()
+        if (full) {
+            cv.animate().alpha(0f).setDuration(PAGER_FADE_MS).withEndAction {
+                if (fullModeNow && !queueMode) cover.invisiblePager = true
+                cv.alpha = 1f
+            }.start()
+        } else {
+            cover.invisiblePager = false
+            cv.alpha = 0f
+            cv.animate().alpha(1f).setDuration(PAGER_FADE_MS).start()
+        }
     }
 
     private fun setUpSubFragments() {
@@ -261,8 +294,6 @@ class BlurPlayerFragment : AbsPlayerFragment(R.layout.fragment_blur),
     private var queueDragDropManager: RecyclerViewDragDropManager? = null
     private var queueSwipeManager: RecyclerViewSwipeManager? = null
     private var queueTouchGuardManager: RecyclerViewTouchActionGuardManager? = null
-    private var savedFullCoverAlpha = 0f
-    private var savedInvisiblePager = false
 
     // scale, translationX, translationY of the cover, the downward shift of the controls, then the
     // cover image rect inside the cover view (x, y, width, height) used for the rounded clip
@@ -313,12 +344,12 @@ class BlurPlayerFragment : AbsPlayerFragment(R.layout.fragment_blur),
 
             // The small cover is drawn by the (scaled) cover pager, so make sure it is visible even
             // when the full-screen animated cover is active
-            savedInvisiblePager = cover.invisiblePager
+            // (the video is hidden and paused while the queue is open)
+            val pagerWasHidden = cover.invisiblePager
+            coverView.animate().cancel()
+            coverView.alpha = if (pagerWasHidden) 0f else 1f
             cover.invisiblePager = false
-            binding.fullCoverContainer?.let {
-                savedFullCoverAlpha = it.alpha
-                it.animate().setStartDelay(0).alpha(0f).setDuration(duration).start()
-            }
+            fullCover?.setSuppressed(true, animate)
 
             // Geometry is measured while the cover is untouched; reused if we re-enter mid-animation
             var geo = queueGeometry
@@ -368,7 +399,7 @@ class BlurPlayerFragment : AbsPlayerFragment(R.layout.fragment_blur),
             coverView.pivotX = 0f
             coverView.pivotY = 0f
             coverView.animate().setStartDelay(0).scaleX(scale).scaleY(scale)
-                .translationX(tx).translationY(ty)
+                .translationX(tx).translationY(ty).alpha(1f)
                 .setDuration(duration).setInterpolator(interpolator).start()
             movers.forEach {
                 it.animate().setStartDelay(0).translationY(dy)
@@ -402,9 +433,19 @@ class BlurPlayerFragment : AbsPlayerFragment(R.layout.fragment_blur),
             queueSettled = false
             rootView.removeCallbacks(queueSettleRunnable)
             stopPinning()
-            coverView.animate().setStartDelay(0).scaleX(1f).scaleY(1f)
+            // The cover flies back; if the current song has a video the cover fades out into it
+            val backAnim = coverView.animate().setStartDelay(0).scaleX(1f).scaleY(1f)
                 .translationX(0f).translationY(0f)
-                .setDuration(duration).setInterpolator(interpolator).start()
+                .setDuration(duration).setInterpolator(interpolator)
+            if (fullModeNow) {
+                backAnim.alpha(0f).withEndAction {
+                    if (fullModeNow && !queueMode) cover.invisiblePager = true
+                    coverView.alpha = 1f
+                }
+            } else {
+                backAnim.alpha(1f)
+            }
+            backAnim.start()
             movers.forEach {
                 it.animate().setStartDelay(0).translationY(0f)
                     .setDuration(duration).setInterpolator(interpolator).start()
@@ -419,9 +460,7 @@ class BlurPlayerFragment : AbsPlayerFragment(R.layout.fragment_blur),
                 .withEndAction { if (!queueMode) list.visibility = View.GONE }
                 .start()
 
-            cover.invisiblePager = savedInvisiblePager
-            binding.fullCoverContainer?.animate()?.setStartDelay(0)
-                ?.alpha(savedFullCoverAlpha)?.setDuration(duration)?.start()
+            fullCover?.setSuppressed(false, animate)
             // The sheet may have been dragged while the queue was open: re-sync the full cover
             if (lastSheetProgress < 1f) fullCover?.applySheetProgress(lastSheetProgress, lastMiniCard)
         }
