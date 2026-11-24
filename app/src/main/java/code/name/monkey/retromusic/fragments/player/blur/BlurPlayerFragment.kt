@@ -737,6 +737,12 @@ class BlurPlayerFragment : AbsPlayerFragment(R.layout.fragment_blur),
         toggleFavorite(MusicPlayerRemote.currentSong)
     }
 
+    // The user swiped to another cover: start its video (or drop the current one) now, instead of
+    // waiting for the service's song-changed callback, so the square cover is not left on screen
+    override fun onPageChosen(position: Int) {
+        MusicPlayerRemote.playingQueue.getOrNull(position)?.let { fullCover?.onSongChanged(it) }
+    }
+
     override fun onColorChanged(color: MediaNotificationProcessor) {
         playbackControlsFragment.setColor(color)
         lastColor = color.backgroundColor
