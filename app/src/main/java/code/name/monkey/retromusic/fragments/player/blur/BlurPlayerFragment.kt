@@ -197,7 +197,31 @@ class BlurPlayerFragment : AbsPlayerFragment(R.layout.fragment_blur),
 
     // Cross-fades the square cover pager with the full-screen video instead of popping it in/out
     // (the pager sits above the video, so a pop used to flash the cover over the video).
+    private var pagerAlphaAnimator: ObjectAnimator? = null
+
+    private fun animatePagerAlpha(v: View, to: Float, delay: Long, dur: Long, end: (() -> Unit)?) {
+        pagerAlphaAnimator?.cancel()
+        pagerAlphaAnimator = ObjectAnimator.ofFloat(v, View.ALPHA, v.alpha, to).apply {
+            startDelay = delay
+            duration = dur
+            if (end != null) {
+                addListener(object : AnimatorListenerAdapter() {
+                    private var cancelled = false
+                    override fun onAnimationCancel(animation: Animator) {
+                        cancelled = true
+                    }
+
+                    override fun onAnimationEnd(animation: Animator) {
+                        if (!cancelled) end()
+                    }
+                })
+            }
+            start()
+        }
+    }
+
     private fun applyPagerForFullMode(full: Boolean) {
+        pagerAlphaAnimator?.cancel()
         val cover: PlayerAlbumCoverFragment = whichFragment(R.id.playerAlbumCoverFragment)
         val cv = view?.findViewById<View>(R.id.playerAlbumCoverFragment)
         if (cv == null || !cv.isShown) {
@@ -207,14 +231,16 @@ class BlurPlayerFragment : AbsPlayerFragment(R.layout.fragment_blur),
         }
         cv.animate().cancel()
         if (full) {
-            cv.animate().alpha(0f).setDuration(PAGER_FADE_MS).withEndAction {
+            // The video container fades in first (same duration); only then does the square cover
+            // dissolve, so the cover never fades out at the same time as the video fades in.
+            cv.animate().setStartDelay(PAGER_FADE_MS).alpha(0f).setDuration(PAGER_FADE_MS).withEndAction {
                 if (fullModeNow && !queueMode) cover.invisiblePager = true
                 cv.alpha = 1f
             }.start()
         } else {
             cover.invisiblePager = false
             cv.alpha = 0f
-            cv.animate().alpha(1f).setDuration(PAGER_FADE_MS).start()
+            cv.animate().setStartDelay(0).alpha(1f).setDuration(PAGER_FADE_MS).start()
         }
     }
 
@@ -347,8 +373,11 @@ class BlurPlayerFragment : AbsPlayerFragment(R.layout.fragment_blur),
             // (the video is hidden and paused while the queue is open)
             val pagerWasHidden = cover.invisiblePager
             coverView.animate().cancel()
+            pagerAlphaAnimator?.cancel()
             coverView.alpha = if (pagerWasHidden) 0f else 1f
             cover.invisiblePager = false
+            // Over a video the cover only appears after the video has mostly faded out
+            if (pagerWasHidden) animatePagerAlpha(coverView, 1f, duration / 3, duration * 2 / 3, null)
             fullCover?.setSuppressed(true, animate)
 
             // Geometry is measured while the cover is untouched; reused if we re-enter mid-animation
@@ -399,7 +428,7 @@ class BlurPlayerFragment : AbsPlayerFragment(R.layout.fragment_blur),
             coverView.pivotX = 0f
             coverView.pivotY = 0f
             coverView.animate().setStartDelay(0).scaleX(scale).scaleY(scale)
-                .translationX(tx).translationY(ty).alpha(1f)
+                .translationX(tx).translationY(ty)
                 .setDuration(duration).setInterpolator(interpolator).start()
             movers.forEach {
                 it.animate().setStartDelay(0).translationY(dy)
@@ -434,18 +463,19 @@ class BlurPlayerFragment : AbsPlayerFragment(R.layout.fragment_blur),
             rootView.removeCallbacks(queueSettleRunnable)
             stopPinning()
             // The cover flies back; if the current song has a video the cover fades out into it
-            val backAnim = coverView.animate().setStartDelay(0).scaleX(1f).scaleY(1f)
+            coverView.animate().setStartDelay(0).scaleX(1f).scaleY(1f)
                 .translationX(0f).translationY(0f)
-                .setDuration(duration).setInterpolator(interpolator)
+                .setDuration(duration).setInterpolator(interpolator).start()
+            // With a video the small cover fades out at once and never grows back over it
+            pagerAlphaAnimator?.cancel()
             if (fullModeNow) {
-                backAnim.alpha(0f).withEndAction {
+                animatePagerAlpha(coverView, 0f, 0L, duration / 3) {
                     if (fullModeNow && !queueMode) cover.invisiblePager = true
                     coverView.alpha = 1f
                 }
             } else {
-                backAnim.alpha(1f)
+                coverView.alpha = 1f
             }
-            backAnim.start()
             movers.forEach {
                 it.animate().setStartDelay(0).translationY(0f)
                     .setDuration(duration).setInterpolator(interpolator).start()
