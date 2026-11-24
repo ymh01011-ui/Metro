@@ -253,6 +253,17 @@ class FullCoverController(
         }
     }
 
+    /**
+     * True when [song] has (or is about to get) a video, so its cover must not be drawn anywhere,
+     * e.g. on the page that slides in while the user swipes to it.
+     */
+    fun expectsVideo(song: Song): Boolean {
+        if (!isEnabled() || song.albumId < 0) return false
+        // The current song: only while its video is really expected (not dropped / not looked up)
+        if (song.id == currentSongId) return videoUrl != null
+        return AlbumDetailsFragment.sharedEntry(context, song.albumId)?.url != null
+    }
+
     /** The user turned the setting on/off. */
     fun refresh(song: Song) {
         currentSongId = Long.MIN_VALUE
