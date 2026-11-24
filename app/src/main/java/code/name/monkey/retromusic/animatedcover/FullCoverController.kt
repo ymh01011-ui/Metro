@@ -1,6 +1,7 @@
 package code.name.monkey.retromusic.animatedcover
 
 import android.graphics.Bitmap
+import android.graphics.Color
 import android.graphics.Outline
 import android.graphics.Rect
 import android.view.View
@@ -64,6 +65,12 @@ class FullCoverController(
     private var resumed = false
     private var fullMode = false
 
+    // While true (queue open) the video stays hidden and paused, whatever happens to the songs;
+    // when it ends the container fades back in only if the CURRENT song really has a video.
+    private var suppressed = false
+
+    private fun shouldPlay() = resumed && !suppressed
+
     private val listener = object : Player.Listener {
         override fun onRenderedFirstFrame() {
             setFullMode(true)
@@ -94,6 +101,9 @@ class FullCoverController(
     val isFull: Boolean get() = fullMode
 
     init {
+        // No black shutter between two videos: the cover image underneath shows through instead
+        videoView.setShutterBackgroundColor(Color.TRANSPARENT)
+        videoView.setKeepContentOnPlayerReset(true)
         container.alpha = 0f
         container.pivotX = 0f
         container.pivotY = 0f
@@ -216,7 +226,22 @@ class FullCoverController(
 
     fun setPlaying(playing: Boolean) {
         isPlaying = playing
-        player?.playWhenReady = resumed
+        player?.playWhenReady = shouldPlay()
+    }
+
+    /**
+     * Queue open: hide + pause the video (Apple Music shows the small static artwork instead).
+     * Closing it brings the video back only if the current song has one.
+     */
+    fun setSuppressed(value: Boolean, animate: Boolean = true) {
+        if (suppressed == value) return
+        suppressed = value
+        container.animate().cancel()
+        val target = if (fullMode && !value) 1f else 0f
+        if (animate) container.animate().alpha(target).setDuration(FADE_MS).start()
+        else container.alpha = target
+        player?.playWhenReady = shouldPlay()
+        if (!value && videoUrl != null && player == null && resumed) startVideo()
     }
 
     fun onResume(playing: Boolean) {
@@ -225,7 +250,7 @@ class FullCoverController(
         if (videoUrl != null && player == null) {
             startVideo()
         } else {
-            player?.playWhenReady = true
+            player?.playWhenReady = shouldPlay()
         }
     }
 
@@ -266,7 +291,7 @@ class FullCoverController(
         if (fullMode == full) return
         fullMode = full
         container.animate().cancel()
-        container.animate().alpha(if (full) 1f else 0f).setDuration(FADE_MS).start()
+        container.animate().alpha(if (full && !suppressed) 1f else 0f).setDuration(FADE_MS).start()
         onFullModeChanged(full)
     }
 
@@ -290,7 +315,7 @@ class FullCoverController(
             .createMediaSource(MediaItem.fromUri(url))
         exo.setMediaSource(source)
         exo.prepare()
-        exo.playWhenReady = resumed
+        exo.playWhenReady = shouldPlay()
     }
 
     private fun createPlayer(): ExoPlayer {
