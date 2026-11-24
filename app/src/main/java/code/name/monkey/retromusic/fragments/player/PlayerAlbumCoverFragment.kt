@@ -42,6 +42,7 @@ import code.name.monkey.retromusic.fragments.base.goToLyrics
 import code.name.monkey.retromusic.helper.MusicPlayerRemote
 import code.name.monkey.retromusic.helper.MusicProgressViewUpdateHelper
 import code.name.monkey.retromusic.lyrics.CoverLrcView
+import code.name.monkey.retromusic.model.Song
 import code.name.monkey.retromusic.model.lyrics.Lyrics
 import code.name.monkey.retromusic.transform.CarousalPagerTransformer
 import code.name.monkey.retromusic.transform.ParallaxPagerTransformer
@@ -97,6 +98,29 @@ class PlayerAlbumCoverFragment : AbsMusicServiceFragment(R.layout.fragment_playe
         }
 
     private var lyricsShown = false
+
+    /**
+     * Songs for which this returns true get an empty page (their cover image is not drawn): a video
+     * takes the cover's place, so the cover must not show up while swiping to them.
+     */
+    var hideCoverOf: ((Song) -> Boolean)? = null
+
+    /** Re-applies [hideCoverOf] to every page that currently exists. */
+    fun refreshPageCovers() {
+        val pager = _binding?.viewPager ?: return
+        val hide = hideCoverOf
+        val queue = MusicPlayerRemote.playingQueue
+        val step = (pager.width - pager.paddingLeft - pager.paddingRight + pager.pageMargin).toFloat()
+        for (i in 0 until pager.childCount) {
+            val page = pager.getChildAt(i)
+            val img = page.findViewById<View>(R.id.player_image) ?: continue
+            // ViewPager lays page n out at paddingLeft + n * (clientWidth + margin)
+            val index = if (step > 0f) Math.round((page.left - pager.paddingLeft) / step) else -1
+            val song = queue.getOrNull(index)
+            val alpha = if (hide != null && song != null && hide(song)) 0f else 1f
+            if (img.alpha != alpha) img.alpha = alpha
+        }
+    }
 
     /** The big artwork of the page that is currently centred (used by the mini->full morph). */
     fun currentCoverImage(): View? {
@@ -295,10 +319,13 @@ class PlayerAlbumCoverFragment : AbsMusicServiceFragment(R.layout.fragment_playe
             adapter = AlbumCoverPagerAdapter(parentFragmentManager, MusicPlayerRemote.playingQueue)
             setCurrentItem(MusicPlayerRemote.position, true)
             onPageSelected(MusicPlayerRemote.position)
+            post { refreshPageCovers() } // pages are created after the adapter is set
         }
     }
 
-    override fun onPageScrolled(position: Int, positionOffset: Float, positionOffsetPixels: Int) {}
+    override fun onPageScrolled(position: Int, positionOffset: Float, positionOffsetPixels: Int) {
+        refreshPageCovers()
+    }
 
     override fun onPageSelected(position: Int) {
         currentPosition = position
@@ -317,6 +344,7 @@ class PlayerAlbumCoverFragment : AbsMusicServiceFragment(R.layout.fragment_playe
     }
 
     override fun onPageScrollStateChanged(state: Int) {
+        refreshPageCovers()
     }
 
 
