@@ -302,6 +302,9 @@ class PlayerAlbumCoverFragment : AbsMusicServiceFragment(R.layout.fragment_playe
 
     override fun onPageSelected(position: Int) {
         currentPosition = position
+        // Tell the player fragment which song was chosen right away, before the service reports
+        // the change, so a full-screen video can start without waiting for it
+        callbacks?.onPageChosen(position)
         if (binding.viewPager.adapter != null) {
             (binding.viewPager.adapter as AlbumCoverPagerAdapter).receiveColor(
                 colorReceiver,
@@ -349,6 +352,9 @@ class PlayerAlbumCoverFragment : AbsMusicServiceFragment(R.layout.fragment_playe
         fun onColorChanged(color: MediaNotificationProcessor)
 
         fun onFavoriteToggled()
+
+        /** The pager settled on [position] (swipe or programmatic); default: ignore. */
+        fun onPageChosen(position: Int) {}
     }
 
     companion object {
