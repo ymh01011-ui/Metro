@@ -20,11 +20,7 @@ import androidx.media3.exoplayer.hls.HlsMediaSource
 import androidx.media3.ui.PlayerView
 import androidx.preference.PreferenceManager
 import code.name.monkey.retromusic.fragments.albums.AlbumDetailsFragment
-import code.name.monkey.retromusic.glide.RetroGlideExtension
-import code.name.monkey.retromusic.glide.RetroGlideExtension.simpleSongCoverOptions
 import code.name.monkey.retromusic.model.Song
-import com.bumptech.glide.Glide
-import com.bumptech.glide.load.resource.drawable.DrawableTransitionOptions
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
@@ -34,6 +30,10 @@ import kotlinx.coroutines.withContext
  * Two looks for the player cover:
  *  - no video  -> the original square cover (this controller stays invisible);
  *  - video     -> the cover goes full screen and the muted looping video plays on it.
+ *
+ * While a video is active NO cover image is ever drawn by this controller: there is no static
+ * image under the video any more. Between two songs the same player is reused, so the last video
+ * frame simply stays on screen until the next video renders its first frame.
  *
  * Videos are shared with the album page: same per-album cache entry, same on-disk ExoPlayer
  * cache and same background download, so an album loaded in one place never loads again in
@@ -46,6 +46,7 @@ import kotlinx.coroutines.withContext
 class FullCoverController(
     private val fragment: Fragment,
     private val container: View,
+    /** Kept for the constructor signature only: it is permanently hidden (never shows a cover). */
     private val image: ImageView,
     private val videoView: PlayerView,
     private val onFullModeChanged: (Boolean) -> Unit,
@@ -82,9 +83,7 @@ class FullCoverController(
             if (error.errorCode == PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS && currentAlbumId >= 0) {
                 AlbumDetailsFragment.sharedForget(context, currentAlbumId)
             }
-            videoUrl = null
-            releasePlayer()
-            setFullMode(false)
+            dropVideo()
         }
     }
 
@@ -101,7 +100,10 @@ class FullCoverController(
     val isFull: Boolean get() = fullMode
 
     init {
-        // No black shutter between two videos: the cover image underneath shows through instead
+        // The cover image under the video is gone for good: nothing may show through the video
+        image.setImageDrawable(null)
+        image.visibility = View.GONE
+        // No black shutter between two videos: the previous frame stays until the next one renders
         videoView.setShutterBackgroundColor(Color.TRANSPARENT)
         videoView.setKeepContentOnPlayerReset(true)
         container.alpha = 0f
@@ -192,11 +194,9 @@ class FullCoverController(
 
         resolveJob?.cancel()
         resolveJob = null
-        videoUrl = null
-        releasePlayer()
 
         if (!isEnabled() || song.albumId < 0) {
-            setFullMode(false)
+            dropVideo()
             return
         }
 
@@ -204,15 +204,21 @@ class FullCoverController(
         when {
             knownUrl != null -> {
                 // Already known (from the album page or an earlier play): use the shared cache.
-                // The current mode is kept so two songs with videos never flash the square cover.
-                videoUrl = knownUrl
-                loadStatic(song)
                 AlbumDetailsFragment.sharedEnsureDownloaded(context, song.albumId)
+                // Same video as before (next song of the same album): keep playing, no reload.
+                if (knownUrl == videoUrl && player != null) return
+                // Otherwise the SAME player gets the new source: the last frame of the previous
+                // video stays visible until the new first frame, no cover image in between.
+                videoUrl = knownUrl
                 if (resumed) startVideo()
             }
-            AlbumDetailsFragment.sharedKnownNoVideo(context, song.albumId) -> setFullMode(false)
+            AlbumDetailsFragment.sharedKnownNoVideo(context, song.albumId) -> dropVideo()
             else -> {
-                setFullMode(false)
+                // Looking up: the previous video (if any) freezes on its last frame, so the full
+                // cover never flashes out and no cover image is drawn. It is dropped only once
+                // we know there is no video for this song.
+                videoUrl = null
+                player?.playWhenReady = false
                 lookup(song)
             }
         }
@@ -256,7 +262,7 @@ class FullCoverController(
 
     fun onPause() {
         resumed = false
-        releasePlayer() // frees the decoder; the cover layer stays as it is
+        releasePlayer() // frees the decoder; the container stays as it is
     }
 
     fun release() {
@@ -270,7 +276,11 @@ class FullCoverController(
 
     private fun lookup(song: Song) {
         resolveJob = fragment.viewLifecycleOwner.lifecycleScope.launch {
-            val cover = resolver.resolve(song.title, song.artistName, song.albumName) ?: return@launch
+            val cover = resolver.resolve(song.title, song.artistName, song.albumName)
+            if (cover == null) {
+                if (currentSongId == song.id) dropVideo()
+                return@launch
+            }
             if (currentSongId != song.id) return@launch
             val master = cover.tallUrl ?: cover.squareUrl
             val width = context.resources.displayMetrics.widthPixels
@@ -280,7 +290,6 @@ class FullCoverController(
             if (currentSongId != song.id) return@launch
             // Stores it in the album cache (the album page will see it) and starts the download.
             videoUrl = AlbumDetailsFragment.sharedStoreFound(context, song.albumId, variant)
-            loadStatic(song)
             if (resumed) startVideo()
         }
     }
@@ -291,16 +300,19 @@ class FullCoverController(
         if (fullMode == full) return
         fullMode = full
         container.animate().cancel()
-        container.animate().alpha(if (full && !suppressed) 1f else 0f).setDuration(FADE_MS).start()
+        val anim = container.animate().alpha(if (full && !suppressed) 1f else 0f).setDuration(FADE_MS)
+        // Once the container has faded out the (now useless) player is released
+        if (!full) anim.withEndAction { if (!fullMode && videoUrl == null) releasePlayer() }
+        anim.start()
         onFullModeChanged(full)
     }
 
-    private fun loadStatic(song: Song) {
-        Glide.with(fragment)
-            .load(RetroGlideExtension.getSongModel(song))
-            .simpleSongCoverOptions(song)
-            .transition(DrawableTransitionOptions.withCrossFade(CROSSFADE_MS))
-            .into(image)
+    /** There is no video for the current song: fade the container out, then free the player. */
+    private fun dropVideo() {
+        videoUrl = null
+        player?.playWhenReady = false
+        if (fullMode) setFullMode(false) // releases the player when the fade ends
+        else releasePlayer()
     }
 
     // ------------------------------------------------------------------ player
@@ -351,6 +363,5 @@ class FullCoverController(
         /** SharedPreferences key (boolean, default true) for the settings switch. */
         const val PREF_KEY = "animated_cover_enabled"
         private const val FADE_MS = 350L
-        private const val CROSSFADE_MS = 350
     }
 }
