@@ -303,7 +303,12 @@ class AppleLyricsView @JvmOverloads constructor(
         mainPaint.textSize = emSize
         backgroundPaint.textSize = emSize * 0.6f
         translationPaint.textSize = emSize * 0.6f
-        listOf(mainPaint, backgroundPaint, translationPaint).forEach { it.typeface = typeface }
+        listOf(mainPaint, backgroundPaint, translationPaint).forEach {
+            it.typeface = typeface
+            // Letters are measured and drawn one by one: a ligature such as "fi" would give the
+            // first letter the width of both and throw the second onto the next letter
+            it.fontFeatureSettings = "liga 0, clig 0"
+        }
 
         rows = data.lines.mapIndexed { index, line ->
             val alignment =
@@ -847,17 +852,19 @@ class AppleLyricsView @JvmOverloads constructor(
             else if (next != null && next.rtl == current.rtl) max(next.from, current.to)
             else current.to
             wipeLine = current.visualLine
-            wipe = from + (to - from) * progress
+            val sweep = from + (to - from) * progress
+            // The lead starts at zero at the beginning of each visual line and grows to its
+            // full size over the first LEAD_GROW_EM of the line, so nothing lights up early
+            var k = currentIndex
+            while (k > 0 && !block.stops[k].first) k--
+            val grow = ((sweep - block.stops[k].from) / (emSize * LEAD_GROW_EM)).coerceIn(0f, 1f)
+            wipe = sweep - lead + lead * easeInOut(grow)
         } else {
-            // Before the first syllable the edge slides in over the last HIGHLIGHT_LEAD_MS, so
-            // the line starts with the same lead as the rest of it and nothing pops
+            // Before the first syllable nothing is lit
             val first = block.stops.firstOrNull()
             if (first != null) {
-                val ramp =
-                    ((time - (first.startMs - HIGHLIGHT_LEAD_MS)) / HIGHLIGHT_LEAD_MS.toFloat())
-                        .coerceIn(0f, 1f)
                 wipeLine = first.visualLine
-                wipe = first.from - lead + lead * ramp
+                wipe = first.from - lead
             }
         }
 
@@ -1208,6 +1215,7 @@ class AppleLyricsView @JvmOverloads constructor(
         const val ANCHOR_FRACTION = 0.27f // where the sung line rests: higher number = lower on screen
         const val WIPE_TRAIL_EM = 0.5f
         const val WIPE_LEAD_EM = 0.9f
+        const val LEAD_GROW_EM = 1.5f // distance over which the lead grows at a line's start
         const val MIN_WORD_MS = 100L
         const val LIFT_MS = 1000f
         const val EMPHASIS_MIN_MS = 1000L
