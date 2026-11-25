@@ -260,20 +260,27 @@ class AppleLyricsView @JvmOverloads constructor(
     /** A scroll step that is still on its way. Steps add up, so retargeting stays smooth. */
     private class Layer(val distance: Float, val startedAt: Long, val delayMs: Long)
 
+    /**
+     * The line-scroll spring of Apple Music-like Lyrics (AMLL): mass 1, damping 15, stiffness 100,
+     * which is a damping ratio of 0.75 and about 3% overshoot. Apple Music itself was measured
+     * at a damping ratio of 0.75-0.85 for the full-screen player.
+     */
     private object ScrollSpring {
-        private const val RESPONSE_SEC = 0.5
-        private const val ZETA = 0.86
+        private const val MASS = 1.0
+        private const val DAMPING = 15.0
+        private const val STIFFNESS = 100.0
         private const val DONE_MS = 1300f
-        private val omega = 2.0 * PI / RESPONSE_SEC
-        private val damped = omega * sqrt(1.0 - ZETA * ZETA)
-        private val k = ZETA / sqrt(1.0 - ZETA * ZETA)
+        private val omega = sqrt(STIFFNESS / MASS)
+        private val zeta = DAMPING / (2.0 * sqrt(STIFFNESS * MASS))
+        private val damped = omega * sqrt(1.0 - zeta * zeta)
+        private val k = zeta / sqrt(1.0 - zeta * zeta)
 
-        /** 0 -> 1 progress of a spring that starts at rest. */
+        /** 0 -> 1 progress of a spring that starts at rest; it overshoots 1 a little. */
         fun value(ms: Float): Float {
             if (ms <= 0f) return 0f
             if (ms >= DONE_MS) return 1f
             val t = ms / 1000.0
-            val decay = exp(-ZETA * omega * t)
+            val decay = exp(-zeta * omega * t)
             return (1.0 - decay * (cos(damped * t) + k * kotlin.math.sin(damped * t))).toFloat()
         }
     }
@@ -627,13 +634,9 @@ class AppleLyricsView @JvmOverloads constructor(
             rows.forEach { it.layers.clear() }
             return
         }
-        // Rows start one after another, from the edge the lyrics are leaving
-        val scroll = restingScroll(old)
-        val firstVisible = tops.indexOfFirst { it >= scroll }.coerceAtLeast(0)
-        val lastVisible = tops.indexOfLast { it <= scroll + height }.coerceAtLeast(0)
+        // All lines move together, with no delay between them
         for (i in rows.indices) {
-            val steps = if (jumped) 0 else if (distance >= 0f) i - firstVisible else lastVisible - i
-            rows[i].layers.add(Layer(distance, now, steps.coerceIn(0, 8) * STAGGER_MS))
+            rows[i].layers.add(Layer(distance, now, 0L))
         }
     }
 
@@ -1227,7 +1230,6 @@ class AppleLyricsView @JvmOverloads constructor(
         const val SCROLL_LEAD_MS = 350L
         const val LINE_HOLD_MS = 1000L
         const val LINE_TAIL_MS = 300L
-        const val STAGGER_MS = 40L
         const val SEEK_THRESHOLD_MS = 250f
         const val MANUAL_TIMEOUT_MS = 3000L
         const val IDLE_FRAME_MS = 250L
