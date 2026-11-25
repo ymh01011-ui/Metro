@@ -58,16 +58,10 @@
                 tools:text="@tools:sample/lorem[100]" />
         </ScrollView>
 
-        <code.name.monkey.retromusic.lyrics.LrcView
+        <code.name.monkey.retromusic.lyrics.word.AppleLyricsView
             android:id="@+id/lyricsView"
             android:layout_width="match_parent"
-            android:layout_height="match_parent"
-            app:layout_behavior="com.google.android.material.appbar.AppBarLayout$ScrollingViewBehavior"
-            app:lrcLabel="@string/no_lyrics_found"
-            app:lrcNormalTextSize="24sp"
-            app:lrcPadding="24dp"
-            app:lrcTextGravity="left"
-            app:lrcTextSize="28sp" />
+            android:layout_height="match_parent" />
 
         <TextView
             android:id="@+id/noLyricsFound"
