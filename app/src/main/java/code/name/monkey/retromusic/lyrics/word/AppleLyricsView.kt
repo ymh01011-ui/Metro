@@ -18,6 +18,8 @@
 package code.name.monkey.retromusic.lyrics.word
 
 import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.BlurMaskFilter
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.LinearGradient
@@ -30,6 +32,7 @@ import android.text.Layout
 import android.text.StaticLayout
 import android.text.TextPaint
 import android.util.AttributeSet
+import android.view.Choreographer
 import android.view.GestureDetector
 import android.view.MotionEvent
 import android.view.View
@@ -38,10 +41,13 @@ import android.widget.OverScroller
 import java.text.BreakIterator
 import kotlin.math.PI
 import kotlin.math.abs
+import kotlin.math.ceil
 import kotlin.math.cos
 import kotlin.math.exp
+import kotlin.math.floor
 import kotlin.math.max
 import kotlin.math.min
+import kotlin.math.round
 import kotlin.math.sqrt
 
 /**
@@ -114,7 +120,7 @@ class AppleLyricsView @JvmOverloads constructor(
     // Playback clock, smoothed between the player's coarse position updates
     private var position = 0f
     private var hasPosition = false
-    private var lastFrame = 0L
+    private var lastFrameNanos = 0L
 
     // Scrolling
     private var targetIndex = -1
@@ -128,6 +134,10 @@ class AppleLyricsView @JvmOverloads constructor(
     private val mainPaint = TextPaint(Paint.ANTI_ALIAS_FLAG or Paint.SUBPIXEL_TEXT_FLAG)
     private val backgroundPaint = TextPaint(Paint.ANTI_ALIAS_FLAG or Paint.SUBPIXEL_TEXT_FLAG)
     private val translationPaint = TextPaint(Paint.ANTI_ALIAS_FLAG or Paint.SUBPIXEL_TEXT_FLAG)
+    /** Draws glyphs into their cached masks. */
+    private val maskPaint = TextPaint(Paint.ANTI_ALIAS_FLAG or Paint.SUBPIXEL_TEXT_FLAG)
+    /** Draws the cached masks. Filtering lets a mask move by fractions of a pixel. */
+    private val bitmapPaint = Paint(Paint.FILTER_BITMAP_FLAG)
     private val shaderMatrix = Matrix()
     private var wipeShader: LinearGradient? = null
     private var wipeShaderLit = 0
@@ -187,14 +197,25 @@ class AppleLyricsView @JvmOverloads constructor(
         val rtl: Boolean,
         val startMs: Long,
         val emphasis: Emphasis? = null
-    )
+    ) {
+        // The glyphs (and their glow) rendered once, so that moving them costs no text layout
+        var mask: Bitmap? = null
+        var glowMask: Bitmap? = null
+        /** Where the top left corner of the masks sits in the block, in whole pixels. */
+        var maskLeft = 0f
+        var maskTop = 0f
+        var maskTried = false
+    }
 
     private class Block(
         val layout: StaticLayout,
         val paint: TextPaint,
         val pieces: List<Piece>,
         val stops: List<Stop>
-    )
+    ) {
+        var hasMasks = false
+        var masksReady = false
+    }
 
     private class Row(
         val line: LyricLine,
@@ -506,7 +527,7 @@ class AppleLyricsView @JvmOverloads constructor(
     // Frame
     // ---------------------------------------------------------------------------------------
 
-    private fun updateClock(elapsed: Long, playing: Boolean): Boolean {
+    private fun updateClock(elapsed: Float, playing: Boolean): Boolean {
         val raw = positionProvider?.invoke() ?: -1L
         if (raw < 0L) return false
         if (!hasPosition) {
@@ -519,10 +540,16 @@ class AppleLyricsView @JvmOverloads constructor(
         return if (abs(error) > SEEK_THRESHOLD_MS) {
             position = raw.toFloat()
             true
+        } else if (!playing) {
+            position = raw.toFloat()
+            false
         } else {
-            // Drift is corrected gently and the clock never steps back while playing
-            val next = predicted + error * if (playing) 0.1f else 1f
-            position = if (playing) max(position, next) else next
+            // The player reports coarsely, so the clock runs on its own and is only nudged
+            // towards it. The nudge is limited in speed, which keeps motion even and means
+            // the clock can never step back.
+            val pull = error * (1f - exp(-elapsed / CLOCK_TAU_MS))
+            val limit = elapsed * CLOCK_MAX_SLEW
+            position = predicted + pull.coerceIn(-limit, limit)
             false
         }
     }
@@ -604,11 +631,15 @@ class AppleLyricsView @JvmOverloads constructor(
             return
         }
 
-        val now = SystemClock.uptimeMillis()
-        val elapsed = if (lastFrame == 0L) 0L else (now - lastFrame).coerceIn(0L, 100L)
+        // Time comes from the frame itself, not from when this code happens to run, so a
+        // late frame does not make the motion speed up and slow down
+        val frameNanos = Choreographer.getInstance().frameTimeNanos
+        val now = frameNanos / 1_000_000L
+        val gapNanos = if (lastFrameNanos == 0L) 0L else max(0L, frameNanos - lastFrameNanos)
+        val elapsed = (gapNanos / 1_000_000f).coerceIn(0f, 100f)
         // After a pause in drawing the position is taken from the player as it is
-        if (now - lastFrame > STALE_FRAME_MS) hasPosition = false
-        lastFrame = now
+        if (gapNanos > STALE_FRAME_MS * 1_000_000L) hasPosition = false
+        lastFrameNanos = frameNanos
         val playing = isPlayingProvider?.invoke() == true
         val jumped = updateClock(elapsed, playing)
         val time = position.toLong()
@@ -652,15 +683,31 @@ class AppleLyricsView @JvmOverloads constructor(
         moveTarget(nextTarget, now, jumped)
         snapNext = false
 
+        // Glyph masks are made a few at a time for the lines about to be sung, and dropped
+        // for lines that are far away
+        var budget = MASKS_PER_FRAME
+        for (i in rows.indices) {
+            val row = rows[i]
+            if ((i >= nextTarget - 1 && i <= nextTarget + 2) || row.activation > 0f) {
+                budget = warmMasks(row.main, budget)
+                row.background?.let { budget = warmMasks(it, budget) }
+            } else {
+                if (row.main.hasMasks) releaseMasks(row.main)
+                row.background?.let { if (it.hasMasks) releaseMasks(it) }
+            }
+        }
+
         val resting = restingScroll(targetIndex)
         for (i in rows.indices) {
             val row = rows[i]
             val offset = row.offset(now)
             if (row.layers.isNotEmpty()) settling = true
-            val top = tops[i] - if (manual) manualScroll else resting - offset
+            val rawTop = tops[i] - if (manual) manualScroll else resting - offset
+            // At rest, lines sit on whole pixels so that they are as sharp as plain text
+            val top = if (!manual && row.layers.isEmpty()) round(rawTop) else rawTop
             val bottom = (tops.getOrNull(i + 1) ?: (tops[i] + height.toFloat())) - tops[i] + top
             if (bottom < -emSize || top > height + emSize) continue
-            drawRow(canvas, row, top, time)
+            drawRow(canvas, row, top, position)
         }
 
         if (playing || settling) {
@@ -671,7 +718,7 @@ class AppleLyricsView @JvmOverloads constructor(
         }
     }
 
-    private fun approach(value: Float, target: Float, elapsed: Long, tauMs: Float): Float {
+    private fun approach(value: Float, target: Float, elapsed: Float, tauMs: Float): Float {
         val next = value + (target - value) * (1f - exp(-elapsed / tauMs))
         return if (abs(target - next) < 0.002f) target else next
     }
@@ -694,10 +741,10 @@ class AppleLyricsView @JvmOverloads constructor(
         return textColor and 0x00FFFFFF or (value shl 24)
     }
 
-    private fun drawRow(canvas: Canvas, row: Row, top: Float, time: Long) {
+    private fun drawRow(canvas: Canvas, row: Row, top: Float, time: Float) {
         val gap = emSize * 0.35f
         canvas.save()
-        canvas.translate(sidePadding, top)
+        canvas.translate(round(sidePadding), top)
         val layoutWidth = row.main.layout.width.toFloat()
         canvas.scale(
             row.scale, row.scale,
@@ -735,7 +782,7 @@ class AppleLyricsView @JvmOverloads constructor(
         canvas: Canvas,
         block: Block,
         activation: Float,
-        time: Long,
+        time: Float,
         opacity: Float = 1f
     ) {
         val paint = block.paint
@@ -774,10 +821,12 @@ class AppleLyricsView @JvmOverloads constructor(
             var shift = 0f
             var scale = 1f
             var glow = 0f
+            var settled = true
             val emphasis = piece.emphasis
             if (emphasis == null) {
                 val rise = easeInOut(((time - piece.startMs) / LIFT_MS).coerceIn(0f, 1f))
                 lift = -0.05f * emSize * rise * activation
+                settled = rise >= 1f
             } else {
                 val spanMs =
                     max(1f, emphasis.holdSec * 1000f + emphasis.responseSec * 2000f)
@@ -796,6 +845,7 @@ class AppleLyricsView @JvmOverloads constructor(
                     scale = 1f + 0.1f * pulse
                     glow = emphasis.glow * glowCurve(fraction) * activation
                 }
+                settled = fraction <= 0f || fraction >= 1f
             }
 
             val begin = if (piece.rtl) -(piece.x + piece.width) else piece.x
@@ -806,17 +856,10 @@ class AppleLyricsView @JvmOverloads constructor(
                     if (opposed) piece.startMs <= time else begin + piece.width <= wipe - half)
             val isUnlit = piece.visualLine > wipeLine ||
                     if (opposed) piece.startMs > time else begin >= wipe + half
-            paint.shader = null
-            if (isLit) {
-                paint.color = lit
-            } else if (isUnlit) {
-                paint.color = unlit
-            } else {
-                paint.color = Color.BLACK // the shader supplies colour and alpha
-                paint.shader = wipeShader(lit, unlit, gradient, wipe - half, piece.rtl)
-            }
-            if (glow > 0.01f) paint.setShadowLayer(0.1f * emSize, 0f, 0f, withAlpha(glow))
+            // A piece that has stopped moving sits on whole pixels
+            if (settled && activation >= 1f) lift = round(lift)
 
+            val mask = ensureMask(block, piece)
             canvas.save()
             canvas.translate(shift, lift)
             if (scale != 1f) {
@@ -825,17 +868,141 @@ class AppleLyricsView @JvmOverloads constructor(
                     piece.x + piece.width / 2f, piece.baseline + 0.1f * emSize
                 )
             }
-            canvas.drawText(
-                block.layout.text, piece.start, piece.end, piece.x, piece.baseline, paint
-            )
+            if (mask != null) {
+                // Cached glyphs move by fractions of a pixel, so slow motion stays smooth
+                canvas.translate(piece.maskLeft, piece.maskTop)
+                val glowMask = piece.glowMask
+                if (glow > 0.01f && glowMask != null) {
+                    bitmapPaint.shader = null
+                    bitmapPaint.color = withAlpha(glow)
+                    canvas.drawBitmap(glowMask, 0f, 0f, bitmapPaint)
+                }
+                if (isLit) {
+                    bitmapPaint.shader = null
+                    bitmapPaint.color = lit
+                } else if (isUnlit) {
+                    bitmapPaint.shader = null
+                    bitmapPaint.color = unlit
+                } else {
+                    bitmapPaint.color = Color.BLACK // the shader supplies colour and alpha
+                    bitmapPaint.shader =
+                        wipeShader(lit, unlit, gradient, wipe - half, piece.rtl, piece.maskLeft)
+                }
+                canvas.drawBitmap(mask, 0f, 0f, bitmapPaint)
+            } else {
+                paint.shader = null
+                if (isLit) {
+                    paint.color = lit
+                } else if (isUnlit) {
+                    paint.color = unlit
+                } else {
+                    paint.color = Color.BLACK
+                    paint.shader = wipeShader(lit, unlit, gradient, wipe - half, piece.rtl)
+                }
+                if (glow > 0.01f) paint.setShadowLayer(0.1f * emSize, 0f, 0f, withAlpha(glow))
+                canvas.drawText(
+                    block.layout.text, piece.start, piece.end, piece.x, piece.baseline, paint
+                )
+                if (glow > 0.01f) paint.clearShadowLayer()
+            }
             canvas.restore()
-            if (glow > 0.01f) paint.clearShadowLayer()
         }
+        bitmapPaint.shader = null
         paint.shader = null
     }
 
+    // ---------------------------------------------------------------------------------------
+    // Glyph masks
+    // ---------------------------------------------------------------------------------------
+
+    private fun ensureMask(block: Block, piece: Piece): Bitmap? {
+        if (piece.mask == null && !piece.maskTried) buildMask(block, piece)
+        return piece.mask
+    }
+
+    /** Makes masks for the pieces of a block that have none yet, within this frame's budget. */
+    private fun warmMasks(block: Block, budget: Int): Int {
+        if (block.masksReady || block.pieces.isEmpty()) return budget
+        var left = budget
+        for (piece in block.pieces) {
+            if (piece.mask != null || piece.maskTried) continue
+            if (left <= 0) return 0
+            buildMask(block, piece)
+            left--
+        }
+        block.masksReady = true
+        return left
+    }
+
+    private fun releaseMasks(block: Block) {
+        for (piece in block.pieces) {
+            piece.mask = null
+            piece.glowMask = null
+            piece.maskTried = false
+        }
+        block.hasMasks = false
+        block.masksReady = false
+    }
+
+    /**
+     * Renders a piece once as coverage (alpha only) and, if it glows, its blurred glow too.
+     * Colour is applied when the mask is drawn, so the wipe still costs nothing.
+     */
+    private fun buildMask(block: Block, piece: Piece) {
+        piece.maskTried = true
+        block.hasMasks = true
+        val p = maskPaint
+        p.set(block.paint)
+        p.shader = null
+        p.maskFilter = null
+        p.clearShadowLayer()
+        p.color = Color.WHITE
+
+        val metrics = p.fontMetrics
+        val pad = ceil(emSize * MASK_PAD_EM).toInt()
+        val top = floor(metrics.top).toInt()
+        val height = ceil(metrics.bottom).toInt() - top + pad * 2
+        // The whole-pixel part of the position is the mask's corner, the rest stays in the text
+        val originX = floor(piece.x)
+        val fraction = piece.x - originX
+        val width = ceil(fraction + piece.width).toInt() + pad * 2
+        if (width <= 0 || height <= 0 || width.toLong() * height > MAX_MASK_PIXELS) return
+
+        val text = block.layout.text
+        val textX = pad + fraction
+        val textY = (pad - top).toFloat()
+        try {
+            val glyphs = Bitmap.createBitmap(width, height, Bitmap.Config.ALPHA_8)
+            Canvas(glyphs).drawText(text, piece.start, piece.end, textX, textY, p)
+
+            var glow: Bitmap? = null
+            if ((piece.emphasis?.glow ?: 0f) > 0.01f) {
+                p.maskFilter = BlurMaskFilter(
+                    max(1f, GLOW_RADIUS_EM * emSize), BlurMaskFilter.Blur.NORMAL
+                )
+                glow = Bitmap.createBitmap(width, height, Bitmap.Config.ALPHA_8)
+                Canvas(glow).drawText(text, piece.start, piece.end, textX, textY, p)
+                p.maskFilter = null
+            }
+            piece.maskLeft = originX - pad
+            piece.maskTop = piece.baseline + top - pad
+            piece.glowMask = glow
+            piece.mask = glyphs
+        } catch (e: OutOfMemoryError) {
+            // Out of memory: this piece is drawn as plain text instead
+            p.maskFilter = null
+        }
+    }
+
     /** A soft edge from lit to unlit that starts at [start], counted in reading direction. */
-    private fun wipeShader(lit: Int, unlit: Int, width: Float, start: Float, rtl: Boolean): Shader {
+    private fun wipeShader(
+        lit: Int,
+        unlit: Int,
+        width: Float,
+        start: Float,
+        rtl: Boolean,
+        originX: Float = 0f
+    ): Shader {
         var shader = wipeShader
         if (shader == null || lit != wipeShaderLit || unlit != wipeShaderUnlit ||
             width != wipeShaderWidth
@@ -849,6 +1016,8 @@ class AppleLyricsView @JvmOverloads constructor(
         shaderMatrix.reset()
         if (rtl) shaderMatrix.setScale(-1f, 1f)
         shaderMatrix.postTranslate(if (rtl) -start else start, 0f)
+        // Masks are drawn from their own corner, text from the block's
+        shaderMatrix.postTranslate(-originX, 0f)
         shader.setLocalMatrix(shaderMatrix)
         return shader
     }
@@ -1002,5 +1171,11 @@ class AppleLyricsView @JvmOverloads constructor(
         const val MANUAL_TIMEOUT_MS = 3000L
         const val IDLE_FRAME_MS = 250L
         const val STALE_FRAME_MS = 400L
+        const val CLOCK_TAU_MS = 250f
+        const val CLOCK_MAX_SLEW = 0.12f
+        const val MASKS_PER_FRAME = 3
+        const val MASK_PAD_EM = 0.3f
+        const val GLOW_RADIUS_EM = 0.1f
+        const val MAX_MASK_PIXELS = 1_000_000L
     }
 }
