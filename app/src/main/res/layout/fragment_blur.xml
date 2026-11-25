@@ -116,6 +116,20 @@
         app:layout_constraintTop_toBottomOf="@id/statusBarContainer"
         tools:listitem="@layout/item_queue_blur" />
 
+    <!-- Synced lyrics: take exactly the queue list's place (same bounds, same fade). Shown instead
+         of the queue when the lyrics button is pressed; see BlurPlayerFragment.Panel. -->
+    <code.name.monkey.retromusic.lyrics.word.AppleLyricsView
+        android:id="@+id/lyricsView"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:layout_marginTop="12dp"
+        android:alpha="0"
+        android:visibility="gone"
+        app:layout_constraintBottom_toTopOf="@id/queueListBottomGuideline"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/statusBarContainer" />
+
     <!-- Cover starts at ~12% of the screen height. The cover page itself already has a 16dp
          inner margin, so an 8dp margin here gives the 24dp side gap of the design. -->
     <androidx.constraintlayout.widget.Guideline
