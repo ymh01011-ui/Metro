@@ -878,9 +878,7 @@ class AppleLyricsView @JvmOverloads constructor(
             var settled = true
             val emphasis = piece.emphasis
             if (emphasis == null) {
-                // The rise takes exactly as long as the syllable is sung
-                val liftMs = max(MIN_WORD_MS, piece.endMs - piece.startMs).toFloat()
-                val rise = easeInOut(((time - piece.startMs) / liftMs).coerceIn(0f, 1f))
+                val rise = easeInOut(((time - piece.startMs) / LIFT_MS).coerceIn(0f, 1f))
                 lift = -0.05f * emSize * rise * activation
                 settled = rise >= 1f
             } else {
