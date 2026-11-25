@@ -157,7 +157,10 @@ abstract class AbsSlidingMusicPanelActivity : AbsMusicServiceActivity(),
         override fun handleOnBackPressed() {
             println("Handle back press ${bottomSheetBehavior.state}")
             if (!handleBackPress()) {
-                remove()
+                // Not ours this time: let the next handler run, but stay registered
+                // (remove() here used to kill the callback for good). It is switched back on
+                // when the player expands again.
+                isEnabled = false
                 onBackPressedDispatcher.onBackPressed()
             }
         }
@@ -187,6 +190,13 @@ abstract class AbsSlidingMusicPanelActivity : AbsMusicServiceActivity(),
 
             override fun onStateChanged(bottomSheet: View, newState: Int) {
                 onBackPressedCallback.isEnabled = newState == STATE_EXPANDED
+                if (newState == STATE_EXPANDED) {
+                    // Handlers added later (the page's navigation) are asked first, so they
+                    // would pop the page under the open player. Re-register to be asked first.
+                    onBackPressedCallback.remove()
+                    onBackPressedDispatcher.addCallback(onBackPressedCallback)
+                    onBackPressedCallback.isEnabled = true
+                }
                 // The fold belongs to the page, not to the sheet: it stays as it is while the
                 // player is open (the choreographer lifts the folded panel back to y = 0 and
                 // sends the circle away), so the closing drag starts from and returns to the
