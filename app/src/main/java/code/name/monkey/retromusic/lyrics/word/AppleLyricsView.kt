@@ -77,7 +77,7 @@ class AppleLyricsView @JvmOverloads constructor(
             invalidate()
         }
 
-    var textSizeSp: Float = 30f // dp, not scaled by the system font size
+    var textSizeSp: Float = 33f // dp, not scaled by the system font size
         set(value) {
             field = value
             requestRebuild()
@@ -90,7 +90,7 @@ class AppleLyricsView @JvmOverloads constructor(
         }
 
     /** Where the top of the current line rests, as a fraction of the view height. */
-    var anchorFraction: Float = 0.38f
+    var anchorFraction: Float = ANCHOR_FRACTION
         set(value) {
             field = value
             invalidate()
@@ -593,7 +593,7 @@ class AppleLyricsView @JvmOverloads constructor(
             val row = rows[i]
             tops[i] = y
             y += row.main.layout.height
-            row.background?.let { y += (it.layout.height + gap * 0.5f) * row.activation }
+            row.background?.let { y += (it.layout.height + emSize * BG_GAP_EM) * row.activation }
             row.translation?.let { y += it.height + gap * 0.5f }
             y += emSize * ROW_GAP_EM
         }
@@ -777,12 +777,12 @@ class AppleLyricsView @JvmOverloads constructor(
         if (background != null) {
             if (row.activation > 0.01f) {
                 canvas.save()
-                canvas.translate(0f, y + gap * 0.5f * row.activation)
+                canvas.translate(0f, y + emSize * BG_GAP_EM * row.activation)
                 // Background vocals are quieter and only appear while their line is active
                 drawBlock(canvas, background, row.activation, time, row.activation * 0.75f, row.dim)
                 canvas.restore()
             }
-            y += (background.layout.height + gap * 0.5f) * row.activation
+            y += (background.layout.height + emSize * BG_GAP_EM) * row.activation
         }
 
         row.translation?.let {
@@ -1181,7 +1181,9 @@ class AppleLyricsView @JvmOverloads constructor(
     private companion object {
         const val UNLIT = 0.33f
         const val LINE_HEIGHT_EM = 1.2f
-        const val ROW_GAP_EM = 0.58f
+        const val ROW_GAP_EM = 1.17f // gap between two lyric lines, in font sizes
+        const val BG_GAP_EM = 0.92f // gap between the main line and its small background line
+        const val ANCHOR_FRACTION = 0.27f // where the sung line rests: higher number = lower on screen
         const val WIPE_TRAIL_EM = 0.5f
         const val WIPE_LEAD_EM = 0.9f
         const val MIN_WORD_MS = 100L
