@@ -208,7 +208,9 @@ class AppleLyricsView @JvmOverloads constructor(
         val baseline: Float,
         val rtl: Boolean,
         val startMs: Long,
-        val emphasis: Emphasis? = null
+        val emphasis: Emphasis? = null,
+        /** The rise of a plain piece lasts from startMs to endMs. */
+        val endMs: Long = startMs + 1000L
     ) {
         // The glyphs (and their glow) rendered once, so that moving them costs no text layout
         var mask: Bitmap? = null
@@ -460,7 +462,7 @@ class AppleLyricsView @JvmOverloads constructor(
                         pieces.add(
                             Piece(
                                 segment.start, segment.end, visualLine, left, segmentWidth,
-                                baseline, rtl, startMs
+                                baseline, rtl, startMs, endMs = endMs
                             )
                         )
                     } else {
@@ -485,7 +487,7 @@ class AppleLyricsView @JvmOverloads constructor(
                 pieces.add(
                     Piece(
                         runStart, runEnd, visualLine, runLeft, runWidth, baseline, rtl,
-                        segments[from].word.startMs
+                        segments[from].word.startMs, endMs = segments[to].word.endMs
                     )
                 )
             }
@@ -876,7 +878,9 @@ class AppleLyricsView @JvmOverloads constructor(
             var settled = true
             val emphasis = piece.emphasis
             if (emphasis == null) {
-                val rise = easeInOut(((time - piece.startMs) / LIFT_MS).coerceIn(0f, 1f))
+                // The rise takes exactly as long as the syllable is sung
+                val liftMs = max(MIN_WORD_MS, piece.endMs - piece.startMs).toFloat()
+                val rise = easeInOut(((time - piece.startMs) / liftMs).coerceIn(0f, 1f))
                 lift = -0.05f * emSize * rise * activation
                 settled = rise >= 1f
             } else {
@@ -1214,7 +1218,7 @@ class AppleLyricsView @JvmOverloads constructor(
         const val BG_GAP_EM = 0.92f // gap between the main line and its small background line
         const val ANCHOR_FRACTION = 0.27f // where the sung line rests: higher number = lower on screen
         const val WIPE_TRAIL_EM = 0.5f
-        const val WIPE_LEAD_EM = 0.9f
+        const val WIPE_LEAD_EM = 0.7f
         const val LEAD_GROW_EM = 1.5f // distance over which the lead grows at a line's start
         const val MIN_WORD_MS = 100L
         const val LIFT_MS = 1000f
