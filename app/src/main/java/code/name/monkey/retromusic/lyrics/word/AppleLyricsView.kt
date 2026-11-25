@@ -77,7 +77,7 @@ class AppleLyricsView @JvmOverloads constructor(
             invalidate()
         }
 
-    var textSizeSp: Float = 30f
+    var textSizeSp: Float = 30f // dp, not scaled by the system font size
         set(value) {
             field = value
             requestRebuild()
@@ -90,7 +90,7 @@ class AppleLyricsView @JvmOverloads constructor(
         }
 
     /** Where the top of the current line rests, as a fraction of the view height. */
-    var anchorFraction: Float = 0.25f
+    var anchorFraction: Float = 0.38f
         set(value) {
             field = value
             invalidate()
@@ -240,6 +240,7 @@ class AppleLyricsView @JvmOverloads constructor(
     ) {
         var activation = 0f
         var scale = 1f
+        var dim = 0.33f
         val layers = ArrayList<Layer>()
 
         fun offset(now: Long): Float {
@@ -258,21 +259,20 @@ class AppleLyricsView @JvmOverloads constructor(
     private class Layer(val distance: Float, val startedAt: Long, val delayMs: Long)
 
     private object ScrollSpring {
-        private const val PEAK_MS = 450f
-        private const val TAIL_MS = PEAK_MS * 1.5f
-        private const val ZETA = 0.78
-        private val easing = PathInterpolator(0.41f, 0f, 0.12f, 0.99f)
-        private val peakValue =
-            (1.0 + exp(-ZETA * (PI / sqrt(1.0 - ZETA * ZETA)))).toFloat()
+        private const val RESPONSE_SEC = 0.5
+        private const val ZETA = 0.86
+        private const val DONE_MS = 1300f
+        private val omega = 2.0 * PI / RESPONSE_SEC
+        private val damped = omega * sqrt(1.0 - ZETA * ZETA)
+        private val k = ZETA / sqrt(1.0 - ZETA * ZETA)
 
-        fun value(ms: Float): Float = when {
-            ms <= 0f -> 0f
-            ms >= PEAK_MS + TAIL_MS -> 1f
-            ms < PEAK_MS -> peakValue * easing.getInterpolation(ms / PEAK_MS)
-            else -> {
-                val u = (ms - PEAK_MS) / TAIL_MS
-                1f + (peakValue - 1f) * 0.5f * (1f + cos(PI.toFloat() * u))
-            }
+        /** 0 -> 1 progress of a spring that starts at rest. */
+        fun value(ms: Float): Float {
+            if (ms <= 0f) return 0f
+            if (ms >= DONE_MS) return 1f
+            val t = ms / 1000.0
+            val decay = exp(-ZETA * omega * t)
+            return (1.0 - decay * (cos(damped * t) + k * kotlin.math.sin(damped * t))).toFloat()
         }
     }
 
@@ -299,9 +299,9 @@ class AppleLyricsView @JvmOverloads constructor(
         val data = lyrics ?: return
         val textWidth = (width - sidePadding * 2).toInt()
         if (textWidth <= 0) return
-        emSize = textSizeSp * scaledDensity
+        emSize = textSizeSp * density
         mainPaint.textSize = emSize
-        backgroundPaint.textSize = emSize * 0.7f
+        backgroundPaint.textSize = emSize * 0.6f
         translationPaint.textSize = emSize * 0.6f
         listOf(mainPaint, backgroundPaint, translationPaint).forEach { it.typeface = typeface }
 
@@ -338,7 +338,11 @@ class AppleLyricsView @JvmOverloads constructor(
         paint: TextPaint,
         width: Int,
         alignment: Layout.Alignment
-    ) = StaticLayout(text, paint, width, alignment, 1.05f, 0f, false)
+    ): StaticLayout {
+        val metrics = paint.fontMetrics
+        val extra = LINE_HEIGHT_EM * paint.textSize - (metrics.descent - metrics.ascent)
+        return StaticLayout(text, paint, width, alignment, 1f, extra, false)
+    }
 
     private fun buildBlock(
         line: LyricLine,
@@ -591,7 +595,7 @@ class AppleLyricsView @JvmOverloads constructor(
             y += row.main.layout.height
             row.background?.let { y += (it.layout.height + gap * 0.5f) * row.activation }
             row.translation?.let { y += it.height + gap * 0.5f }
-            y += emSize * 0.9f
+            y += emSize * ROW_GAP_EM
         }
     }
 
@@ -617,7 +621,7 @@ class AppleLyricsView @JvmOverloads constructor(
         val lastVisible = tops.indexOfLast { it <= scroll + height }.coerceAtLeast(0)
         for (i in rows.indices) {
             val steps = if (jumped) 0 else if (distance >= 0f) i - firstVisible else lastVisible - i
-            rows[i].layers.add(Layer(distance, now, steps.coerceIn(0, 12) * STAGGER_MS))
+            rows[i].layers.add(Layer(distance, now, steps.coerceIn(0, 8) * STAGGER_MS))
         }
     }
 
@@ -664,17 +668,20 @@ class AppleLyricsView @JvmOverloads constructor(
             val active = time >= row.line.startMs - HIGHLIGHT_LEAD_MS && time < row.activeUntilMs
             val activationTarget = if (active) 1f else 0f
             val distance = abs(i - nextTarget)
-            val scaleTarget = when {
-                active || manual -> 1f
-                distance <= 1 -> 0.97f
-                distance <= 3 -> 0.93f
-                distance == 4 -> 0.90f
-                else -> 0.85f
+            val scaleTarget = 1f
+            val dimTarget = when {
+                active || manual -> UNLIT
+                distance <= 2 -> UNLIT
+                distance == 3 -> 0.28f
+                else -> 0.22f
             }
             if (snap) {
                 row.activation = activationTarget
                 row.scale = scaleTarget
+                row.dim = dimTarget
             } else {
+                row.dim = approach(row.dim, dimTarget, elapsed, 250f)
+                if (row.dim != dimTarget) settling = true
                 row.activation = approach(row.activation, activationTarget, elapsed, 120f)
                 row.scale = approach(row.scale, scaleTarget, elapsed, 200f)
                 if (row.activation != activationTarget || row.scale != scaleTarget) settling = true
@@ -763,7 +770,7 @@ class AppleLyricsView @JvmOverloads constructor(
             if (row.rightAligned) layoutWidth else 0f, row.main.layout.height / 2f
         )
 
-        drawBlock(canvas, row.main, row.activation, time)
+        drawBlock(canvas, row.main, row.activation, time, 1f, row.dim)
         var y = row.main.layout.height.toFloat()
 
         val background = row.background
@@ -772,7 +779,7 @@ class AppleLyricsView @JvmOverloads constructor(
                 canvas.save()
                 canvas.translate(0f, y + gap * 0.5f * row.activation)
                 // Background vocals are quieter and only appear while their line is active
-                drawBlock(canvas, background, row.activation, time, row.activation * 0.75f)
+                drawBlock(canvas, background, row.activation, time, row.activation * 0.75f, row.dim)
                 canvas.restore()
             }
             y += (background.layout.height + gap * 0.5f) * row.activation
@@ -783,7 +790,7 @@ class AppleLyricsView @JvmOverloads constructor(
             canvas.translate(0f, y + gap * 0.5f)
             translationPaint.textSize = emSize * 0.6f
             translationPaint.shader = null
-            translationPaint.color = withAlpha(UNLIT + 0.2f * row.activation)
+            translationPaint.color = withAlpha(row.dim + 0.2f * row.activation)
             it.draw(canvas)
             canvas.restore()
         }
@@ -795,12 +802,13 @@ class AppleLyricsView @JvmOverloads constructor(
         block: Block,
         activation: Float,
         time: Float,
-        opacity: Float = 1f
+        opacity: Float = 1f,
+        base: Float = UNLIT
     ) {
         val paint = block.paint
         paint.shader = null
-        val lit = withAlpha((UNLIT + (1f - UNLIT) * activation) * opacity)
-        val unlit = withAlpha(UNLIT * opacity)
+        val lit = withAlpha((base + (1f - base) * activation) * opacity)
+        val unlit = withAlpha(base * opacity)
 
         // Line-timed lyrics, and rows at rest, are a single colour
         if (block.pieces.isEmpty() || activation <= 0f) {
@@ -1127,7 +1135,7 @@ class AppleLyricsView @JvmOverloads constructor(
             val scroll =
                 if (manual) manualScroll else restingScroll(targetIndex) - rows[i].offset(now)
             val top = tops[i] - scroll
-            val bottom = top + rows[i].main.layout.height + emSize * 0.9f
+            val bottom = top + rows[i].main.layout.height + emSize * ROW_GAP_EM
             if (y >= top - emSize * 0.3f && y < bottom) return rows[i]
         }
         return null
@@ -1171,7 +1179,9 @@ class AppleLyricsView @JvmOverloads constructor(
     }
 
     private companion object {
-        const val UNLIT = 0.35f
+        const val UNLIT = 0.33f
+        const val LINE_HEIGHT_EM = 1.2f
+        const val ROW_GAP_EM = 0.58f
         const val WIPE_TRAIL_EM = 0.5f
         const val WIPE_LEAD_EM = 0.9f
         const val MIN_WORD_MS = 100L
@@ -1180,10 +1190,10 @@ class AppleLyricsView @JvmOverloads constructor(
         const val EMPHASIS_MAX_LETTERS = 7
         const val TRAILING_PUNCTUATION = "!?.,;:~…‥。、！？"
         const val HIGHLIGHT_LEAD_MS = 150L
-        const val SCROLL_LEAD_MS = 500L
+        const val SCROLL_LEAD_MS = 350L
         const val LINE_HOLD_MS = 1000L
         const val LINE_TAIL_MS = 300L
-        const val STAGGER_MS = 45L
+        const val STAGGER_MS = 40L
         const val SEEK_THRESHOLD_MS = 250f
         const val MANUAL_TIMEOUT_MS = 3000L
         const val IDLE_FRAME_MS = 250L
