@@ -399,9 +399,7 @@ class AppleLyricsView @JvmOverloads constructor(
 
         val wordText = text.substring(syllables.first().start, syllables.last().end)
         val joined = wordText.any { isJoiningScript(it) }
-        val emphasisStarts = emphasisClusters(wordText, syllables, emphasise && !joined)
 
-        var letterIndex = 0
         var from = 0
         while (from < segments.size) {
             val visualLine = segments[from].line
@@ -446,31 +444,38 @@ class AppleLyricsView @JvmOverloads constructor(
                 val begin = if (rtl) -(left + segmentWidth) else left
                 stops.add(Stop(visualLine, startMs, endMs, begin, begin + segmentWidth, rtl))
 
-                if (emphasisStarts == null && !joined) {
-                    pieces.add(
-                        Piece(
-                            segment.start, segment.end, visualLine, left, segmentWidth,
-                            baseline, rtl, startMs
-                        )
+                if (!joined) {
+                    val syllable = segment.word
+                    val clusters = emphasisClusters(
+                        text.substring(syllable.start, syllable.end),
+                        listOf(syllable),
+                        emphasise
                     )
+                    if (clusters == null) {
+                        pieces.add(
+                            Piece(
+                                segment.start, segment.end, visualLine, left, segmentWidth,
+                                baseline, rtl, startMs
+                            )
+                        )
+                    } else {
+                        for (c in clusters.indices) {
+                            val start = syllable.start + clusters[c].first
+                            val end = syllable.start + clusters[c].second
+                            if (start < segment.start || end > segment.end) continue
+                            pieces.add(
+                                Piece(
+                                    start, end, visualLine, leftOf(start, end),
+                                    widthOf(start, end), baseline, rtl, syllable.startMs,
+                                    emphasisFor(listOf(syllable), c, clusters.size)
+                                )
+                            )
+                        }
+                    }
                 }
             }
 
-            if (emphasisStarts != null) {
-                val base = syllables.first().start
-                for (i in emphasisStarts.indices) {
-                    val start = base + emphasisStarts[i].first
-                    val end = base + emphasisStarts[i].second
-                    if (start < runStart || end > runEnd) continue
-                    pieces.add(
-                        Piece(
-                            start, end, visualLine, leftOf(start, end), widthOf(start, end),
-                            baseline, rtl, syllables.first().startMs,
-                            emphasisFor(syllables, letterIndex++, emphasisStarts.size)
-                        )
-                    )
-                }
-            } else if (joined) {
+            if (joined) {
                 // Drawing the word in one piece keeps its letters connected
                 pieces.add(
                     Piece(
@@ -818,10 +823,11 @@ class AppleLyricsView @JvmOverloads constructor(
         }
 
         // Where the wipe is: the syllable being sung, or the last one that was
-        var current: Stop? = null
-        for (stop in block.stops) {
-            if (stop.startMs <= time) current = stop else break
+        var currentIndex = -1
+        for (i in block.stops.indices) {
+            if (block.stops[i].startMs <= time) currentIndex = i else break
         }
+        val current: Stop? = block.stops.getOrNull(currentIndex)
         // The soft edge reaches further ahead of the wipe than behind it, so the next word
         // starts to light up before the wipe arrives
         val trail = emSize * WIPE_TRAIL_EM
@@ -833,10 +839,26 @@ class AppleLyricsView @JvmOverloads constructor(
             val progress =
                 ((time - current.startMs).toFloat() / max(1L, current.endMs - current.startMs))
                     .coerceIn(0f, 1f)
-            val from = current.from - if (current.first) lead else 0f
-            val to = current.to + if (current.last) trail else 0f
+            val from = current.from
+            // The sweep runs on to the start of the next syllable (spaces included), so it
+            // never restarts at a word: its speed is the timing of the syllable it is on
+            val next = block.stops.getOrNull(currentIndex + 1)
+            val to = if (current.last) current.to + trail
+            else if (next != null && next.rtl == current.rtl) max(next.from, current.to)
+            else current.to
             wipeLine = current.visualLine
             wipe = from + (to - from) * progress
+        } else {
+            // Before the first syllable the edge slides in over the last HIGHLIGHT_LEAD_MS, so
+            // the line starts with the same lead as the rest of it and nothing pops
+            val first = block.stops.firstOrNull()
+            if (first != null) {
+                val ramp =
+                    ((time - (first.startMs - HIGHLIGHT_LEAD_MS)) / HIGHLIGHT_LEAD_MS.toFloat())
+                        .coerceIn(0f, 1f)
+                wipeLine = first.visualLine
+                wipe = first.from - lead + lead * ramp
+            }
         }
 
         for (piece in block.pieces) {
