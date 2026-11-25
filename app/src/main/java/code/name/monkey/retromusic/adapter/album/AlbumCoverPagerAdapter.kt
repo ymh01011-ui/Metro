@@ -108,9 +108,12 @@ class AlbumCoverPagerAdapter(
             savedInstanceState: Bundle?
         ): View? {
             val view = inflater.inflate(getLayoutWithPlayerTheme(), container, false)
-            view.setOnClickListener {
-                if (mainActivity.getBottomSheetBehavior().state == STATE_EXPANDED) {
-                    showLyricsDialog()
+            // Blur player: tapping the cover does nothing (lyrics live in the player itself)
+            if (PreferenceUtil.nowPlayingScreen != Blur) {
+                view.setOnClickListener {
+                    if (mainActivity.getBottomSheetBehavior().state == STATE_EXPANDED) {
+                        showLyricsDialog()
+                    }
                 }
             }
             return view
