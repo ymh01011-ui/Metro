@@ -42,6 +42,7 @@ import androidx.appcompat.widget.PopupMenu
 import androidx.appcompat.widget.Toolbar
 import androidx.core.view.children
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.lifecycleScope
 import androidx.preference.PreferenceManager
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
@@ -60,6 +61,8 @@ import code.name.monkey.retromusic.glide.RetroGlideExtension
 import code.name.monkey.retromusic.glide.RetroGlideExtension.simpleSongCoverOptions
 import code.name.monkey.retromusic.glide.crossfadeListener
 import code.name.monkey.retromusic.helper.MusicPlayerRemote
+import code.name.monkey.retromusic.lyrics.word.AppleLyricsView
+import code.name.monkey.retromusic.lyrics.word.WordLyricsLoader
 import code.name.monkey.retromusic.model.Song
 import code.name.monkey.retromusic.util.PreferenceUtil
 import code.name.monkey.retromusic.util.PreferenceUtil.blurAmount
@@ -73,6 +76,8 @@ import com.h6ah4i.android.widget.advrecyclerview.draggable.RecyclerViewDragDropM
 import com.h6ah4i.android.widget.advrecyclerview.swipeable.RecyclerViewSwipeManager
 import com.h6ah4i.android.widget.advrecyclerview.touchguard.RecyclerViewTouchActionGuardManager
 import com.h6ah4i.android.widget.advrecyclerview.utils.WrapperAdapterUtils
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
 import kotlin.math.abs
 
 
@@ -332,21 +337,127 @@ class BlurPlayerFragment : AbsPlayerFragment(R.layout.fragment_blur),
     // cover image rect inside the cover view (x, y, width, height) used for the rounded clip
     private var queueGeometry: FloatArray? = null
 
+    // What fills the space above the title block while the panel is open. The panel itself
+    // (small cover, controls moved down, pinning) is the one `queueMode` describes.
+    private enum class Panel { QUEUE, LYRICS }
+
+    private var panel = Panel.QUEUE
+
     override fun onMenuItemClick(item: MenuItem): Boolean {
         when (item.itemId) {
             R.id.now_playing -> {
                 // Landscape layout has no inline queue: keep the old behaviour there
                 if (_binding?.queueRecyclerView == null) return super.onMenuItemClick(item)
-                setQueueMode(!queueMode)
+                when {
+                    !queueMode -> setQueueMode(true, which = Panel.QUEUE)
+                    panel == Panel.QUEUE -> setQueueMode(false)
+                    else -> switchPanel(Panel.QUEUE)
+                }
                 return true
             }
-            // lyrics and queue use the same space
-            R.id.action_toggle_lyrics -> if (queueMode) setQueueMode(false)
+            R.id.action_toggle_lyrics -> {
+                // Lyrics take the queue's place; layouts without the inline panel keep the old behaviour
+                if (_binding?.queueRecyclerView == null || _binding?.lyricsView == null) {
+                    return super.onMenuItemClick(item)
+                }
+                when {
+                    !queueMode -> setQueueMode(true, which = Panel.LYRICS)
+                    panel == Panel.LYRICS -> setQueueMode(false)
+                    else -> switchPanel(Panel.LYRICS)
+                }
+                return true
+            }
         }
         return super.onMenuItemClick(item)
     }
 
-    private fun setQueueMode(show: Boolean, animate: Boolean = true) {
+    private fun setPanelChecked(which: Panel?) {
+        _binding?.playerToolbar?.menu?.findItem(R.id.action_toggle_lyrics)?.isChecked =
+            which == Panel.LYRICS
+    }
+
+    // Queue <-> lyrics while the panel stays open: only the content cross-fades
+    private fun switchPanel(which: Panel) {
+        if (!queueMode || panel == which || _binding == null) return
+        setPanelChecked(which)
+        showPanelContent(which, true)
+    }
+
+    private fun showPanelContent(which: Panel, animate: Boolean) {
+        val list = _binding?.queueRecyclerView ?: return
+        val lyrics = _binding?.lyricsView ?: return
+        val d = resources.displayMetrics.density
+        val duration = if (animate) 350L else 0L
+        panel = which
+        val shown: View = if (which == Panel.QUEUE) list else lyrics
+        val hidden: View = if (which == Panel.QUEUE) lyrics else list
+
+        shown.animate().cancel()
+        hidden.animate().cancel()
+        shown.visibility = View.VISIBLE
+        if (which == Panel.QUEUE) {
+            ensureQueueList(list)
+            // Rows are shifted left so the small covers line up with the progress bar's left edge
+            list.translationX = -ROW_SHIFT_DP * d
+            (list.layoutManager as? LinearLayoutManager)
+                ?.scrollToPositionWithOffset(MusicPlayerRemote.position + 1, 0)
+        } else {
+            prepareLyricsView(lyrics)
+            loadLyrics()
+        }
+        shown.animate().setStartDelay(duration / 4).alpha(1f).setDuration(duration).start()
+        hidden.animate().setStartDelay(0).alpha(0f).setDuration(duration * 2 / 3)
+            .withEndAction { if (!queueMode || panel == which) hidden.visibility = View.GONE }
+            .start()
+    }
+
+    private fun hidePanelContent(duration: Long) {
+        listOfNotNull<View>(_binding?.queueRecyclerView, _binding?.lyricsView).forEach { v ->
+            v.animate().cancel()
+            v.animate().setStartDelay(0).alpha(0f).setDuration(duration * 2 / 3)
+                .withEndAction { if (!queueMode) v.visibility = View.GONE }
+                .start()
+        }
+    }
+
+    // ---- Lyrics ---------------------------------------------------------------------------
+    private var lyricsConfigured = false
+    private var lyricsLoadJob: Job? = null
+    private var lyricsLoadedSongId = -1L
+
+    private fun prepareLyricsView(v: AppleLyricsView) {
+        if (lyricsConfigured) return
+        lyricsConfigured = true
+        v.apply {
+            textColor = Color.WHITE
+            textSizeSp = 28f
+            horizontalPaddingDp = 32f // same left edge as the progress bar and the small cover
+            anchorFraction = 0.15f // the list is shorter than a full page: current line near the top
+            positionProvider = { MusicPlayerRemote.songProgressMillis.toLong() }
+            isPlayingProvider = { MusicPlayerRemote.isPlaying }
+            onSeek = { MusicPlayerRemote.seekTo(it.toInt()) }
+        }
+    }
+
+    private fun loadLyrics() {
+        val v = _binding?.lyricsView ?: return
+        val song = MusicPlayerRemote.currentSong
+        if (song.id == lyricsLoadedSongId) return
+        lyricsLoadJob?.cancel()
+        // The previous song's lines must not stay on screen while the new file is read
+        v.emptyLabel = ""
+        v.setLyrics(null)
+        lyricsLoadJob = viewLifecycleOwner.lifecycleScope.launch {
+            val synced = WordLyricsLoader.load(song)
+            _binding?.lyricsView?.let {
+                it.setLyrics(synced)
+                it.emptyLabel = if (synced == null) getString(R.string.no_lyrics_found) else ""
+            }
+            lyricsLoadedSongId = song.id
+        }
+    }
+
+    private fun setQueueMode(show: Boolean, animate: Boolean = true, which: Panel = Panel.QUEUE) {
         if (queueMode == show || _binding == null) return
         val list = binding.queueRecyclerView ?: return
         val target = binding.queueCoverTarget ?: return
@@ -371,9 +482,7 @@ class BlurPlayerFragment : AbsPlayerFragment(R.layout.fragment_blur),
                 PreferenceUtil.showLyrics = false
                 binding.playerToolbar.menu.findItem(R.id.action_toggle_lyrics)?.isChecked = false
             }
-            ensureQueueList(list)
-            // Rows are shifted left so the small covers line up with the progress bar's left edge
-            list.translationX = -ROW_SHIFT_DP * d
+            setPanelChecked(which)
 
             // The small cover is drawn by the (scaled) cover pager, so make sure it is visible even
             // when the full-screen animated cover is active
@@ -455,10 +564,8 @@ class BlurPlayerFragment : AbsPlayerFragment(R.layout.fragment_blur),
             target.visibility = View.VISIBLE
             target.isClickable = true
 
-            list.visibility = View.VISIBLE
-            list.animate().setStartDelay(duration / 4).alpha(1f).setDuration(duration).start()
-            (list.layoutManager as? LinearLayoutManager)
-                ?.scrollToPositionWithOffset(MusicPlayerRemote.position + 1, 0)
+            // Queue list or lyrics, in the same place
+            showPanelContent(which, animate)
 
             // After the opening animation, keep the queue layout pinned against anything that
             // moves these views (sheet drag, etc.)
@@ -496,9 +603,9 @@ class BlurPlayerFragment : AbsPlayerFragment(R.layout.fragment_blur),
             target.visibility = View.INVISIBLE
             target.isClickable = false
 
-            list.animate().setStartDelay(0).alpha(0f).setDuration(duration * 2 / 3)
-                .withEndAction { if (!queueMode) list.visibility = View.GONE }
-                .start()
+            hidePanelContent(duration)
+            setPanelChecked(null)
+            lyricsLoadedSongId = -1L // reopening re-reads the file (picks up edits)
 
             fullCover?.setSuppressed(false, animate)
             // The sheet may have been dragged while the queue was open: re-sync the full cover
@@ -842,10 +949,11 @@ class BlurPlayerFragment : AbsPlayerFragment(R.layout.fragment_blur),
             val cover: PlayerAlbumCoverFragment = whichFragment(R.id.playerAlbumCoverFragment)
             cover.refreshPageCovers()
         }
-        if (queueMode) {
+        if (queueMode && panel == Panel.QUEUE) {
             (_binding?.queueRecyclerView?.layoutManager as? LinearLayoutManager)
                 ?.scrollToPositionWithOffset(MusicPlayerRemote.position + 1, 0)
         }
+        if (queueMode && panel == Panel.LYRICS) loadLyrics() else lyricsLoadedSongId = -1L
     }
 
     private fun startBackgroundMotion() {
@@ -923,6 +1031,10 @@ class BlurPlayerFragment : AbsPlayerFragment(R.layout.fragment_blur),
 
     override fun onDestroyView() {
         lastMiniCard = null
+        lyricsLoadJob?.cancel()
+        lyricsLoadJob = null
+        lyricsConfigured = false
+        lyricsLoadedSongId = -1L
         releaseQueueList()
         stopBackgroundMotion()
         liquidTarget?.let { Glide.with(this).clear(it) }
