@@ -25,6 +25,7 @@ import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.view.isVisible
+import androidx.lifecycle.lifecycleScope
 import androidx.navigation.fragment.findNavController
 import androidx.transition.Fade
 import code.name.monkey.appthemehelper.common.ATHToolbarActivity
@@ -39,15 +40,16 @@ import code.name.monkey.retromusic.extensions.openUrl
 import code.name.monkey.retromusic.extensions.uri
 import code.name.monkey.retromusic.fragments.base.AbsMainActivityFragment
 import code.name.monkey.retromusic.helper.MusicPlayerRemote
-import code.name.monkey.retromusic.helper.MusicProgressViewUpdateHelper
-import code.name.monkey.retromusic.lyrics.LrcView
+import code.name.monkey.retromusic.lyrics.word.WordLyricsLoader
 import code.name.monkey.retromusic.model.AudioTagInfo
 import code.name.monkey.retromusic.model.Song
 import code.name.monkey.retromusic.util.FileUtils
 import code.name.monkey.retromusic.util.LyricUtil
 import code.name.monkey.retromusic.util.UriUtil
 import com.afollestad.materialdialogs.input.input
+import com.google.android.material.color.MaterialColors
 import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import org.jaudiotagger.audio.AudioFileIO
 import org.jaudiotagger.tag.FieldKey
@@ -56,8 +58,7 @@ import java.io.FileOutputStream
 import java.util.*
 import kotlin.collections.set
 
-class LyricsFragment : AbsMainActivityFragment(R.layout.fragment_lyrics),
-    MusicProgressViewUpdateHelper.Callback {
+class LyricsFragment : AbsMainActivityFragment(R.layout.fragment_lyrics) {
 
     private var _binding: FragmentLyricsBinding? = null
     private val binding get() = _binding!!
@@ -81,7 +82,7 @@ class LyricsFragment : AbsMainActivityFragment(R.layout.fragment_lyrics),
             return baseUrl
         }
 
-    private lateinit var updateHelper: MusicProgressViewUpdateHelper
+    private var loadJob: Job? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -109,7 +110,6 @@ class LyricsFragment : AbsMainActivityFragment(R.layout.fragment_lyrics),
         enterTransition = Fade()
         exitTransition = Fade()
         _binding = FragmentLyricsBinding.bind(view)
-        updateHelper = MusicProgressViewUpdateHelper(this, 500, 1000)
         updateTitleSong()
         setupLyricsView()
         loadLyrics()
@@ -121,19 +121,13 @@ class LyricsFragment : AbsMainActivityFragment(R.layout.fragment_lyrics),
 
     private fun setupLyricsView() {
         binding.lyricsView.apply {
-            setCurrentColor(accentColor())
-            setTimeTextColor(accentColor())
-            setTimelineColor(accentColor())
-            setTimelineTextColor(accentColor())
-            setDraggable(true, LrcView.OnPlayClickListener {
-                MusicPlayerRemote.seekTo(it.toInt())
-                return@OnPlayClickListener true
-            })
+            textColor = MaterialColors.getColor(
+                this, com.google.android.material.R.attr.colorOnSurface
+            )
+            positionProvider = { MusicPlayerRemote.songProgressMillis.toLong() }
+            isPlayingProvider = { MusicPlayerRemote.isPlaying }
+            onSeek = { MusicPlayerRemote.seekTo(it.toInt()) }
         }
-    }
-
-    override fun onUpdateProgressViews(progress: Int, total: Int) {
-        binding.lyricsView.updateTime(progress.toLong())
     }
 
     private fun setupViews() {
@@ -298,7 +292,7 @@ class LyricsFragment : AbsMainActivityFragment(R.layout.fragment_lyrics),
                 }
             }
             positiveButton(res = R.string.save) {
-                loadLRCLyrics()
+                loadLyrics()
             }
             negativeButton(res = android.R.string.cancel)
         }
@@ -317,46 +311,25 @@ class LyricsFragment : AbsMainActivityFragment(R.layout.fragment_lyrics),
         binding.normalLyrics.text = lyrics
     }
 
-    /**
-     * @return success
-     */
-    private fun loadLRCLyrics(): Boolean {
-        val lrcFile = LyricUtil.getSyncedLyricsFile(song)
-        if (lrcFile != null) {
-            binding.lyricsView.loadLrc(lrcFile)
-        } else {
-            val embeddedLyrics = LyricUtil.getEmbeddedSyncedLyrics(song.data)
-            if (embeddedLyrics != null) {
-                binding.lyricsView.loadLrc(embeddedLyrics)
+    private fun loadLyrics() {
+        if (_binding == null) return
+        loadJob?.cancel()
+        // The previous song's lines must not stay on screen while the new file is read
+        binding.lyricsView.setLyrics(null)
+        val requested = song
+        loadJob = viewLifecycleOwner.lifecycleScope.launch {
+            val synced = WordLyricsLoader.load(requested)
+            binding.lyricsView.setLyrics(synced)
+            binding.lyricsView.isVisible = synced != null
+            if (synced == null) {
+                loadNormalLyrics()
+                lyricsType = LyricsType.NORMAL_LYRICS
             } else {
-                binding.lyricsView.setLabel(getString(R.string.empty))
-                return false
+                binding.normalLyrics.isVisible = false
+                binding.noLyricsFound.isVisible = false
+                lyricsType = LyricsType.SYNCED_LYRICS
             }
         }
-        return true
-    }
-
-    private fun loadLyrics() {
-        lyricsType = if (!loadLRCLyrics()) {
-            binding.lyricsView.isVisible = false
-            loadNormalLyrics()
-            LyricsType.NORMAL_LYRICS
-        } else {
-            binding.normalLyrics.isVisible = false
-            binding.noLyricsFound.isVisible = false
-            binding.lyricsView.isVisible = true
-            LyricsType.SYNCED_LYRICS
-        }
-    }
-
-    override fun onResume() {
-        super.onResume()
-        updateHelper.start()
-    }
-
-    override fun onPause() {
-        super.onPause()
-        updateHelper.stop()
     }
 
     override fun onDestroyView() {
