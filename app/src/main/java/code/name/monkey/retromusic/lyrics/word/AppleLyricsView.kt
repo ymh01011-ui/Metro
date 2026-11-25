@@ -814,16 +814,19 @@ class AppleLyricsView @JvmOverloads constructor(
         for (stop in block.stops) {
             if (stop.startMs <= time) current = stop else break
         }
-        val gradient = emSize
-        val half = gradient / 2f
+        // The soft edge reaches further ahead of the wipe than behind it, so the next word
+        // starts to light up before the wipe arrives
+        val trail = emSize * WIPE_TRAIL_EM
+        val lead = emSize * WIPE_LEAD_EM
+        val gradient = trail + lead
         var wipeLine = -1
         var wipe = 0f
         if (current != null) {
             val progress =
                 ((time - current.startMs).toFloat() / max(1L, current.endMs - current.startMs))
                     .coerceIn(0f, 1f)
-            val from = current.from - if (current.first) half else 0f
-            val to = current.to + if (current.last) half else 0f
+            val from = current.from - if (current.first) lead else 0f
+            val to = current.to + if (current.last) trail else 0f
             wipeLine = current.visualLine
             wipe = from + (to - from) * progress
         }
@@ -865,9 +868,9 @@ class AppleLyricsView @JvmOverloads constructor(
             val opposed = current != null && piece.visualLine == wipeLine &&
                     piece.rtl != current.rtl
             val isLit = piece.visualLine < wipeLine || (piece.visualLine == wipeLine &&
-                    if (opposed) piece.startMs <= time else begin + piece.width <= wipe - half)
+                    if (opposed) piece.startMs <= time else begin + piece.width <= wipe - trail)
             val isUnlit = piece.visualLine > wipeLine ||
-                    if (opposed) piece.startMs > time else begin >= wipe + half
+                    if (opposed) piece.startMs > time else begin >= wipe + lead
             // A piece that has stopped moving sits on whole pixels
             if (settled && activation >= 1f) lift = round(lift)
 
@@ -898,7 +901,7 @@ class AppleLyricsView @JvmOverloads constructor(
                 } else {
                     bitmapPaint.color = Color.BLACK // the shader supplies colour and alpha
                     bitmapPaint.shader =
-                        wipeShader(lit, unlit, gradient, wipe - half, piece.rtl, piece.maskLeft)
+                        wipeShader(lit, unlit, gradient, wipe - trail, piece.rtl, piece.maskLeft)
                 }
                 canvas.drawBitmap(mask, 0f, 0f, bitmapPaint)
             } else {
@@ -909,7 +912,7 @@ class AppleLyricsView @JvmOverloads constructor(
                     paint.color = unlit
                 } else {
                     paint.color = Color.BLACK
-                    paint.shader = wipeShader(lit, unlit, gradient, wipe - half, piece.rtl)
+                    paint.shader = wipeShader(lit, unlit, gradient, wipe - trail, piece.rtl)
                 }
                 if (glow > 0.01f) paint.setShadowLayer(0.1f * emSize, 0f, 0f, withAlpha(glow))
                 canvas.drawText(
@@ -1169,6 +1172,8 @@ class AppleLyricsView @JvmOverloads constructor(
 
     private companion object {
         const val UNLIT = 0.35f
+        const val WIPE_TRAIL_EM = 0.5f
+        const val WIPE_LEAD_EM = 0.9f
         const val MIN_WORD_MS = 100L
         const val LIFT_MS = 1000f
         const val EMPHASIS_MIN_MS = 1000L
