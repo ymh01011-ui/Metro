@@ -1,0 +1,1006 @@
+/*
+ * Copyright (c) 2026 Metro contributors.
+ *
+ * Word animation and scroll timing adapted from Metrolist (GPL-3.0),
+ * https://github.com/MetrolistGroup/Metrolist
+ * The scroll spring there is based on YouLyPlus (MIT).
+ *
+ * Licensed under the GNU General Public License v3
+ *
+ * This is free software: you can redistribute it and/or modify it under
+ * the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
+ *
+ * This software is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
+ * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ * See the GNU General Public License for more details.
+ */
+package code.name.monkey.retromusic.lyrics.word
+
+import android.content.Context
+import android.graphics.Canvas
+import android.graphics.Color
+import android.graphics.LinearGradient
+import android.graphics.Matrix
+import android.graphics.Paint
+import android.graphics.Shader
+import android.graphics.Typeface
+import android.os.SystemClock
+import android.text.Layout
+import android.text.StaticLayout
+import android.text.TextPaint
+import android.util.AttributeSet
+import android.view.GestureDetector
+import android.view.MotionEvent
+import android.view.View
+import android.view.animation.PathInterpolator
+import android.widget.OverScroller
+import java.text.BreakIterator
+import kotlin.math.PI
+import kotlin.math.abs
+import kotlin.math.cos
+import kotlin.math.exp
+import kotlin.math.max
+import kotlin.math.min
+import kotlin.math.sqrt
+
+/**
+ * Apple Music style synced lyrics: a soft wipe runs through each word, sung syllables lift,
+ * long words swell and glow letter by letter, and lines follow each other on a spring.
+ *
+ * The view runs its own frame clock. Give it [positionProvider], [isPlayingProvider] and
+ * [setLyrics]; nothing else has to push progress into it.
+ */
+class AppleLyricsView @JvmOverloads constructor(
+    context: Context,
+    attrs: AttributeSet? = null,
+    defStyleAttr: Int = 0
+) : View(context, attrs, defStyleAttr) {
+
+    /** Playback position in milliseconds; negative when unknown. */
+    var positionProvider: (() -> Long)? = null
+
+    var isPlayingProvider: (() -> Boolean)? = null
+
+    /** Called with a line's start time when it is tapped. */
+    var onSeek: ((Long) -> Unit)? = null
+
+    var textColor: Int = Color.WHITE
+        set(value) {
+            field = value
+            invalidate()
+        }
+
+    var textSizeSp: Float = 30f
+        set(value) {
+            field = value
+            requestRebuild()
+        }
+
+    var typeface: Typeface = Typeface.DEFAULT_BOLD
+        set(value) {
+            field = value
+            requestRebuild()
+        }
+
+    /** Where the top of the current line rests, as a fraction of the view height. */
+    var anchorFraction: Float = 0.25f
+        set(value) {
+            field = value
+            invalidate()
+        }
+
+    var horizontalPaddingDp: Float = 28f
+        set(value) {
+            field = value
+            requestRebuild()
+        }
+
+    /** Shown in the middle when there are no lyrics. */
+    var emptyLabel: String = ""
+        set(value) {
+            field = value
+            invalidate()
+        }
+
+    private val density = context.resources.displayMetrics.density
+    private val scaledDensity = context.resources.displayMetrics.scaledDensity
+
+    private var lyrics: WordLyrics? = null
+    private var rows: List<Row> = emptyList()
+    private var tops = FloatArray(0)
+    private var emSize = 0f
+
+    // Playback clock, smoothed between the player's coarse position updates
+    private var position = 0f
+    private var hasPosition = false
+    private var lastFrame = 0L
+
+    // Scrolling
+    private var targetIndex = -1
+    private var snapNext = true
+    private var manual = false
+    private var manualScroll = 0f
+    private var touching = false
+    private var lastTouch = 0L
+    private val scroller = OverScroller(context)
+
+    private val mainPaint = TextPaint(Paint.ANTI_ALIAS_FLAG or Paint.SUBPIXEL_TEXT_FLAG)
+    private val backgroundPaint = TextPaint(Paint.ANTI_ALIAS_FLAG or Paint.SUBPIXEL_TEXT_FLAG)
+    private val translationPaint = TextPaint(Paint.ANTI_ALIAS_FLAG or Paint.SUBPIXEL_TEXT_FLAG)
+    private val shaderMatrix = Matrix()
+    private var wipeShader: LinearGradient? = null
+    private var wipeShaderLit = 0
+    private var wipeShaderUnlit = 0
+    private var wipeShaderWidth = 0f
+
+    private val frameTick = Runnable { invalidate() }
+
+    init {
+        isVerticalFadingEdgeEnabled = true
+        setFadingEdgeLength((48 * density).toInt())
+    }
+
+    fun setLyrics(newLyrics: WordLyrics?) {
+        lyrics = newLyrics
+        scroller.forceFinished(true)
+        manual = false
+        hasPosition = false
+        requestRebuild()
+    }
+
+    // ---------------------------------------------------------------------------------------
+    // Model
+    // ---------------------------------------------------------------------------------------
+
+    /** The stretch of one visual line that a syllable covers, in reading direction. */
+    private class Stop(
+        val visualLine: Int,
+        val startMs: Long,
+        val endMs: Long,
+        val from: Float,
+        val to: Float,
+        val rtl: Boolean,
+        var first: Boolean = false,
+        var last: Boolean = false
+    )
+
+    /** Per-letter motion of a long word. */
+    private class Emphasis(
+        val wordStartMs: Long,
+        val delayMs: Float,
+        val holdSec: Float,
+        val responseSec: Float,
+        val intensity: Float,
+        val glow: Float,
+        val spread: Float
+    )
+
+    /** Text drawn in one call: a syllable, a joined-script word, or one emphasised letter. */
+    private class Piece(
+        val start: Int,
+        val end: Int,
+        val visualLine: Int,
+        val x: Float,
+        val width: Float,
+        val baseline: Float,
+        val rtl: Boolean,
+        val startMs: Long,
+        val emphasis: Emphasis? = null
+    )
+
+    private class Block(
+        val layout: StaticLayout,
+        val paint: TextPaint,
+        val pieces: List<Piece>,
+        val stops: List<Stop>
+    )
+
+    private class Row(
+        val line: LyricLine,
+        val main: Block,
+        val background: Block?,
+        val translation: StaticLayout?,
+        val rightAligned: Boolean,
+        /** The row stays lit until this time. */
+        val activeUntilMs: Long
+    ) {
+        var activation = 0f
+        var scale = 1f
+        val layers = ArrayList<Layer>()
+
+        fun offset(now: Long): Float {
+            var sum = 0f
+            val iterator = layers.iterator()
+            while (iterator.hasNext()) {
+                val layer = iterator.next()
+                val progress = ScrollSpring.value((now - layer.startedAt - layer.delayMs).toFloat())
+                if (progress >= 1f) iterator.remove() else sum += layer.distance * (1f - progress)
+            }
+            return sum
+        }
+    }
+
+    /** A scroll step that is still on its way. Steps add up, so retargeting stays smooth. */
+    private class Layer(val distance: Float, val startedAt: Long, val delayMs: Long)
+
+    private object ScrollSpring {
+        private const val PEAK_MS = 450f
+        private const val TAIL_MS = PEAK_MS * 1.5f
+        private const val ZETA = 0.78
+        private val easing = PathInterpolator(0.41f, 0f, 0.12f, 0.99f)
+        private val peakValue =
+            (1.0 + exp(-ZETA * (PI / sqrt(1.0 - ZETA * ZETA)))).toFloat()
+
+        fun value(ms: Float): Float = when {
+            ms <= 0f -> 0f
+            ms >= PEAK_MS + TAIL_MS -> 1f
+            ms < PEAK_MS -> peakValue * easing.getInterpolation(ms / PEAK_MS)
+            else -> {
+                val u = (ms - PEAK_MS) / TAIL_MS
+                1f + (peakValue - 1f) * 0.5f * (1f + cos(PI.toFloat() * u))
+            }
+        }
+    }
+
+    // ---------------------------------------------------------------------------------------
+    // Layout
+    // ---------------------------------------------------------------------------------------
+
+    private fun requestRebuild() {
+        rows = emptyList()
+        targetIndex = -1
+        snapNext = true
+        invalidate()
+    }
+
+    override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
+        super.onSizeChanged(w, h, oldw, oldh)
+        if (w != oldw) requestRebuild() else snapNext = true
+    }
+
+    private val sidePadding: Float
+        get() = horizontalPaddingDp * density
+
+    private fun buildRows() {
+        val data = lyrics ?: return
+        val textWidth = (width - sidePadding * 2).toInt()
+        if (textWidth <= 0) return
+        emSize = textSizeSp * scaledDensity
+        mainPaint.textSize = emSize
+        backgroundPaint.textSize = emSize * 0.7f
+        translationPaint.textSize = emSize * 0.6f
+        listOf(mainPaint, backgroundPaint, translationPaint).forEach { it.typeface = typeface }
+
+        rows = data.lines.mapIndexed { index, line ->
+            val alignment =
+                if (line.isOpposite) Layout.Alignment.ALIGN_OPPOSITE
+                else Layout.Alignment.ALIGN_NORMAL
+            val main = buildBlock(line, mainPaint, textWidth, alignment, emphasise = true)
+            val background = line.background?.let {
+                buildBlock(it, backgroundPaint, textWidth, alignment, emphasise = false)
+            }
+            val translation = line.translation?.let {
+                layoutText(it, translationPaint, textWidth, alignment)
+            }
+            val paragraphRtl = main.layout.lineCount > 0 &&
+                    main.layout.getParagraphDirection(0) == Layout.DIR_RIGHT_TO_LEFT
+
+            val end = max(line.endMs, line.background?.endMs ?: 0L)
+            val next = data.lines.getOrNull(index + 1)?.startMs
+            val activeUntil = when {
+                next == null -> end + LINE_HOLD_MS
+                // Short pauses: keep the line lit until the next one takes over
+                next >= end && next - end <= LINE_HOLD_MS -> next
+                else -> end + LINE_TAIL_MS
+            }
+            Row(line, main, background, translation, paragraphRtl != line.isOpposite, activeUntil)
+        }
+        tops = FloatArray(rows.size)
+    }
+
+    @Suppress("DEPRECATION")
+    private fun layoutText(
+        text: String,
+        paint: TextPaint,
+        width: Int,
+        alignment: Layout.Alignment
+    ) = StaticLayout(text, paint, width, alignment, 1.05f, 0f, false)
+
+    private fun buildBlock(
+        line: LyricLine,
+        paint: TextPaint,
+        width: Int,
+        alignment: Layout.Alignment,
+        emphasise: Boolean
+    ): Block {
+        val text = line.text
+        val layout = layoutText(text, paint, width, alignment)
+        val pieces = ArrayList<Piece>()
+        val stops = ArrayList<Stop>()
+
+        // Syllables with no white space between them form one word
+        var first = 0
+        val words = line.words
+        while (first < words.size) {
+            var last = first
+            while (last + 1 < words.size && words[last + 1].start <= words[last].end) last++
+            addWord(words.subList(first, last + 1), text, layout, paint, emphasise, pieces, stops)
+            first = last + 1
+        }
+
+        for (i in stops.indices) {
+            stops[i].first = i == 0 || stops[i - 1].visualLine != stops[i].visualLine
+            stops[i].last = i == stops.lastIndex || stops[i + 1].visualLine != stops[i].visualLine
+        }
+        return Block(layout, paint, pieces, stops)
+    }
+
+    /** Part of a syllable that sits on one visual line. */
+    private class Segment(val word: LyricWord, val start: Int, val end: Int, val line: Int)
+
+    private fun addWord(
+        syllables: List<LyricWord>,
+        text: String,
+        layout: StaticLayout,
+        paint: TextPaint,
+        emphasise: Boolean,
+        pieces: MutableList<Piece>,
+        stops: MutableList<Stop>
+    ) {
+        val segments = ArrayList<Segment>(syllables.size)
+        for (syllable in syllables) {
+            var start = syllable.start
+            while (start < syllable.end) {
+                val line = layout.getLineForOffset(start)
+                var end = min(syllable.end, layout.getLineEnd(line))
+                if (end <= start) end = syllable.end
+                segments.add(Segment(syllable, start, end, line))
+                start = end
+            }
+        }
+
+        val wordText = text.substring(syllables.first().start, syllables.last().end)
+        val joined = wordText.any { isJoiningScript(it) }
+        val emphasisStarts = emphasisClusters(wordText, syllables, emphasise && !joined)
+
+        var letterIndex = 0
+        var from = 0
+        while (from < segments.size) {
+            val visualLine = segments[from].line
+            var to = from
+            while (to + 1 < segments.size && segments[to + 1].line == visualLine) to++
+
+            // The part of the word on this visual line is measured as one run
+            val runStart = segments[from].start
+            val runEnd = segments[to].end
+            val advances = FloatArray(runEnd - runStart)
+            paint.getTextWidths(text, runStart, runEnd, advances)
+            val runWidth = advances.sum()
+            val rtl = layout.isRtlCharAt(runStart)
+            val paragraphRtl =
+                layout.getParagraphDirection(visualLine) == Layout.DIR_RIGHT_TO_LEFT
+            val anchor =
+                if (rtl == paragraphRtl) layout.getPrimaryHorizontal(runStart)
+                else layout.getSecondaryHorizontal(runStart)
+            val runLeft = if (rtl) anchor - runWidth else anchor
+            val baseline = layout.getLineBaseline(visualLine).toFloat()
+
+            fun widthOf(start: Int, end: Int): Float {
+                var sum = 0f
+                for (i in start until end) sum += advances[i - runStart]
+                return sum
+            }
+
+            fun leftOf(start: Int, end: Int): Float =
+                if (rtl) runLeft + runWidth - widthOf(runStart, end)
+                else runLeft + widthOf(runStart, start)
+
+            for (i in from..to) {
+                val segment = segments[i]
+                val left = leftOf(segment.start, segment.end)
+                val segmentWidth = widthOf(segment.start, segment.end)
+                // A syllable broken over two lines shares its time between them by length
+                val word = segment.word
+                val length = max(1, word.end - word.start)
+                val duration = max(MIN_WORD_MS, word.endMs - word.startMs)
+                val startMs = word.startMs + duration * (segment.start - word.start) / length
+                val endMs = word.startMs + duration * (segment.end - word.start) / length
+                val begin = if (rtl) -(left + segmentWidth) else left
+                stops.add(Stop(visualLine, startMs, endMs, begin, begin + segmentWidth, rtl))
+
+                if (emphasisStarts == null && !joined) {
+                    pieces.add(
+                        Piece(
+                            segment.start, segment.end, visualLine, left, segmentWidth,
+                            baseline, rtl, startMs
+                        )
+                    )
+                }
+            }
+
+            if (emphasisStarts != null) {
+                val base = syllables.first().start
+                for (i in emphasisStarts.indices) {
+                    val start = base + emphasisStarts[i].first
+                    val end = base + emphasisStarts[i].second
+                    if (start < runStart || end > runEnd) continue
+                    pieces.add(
+                        Piece(
+                            start, end, visualLine, leftOf(start, end), widthOf(start, end),
+                            baseline, rtl, syllables.first().startMs,
+                            emphasisFor(syllables, letterIndex++, emphasisStarts.size)
+                        )
+                    )
+                }
+            } else if (joined) {
+                // Drawing the word in one piece keeps its letters connected
+                pieces.add(
+                    Piece(
+                        runStart, runEnd, visualLine, runLeft, runWidth, baseline, rtl,
+                        segments[from].word.startMs
+                    )
+                )
+            }
+            from = to + 1
+        }
+    }
+
+    /** Letter ranges for a word that is held long enough to be emphasised, otherwise null. */
+    private fun emphasisClusters(
+        word: String,
+        syllables: List<LyricWord>,
+        allowed: Boolean
+    ): List<Pair<Int, Int>>? {
+        if (!allowed || word.any { isCjk(it) }) return null
+        val sung = syllables.sumOf { it.endMs - it.startMs }
+        if (sung < EMPHASIS_MIN_MS) return null
+        val breaks = BreakIterator.getCharacterInstance()
+        breaks.setText(word)
+        val clusters = ArrayList<Pair<Int, Int>>()
+        var graphemes = 0
+        var start = breaks.first()
+        var end = breaks.next()
+        while (end != BreakIterator.DONE) {
+            graphemes++
+            if (clusters.isNotEmpty() && word[start] in TRAILING_PUNCTUATION) {
+                clusters[clusters.lastIndex] = clusters.last().first to end
+            } else {
+                clusters.add(start to end)
+            }
+            start = end
+            end = breaks.next()
+        }
+        return if (graphemes in 1..EMPHASIS_MAX_LETTERS) clusters else null
+    }
+
+    private fun emphasisFor(syllables: List<LyricWord>, index: Int, count: Int): Emphasis {
+        val start = syllables.first().startMs
+        val seconds = max(0.001f, (syllables.last().endMs - start) / 1000f)
+        val delay = min(seconds / count * 0.4f, 0.4f)
+        val middle = (count - 1) / 2f
+        return Emphasis(
+            wordStartMs = start,
+            delayMs = (index + 1) * delay * 1000f,
+            holdSec = 2f * seconds / count,
+            responseSec = min(3f, seconds),
+            intensity = (seconds - 1f).coerceIn(0f, 1f),
+            glow = 0.45f * ((seconds - 1f) / 0.5f).coerceIn(0f, 1f),
+            spread = (index - middle) / max(1f, middle)
+        )
+    }
+
+    private fun isJoiningScript(c: Char): Boolean {
+        val code = c.code
+        // Hebrew, Arabic and friends, Indic and South East Asian scripts, presentation forms
+        return code in 0x0590..0x109F || code in 0x1780..0x18AF ||
+                code in 0xFB1D..0xFDFF || code in 0xFE70..0xFEFC
+    }
+
+    private fun isCjk(c: Char): Boolean {
+        val code = c.code
+        return code in 0x2E80..0x9FFF || code in 0xAC00..0xD7AF || code in 0xF900..0xFAFF
+    }
+
+    // ---------------------------------------------------------------------------------------
+    // Frame
+    // ---------------------------------------------------------------------------------------
+
+    private fun updateClock(elapsed: Long, playing: Boolean): Boolean {
+        val raw = positionProvider?.invoke() ?: -1L
+        if (raw < 0L) return false
+        if (!hasPosition) {
+            hasPosition = true
+            position = raw.toFloat()
+            return false
+        }
+        val predicted = if (playing) position + elapsed else position
+        val error = raw - predicted
+        return if (abs(error) > SEEK_THRESHOLD_MS) {
+            position = raw.toFloat()
+            true
+        } else {
+            // Drift is corrected gently and the clock never steps back while playing
+            val next = predicted + error * if (playing) 0.1f else 1f
+            position = if (playing) max(position, next) else next
+            false
+        }
+    }
+
+    /** The line the view should be resting on. It moves a little ahead of the singing. */
+    private fun findTarget(now: Long): Int {
+        var index = 0
+        for (i in 1 until rows.size) {
+            val start = rows[i].line.startMs
+            val previous = rows[i - 1].line
+            // Line-timed lyrics have no pause between lines, so they always lead
+            val previousEnd = if (previous.words.isEmpty()) 0L else previous.endMs
+            val due = max(start - SCROLL_LEAD_MS, min(previousEnd, start))
+            if (now >= due) index = i else break
+        }
+        // Overlapping singers: stay on the earliest line that is still being sung
+        while (index > 0 && rows[index - 1].line.endMs > now + SCROLL_LEAD_MS) index--
+        return index
+    }
+
+    private fun computeTops() {
+        val gap = emSize * 0.35f
+        var y = 0f
+        for (i in rows.indices) {
+            val row = rows[i]
+            tops[i] = y
+            y += row.main.layout.height
+            row.background?.let { y += (it.layout.height + gap * 0.5f) * row.activation }
+            row.translation?.let { y += it.height + gap * 0.5f }
+            y += emSize * 0.9f
+        }
+    }
+
+    private fun restingScroll(index: Int): Float = tops[index] - height * anchorFraction
+
+    private fun moveTarget(index: Int, now: Long, jumped: Boolean) {
+        if (index == targetIndex) return
+        val old = targetIndex
+        targetIndex = index
+        if (manual) return
+        if (old < 0 || snapNext) {
+            rows.forEach { it.layers.clear() }
+            return
+        }
+        val distance = restingScroll(index) - restingScroll(old)
+        if (abs(distance) > height * 2f) {
+            rows.forEach { it.layers.clear() }
+            return
+        }
+        // Rows start one after another, from the edge the lyrics are leaving
+        val scroll = restingScroll(old)
+        val firstVisible = tops.indexOfFirst { it >= scroll }.coerceAtLeast(0)
+        val lastVisible = tops.indexOfLast { it <= scroll + height }.coerceAtLeast(0)
+        for (i in rows.indices) {
+            val steps = if (jumped) 0 else if (distance >= 0f) i - firstVisible else lastVisible - i
+            rows[i].layers.add(Layer(distance, now, steps.coerceIn(0, 12) * STAGGER_MS))
+        }
+    }
+
+    /** Leaves manual scrolling and glides back to the current line. */
+    private fun followAgain(now: Long) {
+        if (!manual) return
+        manual = false
+        scroller.forceFinished(true)
+        if (targetIndex !in rows.indices) return
+        val distance = restingScroll(targetIndex) - manualScroll
+        rows.forEach {
+            it.layers.clear()
+            it.layers.add(Layer(distance, now, 0L))
+        }
+    }
+
+    override fun onDraw(canvas: Canvas) {
+        super.onDraw(canvas)
+        removeCallbacks(frameTick)
+        if (rows.isEmpty()) buildRows()
+        if (rows.isEmpty()) {
+            drawEmptyLabel(canvas)
+            return
+        }
+
+        val now = SystemClock.uptimeMillis()
+        val elapsed = if (lastFrame == 0L) 0L else (now - lastFrame).coerceIn(0L, 100L)
+        // After a pause in drawing the position is taken from the player as it is
+        if (now - lastFrame > STALE_FRAME_MS) hasPosition = false
+        lastFrame = now
+        val playing = isPlayingProvider?.invoke() == true
+        val jumped = updateClock(elapsed, playing)
+        val time = position.toLong()
+
+        var settling = false
+        val snap = snapNext
+        val nextTarget = findTarget(time)
+        for (i in rows.indices) {
+            val row = rows[i]
+            val active = time >= row.line.startMs - HIGHLIGHT_LEAD_MS && time < row.activeUntilMs
+            val activationTarget = if (active) 1f else 0f
+            val distance = abs(i - nextTarget)
+            val scaleTarget = when {
+                active || manual -> 1f
+                distance <= 1 -> 0.97f
+                distance <= 3 -> 0.93f
+                distance == 4 -> 0.90f
+                else -> 0.85f
+            }
+            if (snap) {
+                row.activation = activationTarget
+                row.scale = scaleTarget
+            } else {
+                row.activation = approach(row.activation, activationTarget, elapsed, 120f)
+                row.scale = approach(row.scale, scaleTarget, elapsed, 200f)
+                if (row.activation != activationTarget || row.scale != scaleTarget) settling = true
+            }
+        }
+        computeTops()
+
+        if (manual) {
+            if (scroller.computeScrollOffset()) {
+                manualScroll = scroller.currY.toFloat()
+                lastTouch = now
+                settling = true
+            } else if (!touching && now - lastTouch > MANUAL_TIMEOUT_MS) {
+                targetIndex = nextTarget
+                followAgain(now)
+            }
+        }
+        moveTarget(nextTarget, now, jumped)
+        snapNext = false
+
+        val resting = restingScroll(targetIndex)
+        for (i in rows.indices) {
+            val row = rows[i]
+            val offset = row.offset(now)
+            if (row.layers.isNotEmpty()) settling = true
+            val top = tops[i] - if (manual) manualScroll else resting - offset
+            val bottom = (tops.getOrNull(i + 1) ?: (tops[i] + height.toFloat())) - tops[i] + top
+            if (bottom < -emSize || top > height + emSize) continue
+            drawRow(canvas, row, top, time)
+        }
+
+        if (playing || settling) {
+            postInvalidateOnAnimation()
+        } else {
+            // Paused and at rest: only look now and then for a seek or for playback resuming
+            postDelayed(frameTick, IDLE_FRAME_MS)
+        }
+    }
+
+    private fun approach(value: Float, target: Float, elapsed: Long, tauMs: Float): Float {
+        val next = value + (target - value) * (1f - exp(-elapsed / tauMs))
+        return if (abs(target - next) < 0.002f) target else next
+    }
+
+    private fun drawEmptyLabel(canvas: Canvas) {
+        if (emptyLabel.isEmpty() || width <= 0) return
+        translationPaint.textSize = 18 * scaledDensity
+        translationPaint.typeface = typeface
+        translationPaint.shader = null
+        translationPaint.color = withAlpha(0.6f)
+        val layout = layoutText(emptyLabel, translationPaint, width, Layout.Alignment.ALIGN_CENTER)
+        canvas.save()
+        canvas.translate(0f, (height - layout.height) / 2f)
+        layout.draw(canvas)
+        canvas.restore()
+    }
+
+    private fun withAlpha(alpha: Float): Int {
+        val value = (Color.alpha(textColor) * alpha.coerceIn(0f, 1f)).toInt()
+        return textColor and 0x00FFFFFF or (value shl 24)
+    }
+
+    private fun drawRow(canvas: Canvas, row: Row, top: Float, time: Long) {
+        val gap = emSize * 0.35f
+        canvas.save()
+        canvas.translate(sidePadding, top)
+        val layoutWidth = row.main.layout.width.toFloat()
+        canvas.scale(
+            row.scale, row.scale,
+            if (row.rightAligned) layoutWidth else 0f, row.main.layout.height / 2f
+        )
+
+        drawBlock(canvas, row.main, row.activation, time)
+        var y = row.main.layout.height.toFloat()
+
+        val background = row.background
+        if (background != null) {
+            if (row.activation > 0.01f) {
+                canvas.save()
+                canvas.translate(0f, y + gap * 0.5f * row.activation)
+                // Background vocals are quieter and only appear while their line is active
+                drawBlock(canvas, background, row.activation, time, row.activation * 0.75f)
+                canvas.restore()
+            }
+            y += (background.layout.height + gap * 0.5f) * row.activation
+        }
+
+        row.translation?.let {
+            canvas.save()
+            canvas.translate(0f, y + gap * 0.5f)
+            translationPaint.textSize = emSize * 0.6f
+            translationPaint.shader = null
+            translationPaint.color = withAlpha(UNLIT + 0.2f * row.activation)
+            it.draw(canvas)
+            canvas.restore()
+        }
+        canvas.restore()
+    }
+
+    private fun drawBlock(
+        canvas: Canvas,
+        block: Block,
+        activation: Float,
+        time: Long,
+        opacity: Float = 1f
+    ) {
+        val paint = block.paint
+        paint.shader = null
+        val lit = withAlpha((UNLIT + (1f - UNLIT) * activation) * opacity)
+        val unlit = withAlpha(UNLIT * opacity)
+
+        // Line-timed lyrics, and rows at rest, are a single colour
+        if (block.pieces.isEmpty() || activation <= 0f) {
+            paint.color = if (block.pieces.isEmpty()) lit else unlit
+            block.layout.draw(canvas)
+            return
+        }
+
+        // Where the wipe is: the syllable being sung, or the last one that was
+        var current: Stop? = null
+        for (stop in block.stops) {
+            if (stop.startMs <= time) current = stop else break
+        }
+        val gradient = emSize
+        val half = gradient / 2f
+        var wipeLine = -1
+        var wipe = 0f
+        if (current != null) {
+            val progress =
+                ((time - current.startMs).toFloat() / max(1L, current.endMs - current.startMs))
+                    .coerceIn(0f, 1f)
+            val from = current.from - if (current.first) half else 0f
+            val to = current.to + if (current.last) half else 0f
+            wipeLine = current.visualLine
+            wipe = from + (to - from) * progress
+        }
+
+        for (piece in block.pieces) {
+            var lift = 0f
+            var shift = 0f
+            var scale = 1f
+            var glow = 0f
+            val emphasis = piece.emphasis
+            if (emphasis == null) {
+                val rise = easeInOut(((time - piece.startMs) / LIFT_MS).coerceIn(0f, 1f))
+                lift = -0.05f * emSize * rise * activation
+            } else {
+                val spanMs =
+                    max(1f, emphasis.holdSec * 1000f + emphasis.responseSec * 2000f)
+                val fraction =
+                    ((time - emphasis.wordStartMs - emphasis.delayMs) / spanMs).coerceIn(0f, 1f)
+                if (fraction > 0f) {
+                    val seconds = spanMs / 1000f * fraction
+                    val rising = spring(seconds, emphasis.responseSec)
+                    val pulse = if (fraction >= 1f) 0f else {
+                        rising * (1f - spring(seconds - emphasis.holdSec, emphasis.responseSec)) *
+                                emphasis.intensity * activation
+                    }
+                    lift = -(0.05f * (if (fraction >= 1f) 1f else rising) + 0.035f * pulse) *
+                            emSize * activation
+                    shift = emphasis.spread * 0.05f * emSize * pulse
+                    scale = 1f + 0.1f * pulse
+                    glow = emphasis.glow * glowCurve(fraction) * activation
+                }
+            }
+
+            val begin = if (piece.rtl) -(piece.x + piece.width) else piece.x
+            // Positions cannot be compared across a change of direction: go by time there
+            val opposed = current != null && piece.visualLine == wipeLine &&
+                    piece.rtl != current.rtl
+            val isLit = piece.visualLine < wipeLine || (piece.visualLine == wipeLine &&
+                    if (opposed) piece.startMs <= time else begin + piece.width <= wipe - half)
+            val isUnlit = piece.visualLine > wipeLine ||
+                    if (opposed) piece.startMs > time else begin >= wipe + half
+            paint.shader = null
+            if (isLit) {
+                paint.color = lit
+            } else if (isUnlit) {
+                paint.color = unlit
+            } else {
+                paint.color = Color.BLACK // the shader supplies colour and alpha
+                paint.shader = wipeShader(lit, unlit, gradient, wipe - half, piece.rtl)
+            }
+            if (glow > 0.01f) paint.setShadowLayer(0.1f * emSize, 0f, 0f, withAlpha(glow))
+
+            canvas.save()
+            canvas.translate(shift, lift)
+            if (scale != 1f) {
+                canvas.scale(
+                    scale, scale,
+                    piece.x + piece.width / 2f, piece.baseline + 0.1f * emSize
+                )
+            }
+            canvas.drawText(
+                block.layout.text, piece.start, piece.end, piece.x, piece.baseline, paint
+            )
+            canvas.restore()
+            if (glow > 0.01f) paint.clearShadowLayer()
+        }
+        paint.shader = null
+    }
+
+    /** A soft edge from lit to unlit that starts at [start], counted in reading direction. */
+    private fun wipeShader(lit: Int, unlit: Int, width: Float, start: Float, rtl: Boolean): Shader {
+        var shader = wipeShader
+        if (shader == null || lit != wipeShaderLit || unlit != wipeShaderUnlit ||
+            width != wipeShaderWidth
+        ) {
+            shader = LinearGradient(0f, 0f, width, 0f, lit, unlit, Shader.TileMode.CLAMP)
+            wipeShader = shader
+            wipeShaderLit = lit
+            wipeShaderUnlit = unlit
+            wipeShaderWidth = width
+        }
+        shaderMatrix.reset()
+        if (rtl) shaderMatrix.setScale(-1f, 1f)
+        shaderMatrix.postTranslate(if (rtl) -start else start, 0f)
+        shader.setLocalMatrix(shaderMatrix)
+        return shader
+    }
+
+    private fun spring(seconds: Float, response: Float): Float {
+        if (seconds <= 0f) return 0f
+        val x = 2f * PI.toFloat() * seconds / max(0.001f, response)
+        return 1f - (1f + x) * exp(-x)
+    }
+
+    private fun glowCurve(fraction: Float): Float = when {
+        fraction <= 0f || fraction >= 1f -> 0f
+        fraction < 0.15f -> 0.8f * fraction / 0.15f
+        fraction < 0.30f -> 0.8f + 0.2f * (fraction - 0.15f) / 0.15f
+        fraction < 0.60f -> 1f - 0.7f * (fraction - 0.30f) / 0.30f
+        else -> 0.3f * (1f - fraction) / 0.40f
+    }
+
+    private fun easeInOut(t: Float): Float = t * t * (3f - 2f * t)
+
+    override fun getTopFadingEdgeStrength(): Float = if (rows.isEmpty()) 0f else 1f
+
+    override fun getBottomFadingEdgeStrength(): Float = if (rows.isEmpty()) 0f else 1f
+
+    // ---------------------------------------------------------------------------------------
+    // Touch
+    // ---------------------------------------------------------------------------------------
+
+    private val gestures = GestureDetector(
+        context,
+        object : GestureDetector.SimpleOnGestureListener() {
+            override fun onDown(e: MotionEvent): Boolean = true
+
+            override fun onScroll(
+                e1: MotionEvent,
+                e2: MotionEvent,
+                distanceX: Float,
+                distanceY: Float
+            ): Boolean {
+                startManual()
+                manualScroll = clampScroll(manualScroll + distanceY)
+                invalidate()
+                return true
+            }
+
+            override fun onFling(
+                e1: MotionEvent,
+                e2: MotionEvent,
+                velocityX: Float,
+                velocityY: Float
+            ): Boolean {
+                startManual()
+                scroller.fling(
+                    0, manualScroll.toInt(), 0, -velocityY.toInt(), 0, 0,
+                    restingScroll(0).toInt(), restingScroll(rows.lastIndex).toInt()
+                )
+                invalidate()
+                return true
+            }
+
+            override fun onSingleTapUp(e: MotionEvent): Boolean {
+                val row = rowAt(e.y)
+                val seek = onSeek
+                if (row != null && seek != null) {
+                    followAgain(SystemClock.uptimeMillis())
+                    seek(row.line.startMs)
+                    invalidate()
+                } else {
+                    performClick()
+                }
+                return true
+            }
+        }
+    ).apply { setIsLongpressEnabled(false) }
+
+    private fun startManual() {
+        if (manual || targetIndex !in rows.indices) return
+        // Start from where the current line is on screen right now
+        manualScroll = restingScroll(targetIndex) -
+                rows[targetIndex].offset(SystemClock.uptimeMillis())
+        manual = true
+        rows.forEach { it.layers.clear() }
+    }
+
+    private fun clampScroll(value: Float): Float =
+        value.coerceIn(restingScroll(0), restingScroll(rows.lastIndex))
+
+    private fun rowAt(y: Float): Row? {
+        if (targetIndex !in rows.indices) return null
+        val now = SystemClock.uptimeMillis()
+        for (i in rows.indices) {
+            val scroll =
+                if (manual) manualScroll else restingScroll(targetIndex) - rows[i].offset(now)
+            val top = tops[i] - scroll
+            val bottom = top + rows[i].main.layout.height + emSize * 0.9f
+            if (y >= top - emSize * 0.3f && y < bottom) return rows[i]
+        }
+        return null
+    }
+
+    override fun onTouchEvent(event: MotionEvent): Boolean {
+        if (rows.isEmpty()) return super.onTouchEvent(event)
+        when (event.actionMasked) {
+            MotionEvent.ACTION_DOWN -> {
+                // The player sheet must not take over a drag that scrolls the lyrics
+                parent?.requestDisallowInterceptTouchEvent(true)
+                touching = true
+                scroller.forceFinished(true)
+            }
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> touching = false
+        }
+        lastTouch = SystemClock.uptimeMillis()
+        gestures.onTouchEvent(event)
+        return true
+    }
+
+    override fun performClick(): Boolean = super.performClick()
+
+    // ---------------------------------------------------------------------------------------
+    // Lifecycle
+    // ---------------------------------------------------------------------------------------
+
+    override fun onVisibilityChanged(changedView: View, visibility: Int) {
+        super.onVisibilityChanged(changedView, visibility)
+        if (visibility == VISIBLE) invalidate()
+    }
+
+    override fun onWindowVisibilityChanged(visibility: Int) {
+        super.onWindowVisibilityChanged(visibility)
+        if (visibility == VISIBLE) invalidate() else removeCallbacks(frameTick)
+    }
+
+    override fun onDetachedFromWindow() {
+        removeCallbacks(frameTick)
+        super.onDetachedFromWindow()
+    }
+
+    private companion object {
+        const val UNLIT = 0.35f
+        const val MIN_WORD_MS = 100L
+        const val LIFT_MS = 1000f
+        const val EMPHASIS_MIN_MS = 1000L
+        const val EMPHASIS_MAX_LETTERS = 7
+        const val TRAILING_PUNCTUATION = "!?.,;:~…‥。、！？"
+        const val HIGHLIGHT_LEAD_MS = 150L
+        const val SCROLL_LEAD_MS = 500L
+        const val LINE_HOLD_MS = 1000L
+        const val LINE_TAIL_MS = 300L
+        const val STAGGER_MS = 45L
+        const val SEEK_THRESHOLD_MS = 250f
+        const val MANUAL_TIMEOUT_MS = 3000L
+        const val IDLE_FRAME_MS = 250L
+        const val STALE_FRAME_MS = 400L
+    }
+}
