@@ -146,6 +146,18 @@ class AppleLyricsView @JvmOverloads constructor(
 
     private val frameTick = Runnable { invalidate() }
 
+    // The frame's start time in nanoseconds. Choreographer only offers it to callbacks.
+    private var callbackNanos = 0L
+    private val frameCallback = Choreographer.FrameCallback { callbackNanos = it }
+
+    /** The start of the frame being drawn; the clock is used when no recent one is known. */
+    private fun currentFrameNanos(): Long {
+        val clock = System.nanoTime()
+        val frame = callbackNanos
+        Choreographer.getInstance().postFrameCallback(frameCallback)
+        return if (frame != 0L && clock - frame in 0L..50_000_000L) frame else clock
+    }
+
     init {
         isVerticalFadingEdgeEnabled = true
         setFadingEdgeLength((48 * density).toInt())
@@ -633,7 +645,7 @@ class AppleLyricsView @JvmOverloads constructor(
 
         // Time comes from the frame itself, not from when this code happens to run, so a
         // late frame does not make the motion speed up and slow down
-        val frameNanos = Choreographer.getInstance().frameTimeNanos
+        val frameNanos = currentFrameNanos()
         val now = frameNanos / 1_000_000L
         val gapNanos = if (lastFrameNanos == 0L) 0L else max(0L, frameNanos - lastFrameNanos)
         val elapsed = (gapNanos / 1_000_000f).coerceIn(0f, 100f)
