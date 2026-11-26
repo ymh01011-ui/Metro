@@ -77,7 +77,7 @@ class AppleLyricsView @JvmOverloads constructor(
             invalidate()
         }
 
-    var textSizeSp: Float = 33f // dp, not scaled by the system font size
+    var textSizeSp: Float = 31f // dp, not scaled by the system font size
         set(value) {
             field = value
             requestRebuild()
@@ -413,7 +413,9 @@ class AppleLyricsView @JvmOverloads constructor(
 
         val wordText = text.substring(syllables.first().start, syllables.last().end)
         val joined = wordText.any { isJoiningScript(it) }
+        val emphasisStarts = emphasisClusters(wordText, syllables, emphasise && !joined)
 
+        var letterIndex = 0
         var from = 0
         while (from < segments.size) {
             val visualLine = segments[from].line
@@ -458,38 +460,31 @@ class AppleLyricsView @JvmOverloads constructor(
                 val begin = if (rtl) -(left + segmentWidth) else left
                 stops.add(Stop(visualLine, startMs, endMs, begin, begin + segmentWidth, rtl))
 
-                if (!joined) {
-                    val syllable = segment.word
-                    val clusters = emphasisClusters(
-                        text.substring(syllable.start, syllable.end),
-                        listOf(syllable),
-                        emphasise
-                    )
-                    if (clusters == null) {
-                        pieces.add(
-                            Piece(
-                                segment.start, segment.end, visualLine, left, segmentWidth,
-                                baseline, rtl, startMs, endMs = endMs
-                            )
+                if (emphasisStarts == null && !joined) {
+                    pieces.add(
+                        Piece(
+                            segment.start, segment.end, visualLine, left, segmentWidth,
+                            baseline, rtl, startMs, endMs = endMs
                         )
-                    } else {
-                        for (c in clusters.indices) {
-                            val start = syllable.start + clusters[c].first
-                            val end = syllable.start + clusters[c].second
-                            if (start < segment.start || end > segment.end) continue
-                            pieces.add(
-                                Piece(
-                                    start, end, visualLine, leftOf(start, end),
-                                    widthOf(start, end), baseline, rtl, syllable.startMs,
-                                    emphasisFor(listOf(syllable), c, clusters.size)
-                                )
-                            )
-                        }
-                    }
+                    )
                 }
             }
 
-            if (joined) {
+            if (emphasisStarts != null) {
+                val base = syllables.first().start
+                for (i in emphasisStarts.indices) {
+                    val start = base + emphasisStarts[i].first
+                    val end = base + emphasisStarts[i].second
+                    if (start < runStart || end > runEnd) continue
+                    pieces.add(
+                        Piece(
+                            start, end, visualLine, leftOf(start, end), widthOf(start, end),
+                            baseline, rtl, syllables.first().startMs,
+                            emphasisFor(syllables, letterIndex++, emphasisStarts.size)
+                        )
+                    )
+                }
+            } else if (joined) {
                 // Drawing the word in one piece keeps its letters connected
                 pieces.add(
                     Piece(
