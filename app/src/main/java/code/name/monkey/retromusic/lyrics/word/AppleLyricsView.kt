@@ -127,6 +127,13 @@ class AppleLyricsView @JvmOverloads constructor(
     private var snapNext = true
     private var manual = false
     private var manualScroll = 0f
+
+    // Interlude dots: three dots shown above the next line while nobody is singing
+    private var dotsRowShown = -1
+    private var dotsAmount = 0f
+    private var dotsFrom = 0L
+    private var dotsTo = 0L
+    private val dotsPaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private var touching = false
     private var lastTouch = 0L
     private val scroller = OverScroller(context)
@@ -292,6 +299,8 @@ class AppleLyricsView @JvmOverloads constructor(
     private fun requestRebuild() {
         rows = emptyList()
         targetIndex = -1
+        dotsRowShown = -1
+        dotsAmount = 0f
         snapNext = true
         invalidate()
     }
@@ -414,6 +423,10 @@ class AppleLyricsView @JvmOverloads constructor(
         val wordText = text.substring(syllables.first().start, syllables.last().end)
         val joined = wordText.any { isJoiningScript(it) }
         val emphasisStarts = emphasisClusters(wordText, syllables, emphasise && !joined)
+        // Held long enough for a wave but too long to wave as one word: each part of it is
+        // treated as a word of its own, with its own time and letter count
+        val splitUp = emphasise && !joined && emphasisStarts == null && syllables.size > 1 &&
+                syllables.sumOf { it.endMs - it.startMs } >= EMPHASIS_MIN_MS
 
         var letterIndex = 0
         var from = 0
@@ -461,12 +474,35 @@ class AppleLyricsView @JvmOverloads constructor(
                 stops.add(Stop(visualLine, startMs, endMs, begin, begin + segmentWidth, rtl))
 
                 if (emphasisStarts == null && !joined) {
-                    pieces.add(
-                        Piece(
-                            segment.start, segment.end, visualLine, left, segmentWidth,
-                            baseline, rtl, startMs, endMs = endMs
+                    val syllable = segment.word
+                    val clusters = if (splitUp) {
+                        emphasisClusters(
+                            text.substring(syllable.start, syllable.end),
+                            listOf(syllable),
+                            true
                         )
-                    )
+                    } else null
+                    if (clusters == null) {
+                        pieces.add(
+                            Piece(
+                                segment.start, segment.end, visualLine, left, segmentWidth,
+                                baseline, rtl, startMs, endMs = endMs
+                            )
+                        )
+                    } else {
+                        for (c in clusters.indices) {
+                            val start = syllable.start + clusters[c].first
+                            val end = syllable.start + clusters[c].second
+                            if (start < segment.start || end > segment.end) continue
+                            pieces.add(
+                                Piece(
+                                    start, end, visualLine, leftOf(start, end),
+                                    widthOf(start, end), baseline, rtl, syllable.startMs,
+                                    emphasisFor(listOf(syllable), c, clusters.size)
+                                )
+                            )
+                        }
+                    }
                 }
             }
 
@@ -536,7 +572,7 @@ class AppleLyricsView @JvmOverloads constructor(
             holdSec = 2f * seconds / count,
             responseSec = min(3f, seconds),
             intensity = (seconds - 1f).coerceIn(0f, 1f),
-            glow = 0.45f * ((seconds - 1f) / 0.5f).coerceIn(0f, 1f),
+            glow = 0.8f * ((seconds - 0.8f) / 0.4f).coerceIn(0f, 1f),
             spread = (index - middle) / max(1f, middle)
         )
     }
@@ -605,6 +641,7 @@ class AppleLyricsView @JvmOverloads constructor(
         var y = 0f
         for (i in rows.indices) {
             val row = rows[i]
+            if (i == dotsRowShown) y += dotsSpace() * dotsAmount
             tops[i] = y
             y += row.main.layout.height
             row.background?.let { y += (it.layout.height + emSize * BG_GAP_EM) * row.activation }
@@ -613,7 +650,64 @@ class AppleLyricsView @JvmOverloads constructor(
         }
     }
 
-    private fun restingScroll(index: Int): Float = tops[index] - height * anchorFraction
+    private fun restingScroll(index: Int): Float {
+        val dots = if (index == dotsRowShown) dotsSpace() * dotsAmount else 0f
+        return tops[index] - dots - height * anchorFraction
+    }
+
+    private fun dotsSpace(): Float = emSize * DOTS_SPACE_EM
+
+    /**
+     * The row that the interlude dots sit above, or -1. Like AMLL, the dots are for a pause of
+     * at least 4 seconds (before the first line the dots stop a little before it starts).
+     */
+    private fun findInterlude(time: Long): Int {
+        var next = -1
+        var previousEnd = 0L
+        for (i in rows.indices) {
+            val row = rows[i]
+            if (time >= row.line.startMs - HIGHLIGHT_LEAD_MS && time < row.activeUntilMs) return -1
+            if (row.line.startMs > time) {
+                if (next < 0) next = i
+            } else {
+                previousEnd = max(previousEnd, row.activeUntilMs)
+            }
+        }
+        if (next < 0) return -1
+        val end = rows[next].line.startMs - if (next == 0) 250L else 0L
+        if (end - previousEnd < INTERLUDE_MIN_MS || time < previousEnd || time >= end) return -1
+        dotsFrom = previousEnd
+        dotsTo = end
+        return next
+    }
+
+    private fun drawInterludeDots(canvas: Canvas, now: Long, resting: Float) {
+        val row = rows[dotsRowShown]
+        val rowTop = tops[dotsRowShown] - if (manual) manualScroll else resting - row.offset(now)
+        val radius = emSize * DOT_RADIUS_EM
+        val centerY = rowTop - dotsSpace() * dotsAmount + radius + emSize * 0.1f
+        val span = (dotsTo - dotsFrom).toFloat()
+        val elapsed = position - dotsFrom
+        val progress = if (span > 0f) (elapsed / span).coerceIn(0f, 1f) else 1f
+        // The three dots light up one after another, the group breathes, and at the end the
+        // dots shrink away just before the line starts
+        val closing = ((dotsTo - position) / DOT_CLOSE_MS).coerceIn(0f, 1f)
+        val breath = 1f + DOT_BREATH * kotlin.math.sin(2.0 * PI * elapsed / DOT_BREATH_MS).toFloat()
+        val scale = breath * (0.5f + 0.5f * closing)
+        val pitch = radius * 3.2f
+        val total = pitch * 2f + radius * 2f
+        val startX = if (row.rightAligned) width - sidePadding - total else sidePadding
+        val centerX = startX + total / 2f
+        canvas.save()
+        canvas.scale(scale, scale, centerX, centerY)
+        for (i in 0 until 3) {
+            val lit = (progress * 3f - i).coerceIn(0f, 1f)
+            val alpha = (DOT_UNLIT + (1f - DOT_UNLIT) * lit) * dotsAmount * closing
+            dotsPaint.color = withAlpha(alpha)
+            canvas.drawCircle(startX + radius + i * pitch, centerY, radius, dotsPaint)
+        }
+        canvas.restore()
+    }
 
     private fun moveTarget(index: Int, now: Long, jumped: Boolean) {
         if (index == targetIndex) return
@@ -672,7 +766,11 @@ class AppleLyricsView @JvmOverloads constructor(
 
         var settling = false
         val snap = snapNext
-        val nextTarget = findTarget(time)
+        // During a long pause in the singing the view rests on the next line, with the dots
+        // above it (as AMLL does)
+        val interlude = findInterlude(time)
+        if (interlude >= 0) dotsRowShown = interlude
+        val nextTarget = if (interlude >= 0) interlude else findTarget(time)
         for (i in rows.indices) {
             val row = rows[i]
             val active = time >= row.line.startMs - HIGHLIGHT_LEAD_MS && time < row.activeUntilMs
@@ -697,6 +795,10 @@ class AppleLyricsView @JvmOverloads constructor(
                 if (row.activation != activationTarget || row.scale != scaleTarget) settling = true
             }
         }
+        val dotsTarget = if (interlude >= 0) 1f else 0f
+        dotsAmount = if (snap) dotsTarget else approach(dotsAmount, dotsTarget, elapsed, 250f)
+        if (dotsAmount != dotsTarget) settling = true
+        if (dotsAmount == 0f && interlude < 0) dotsRowShown = -1
         computeTops()
 
         if (manual) {
@@ -738,6 +840,8 @@ class AppleLyricsView @JvmOverloads constructor(
             if (bottom < -emSize || top > height + emSize) continue
             drawRow(canvas, row, top, position)
         }
+
+        if (dotsRowShown in rows.indices && dotsAmount > 0.01f) drawInterludeDots(canvas, now, resting)
 
         if (playing || settling) {
             postInvalidateOnAnimation()
@@ -951,7 +1055,7 @@ class AppleLyricsView @JvmOverloads constructor(
                     paint.color = Color.BLACK
                     paint.shader = wipeShader(lit, unlit, gradient, wipe - trail, piece.rtl)
                 }
-                if (glow > 0.01f) paint.setShadowLayer(0.1f * emSize, 0f, 0f, withAlpha(glow))
+                if (glow > 0.01f) paint.setShadowLayer(GLOW_RADIUS_EM * emSize, 0f, 0f, withAlpha(glow))
                 canvas.drawText(
                     block.layout.text, piece.start, piece.end, piece.x, piece.baseline, paint
                 )
@@ -1059,7 +1163,15 @@ class AppleLyricsView @JvmOverloads constructor(
         if (shader == null || lit != wipeShaderLit || unlit != wipeShaderUnlit ||
             width != wipeShaderWidth
         ) {
-            shader = LinearGradient(0f, 0f, width, 0f, lit, unlit, Shader.TileMode.CLAMP)
+            // The middle stop sits where the sweep really is. It is a little darker than a
+            // straight line from lit to unlit, which tones down the light that runs ahead
+            val centre = WIPE_TRAIL_EM / (WIPE_TRAIL_EM + WIPE_LEAD_EM)
+            val middle = blend(lit, unlit, min(0.95f, centre + WIPE_AHEAD_DIM))
+            shader = LinearGradient(
+                0f, 0f, width, 0f,
+                intArrayOf(lit, middle, unlit), floatArrayOf(0f, centre, 1f),
+                Shader.TileMode.CLAMP
+            )
             wipeShader = shader
             wipeShaderLit = lit
             wipeShaderUnlit = unlit
@@ -1072,6 +1184,15 @@ class AppleLyricsView @JvmOverloads constructor(
         shaderMatrix.postTranslate(-originX, 0f)
         shader.setLocalMatrix(shaderMatrix)
         return shader
+    }
+
+    private fun blend(from: Int, to: Int, t: Float): Int {
+        fun channel(shift: Int): Int {
+            val a = (from shr shift) and 0xFF
+            val b = (to shr shift) and 0xFF
+            return (a + (b - a) * t).toInt().coerceIn(0, 255) shl shift
+        }
+        return channel(24) or channel(16) or channel(8) or channel(0)
     }
 
     private fun spring(seconds: Float, response: Float): Float {
@@ -1215,7 +1336,15 @@ class AppleLyricsView @JvmOverloads constructor(
         const val ANCHOR_FRACTION = 0.27f // where the sung line rests: higher number = lower on screen
         const val WIPE_TRAIL_EM = 0.5f
         const val WIPE_LEAD_EM = 0.7f
-        const val LEAD_GROW_EM = 1.5f // distance over which the lead grows at a line's start
+        const val INTERLUDE_MIN_MS = 4000L // shortest pause that gets dots (as in AMLL)
+        const val DOTS_SPACE_EM = 0.95f // room the dots take above the next line
+        const val DOT_RADIUS_EM = 0.14f
+        const val DOT_UNLIT = 0.3f
+        const val DOT_BREATH = 0.1f // how much the group grows and shrinks
+        const val DOT_BREATH_MS = 3000.0 // one breath
+        const val DOT_CLOSE_MS = 600f // the dots shrink away over this long at the end
+        const val LEAD_GROW_EM = 1.5f
+        const val WIPE_AHEAD_DIM = 0.12f // higher = less light ahead of the sweep // distance over which the lead grows at a line's start
         const val MIN_WORD_MS = 100L
         const val LIFT_MS = 1000f
         const val EMPHASIS_MIN_MS = 1000L
@@ -1233,7 +1362,7 @@ class AppleLyricsView @JvmOverloads constructor(
         const val CLOCK_MAX_SLEW = 0.12f
         const val MASKS_PER_FRAME = 3
         const val MASK_PAD_EM = 0.3f
-        const val GLOW_RADIUS_EM = 0.1f
+        const val GLOW_RADIUS_EM = 0.14f
         const val MAX_MASK_PIXELS = 1_000_000L
     }
 }
