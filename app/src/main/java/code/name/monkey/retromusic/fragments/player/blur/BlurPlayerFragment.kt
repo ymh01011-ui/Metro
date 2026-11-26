@@ -430,7 +430,7 @@ class BlurPlayerFragment : AbsPlayerFragment(R.layout.fragment_blur),
         lyricsConfigured = true
         v.apply {
             textColor = Color.WHITE
-            textSizeSp = 33f // dp, matches Apple Music
+            textSizeSp = 31f // dp
             horizontalPaddingDp = 32f // same left edge as the progress bar and the small cover
             anchorFraction = 0.27f // lower than before, closer to Apple Music
             positionProvider = { MusicPlayerRemote.songProgressMillis.toLong() }
