@@ -357,7 +357,11 @@ class AppleLyricsView @JvmOverloads constructor(
                 next >= end -> next
                 else -> end + LINE_TAIL_MS
             }
-            Row(line, main, background, translation, paragraphRtl != line.isOpposite, activeUntil)
+            // Whatever the rules above say, a line never goes out while it is still being sung
+            Row(
+                line, main, background, translation, paragraphRtl != line.isOpposite,
+                max(activeUntil, end)
+            )
         }
         tops = FloatArray(rows.size)
     }
@@ -706,7 +710,8 @@ class AppleLyricsView @JvmOverloads constructor(
             if (row.line.startMs > time) {
                 if (next < 0) next = i
             } else {
-                previousEnd = max(previousEnd, row.line.endMs, row.line.background?.endMs ?: 0L)
+                val rowEnd = max(row.line.endMs, row.line.background?.endMs ?: 0L)
+                previousEnd = max(previousEnd, rowEnd)
             }
         }
         if (next < 0) return -1
