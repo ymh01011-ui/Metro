@@ -1,466 +1,1418 @@
 /*
- * Copyright (c) 2020 Hemanth Savarla.
+ * Copyright (c) 2026 Metro contributors.
+ *
+ * Word animation and scroll timing adapted from Metrolist (GPL-3.0),
+ * https://github.com/MetrolistGroup/Metrolist
+ * The scroll spring there is based on YouLyPlus (MIT).
  *
  * Licensed under the GNU General Public License v3
  *
- * This is free software: you can redistribute it and/or modify it
- * under the terms of the GNU General Public License as published by
+ * This is free software: you can redistribute it and/or modify it under
+ * the terms of the GNU General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
  *
  * This software is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
  * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See the GNU General Public License for more details.
- *
  */
-package code.name.monkey.retromusic.fragments.base
+package code.name.monkey.retromusic.lyrics.word
 
-import code.name.monkey.retromusic.views.GlassPopupMenu
-import android.content.res.ColorStateList
+import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.BlurMaskFilter
+import android.graphics.Canvas
 import android.graphics.Color
-import android.graphics.Rect
-import android.graphics.drawable.ColorDrawable
-import android.os.Bundle
-import android.os.Parcelable
-import android.view.*
-import androidx.annotation.NonNull
-import androidx.annotation.StringRes
-import androidx.appcompat.widget.PopupMenu
-import androidx.appcompat.widget.Toolbar
-import androidx.core.graphics.ColorUtils
-import androidx.core.view.ViewCompat
-import androidx.core.view.WindowInsetsCompat
-import androidx.core.view.doOnPreDraw
-import androidx.core.view.isVisible
-import androidx.core.view.updateLayoutParams
-import androidx.core.view.updatePadding
-import androidx.navigation.fragment.findNavController
-import androidx.recyclerview.widget.GridLayoutManager
-import androidx.recyclerview.widget.RecyclerView
-import androidx.recyclerview.widget.StaggeredGridLayoutManager
-import code.name.monkey.appthemehelper.util.ColorUtil
-import code.name.monkey.retromusic.R
-import code.name.monkey.retromusic.adapter.base.AbsMultiSelectAdapter
-import code.name.monkey.retromusic.databinding.FragmentMainRecyclerBinding
-import code.name.monkey.retromusic.dialogs.CreatePlaylistDialog
-import code.name.monkey.retromusic.dialogs.ImportPlaylistDialog
-import code.name.monkey.retromusic.extensions.accentColor
-import code.name.monkey.retromusic.extensions.dip
-import code.name.monkey.retromusic.extensions.textColorSecondary
-import code.name.monkey.retromusic.views.GlassHelper
-import code.name.monkey.retromusic.views.GlassLayer
-import code.name.monkey.retromusic.views.SearchBarIcon
-import code.name.monkey.retromusic.util.PreferenceUtil
-import code.name.monkey.retromusic.interfaces.IScrollHelper
-import code.name.monkey.retromusic.util.ThemedFastScroller.create
-import com.google.android.material.color.MaterialColors
-import com.google.android.material.transition.MaterialFadeThrough
-import me.zhanghai.android.fastscroll.FastScroller
-import me.zhanghai.android.fastscroll.FastScrollerBuilder
+import android.graphics.LinearGradient
+import android.graphics.Matrix
+import android.graphics.Paint
+import android.graphics.Shader
+import android.graphics.Typeface
+import android.os.SystemClock
+import android.text.Layout
+import android.text.StaticLayout
+import android.text.TextPaint
+import android.util.AttributeSet
+import android.view.Choreographer
+import android.view.GestureDetector
+import android.view.MotionEvent
+import android.view.View
+import android.view.animation.PathInterpolator
+import android.widget.OverScroller
+import java.text.BreakIterator
+import kotlin.math.PI
+import kotlin.math.abs
+import kotlin.math.ceil
+import kotlin.math.cos
+import kotlin.math.exp
+import kotlin.math.floor
+import kotlin.math.max
+import kotlin.math.min
+import kotlin.math.round
+import kotlin.math.sqrt
 
-abstract class AbsRecyclerViewFragment<A : RecyclerView.Adapter<*>, LM : RecyclerView.LayoutManager> :
-    AbsMainActivityFragment(R.layout.fragment_main_recycler), IScrollHelper {
+/**
+ * Apple Music style synced lyrics: a soft wipe runs through each word, sung syllables lift,
+ * long words swell and glow letter by letter, and lines follow each other on a spring.
+ *
+ * The view runs its own frame clock. Give it [positionProvider], [isPlayingProvider] and
+ * [setLyrics]; nothing else has to push progress into it.
+ */
+class AppleLyricsView @JvmOverloads constructor(
+    context: Context,
+    attrs: AttributeSet? = null,
+    defStyleAttr: Int = 0
+) : View(context, attrs, defStyleAttr) {
 
-    // قايمة (الترتيب، حجم الشبكة، إلخ) بتتفتح من زرار ⋯ في الصف اللي تحت شريط
-    // البحث عن طريق PopupMenu، فمفيش toolbar حقيقي بيعرض menu. عشان كده نوقف نظام
-    // الـ MenuProvider ونحن اللي بننده onCreateMenu/onMenuItemSelected يدوي على
-    // منيو الـ PopupMenu (فـ ArtistsFragment ومشتقاتها مش محتاجين يتغيروا).
-    override val registersMenuProvider: Boolean = false
+    /** Playback position in milliseconds; negative when unknown. */
+    var positionProvider: (() -> Long)? = null
 
-    private var _binding: FragmentMainRecyclerBinding? = null
-    private val binding get() = _binding!!
-    protected var adapter: A? = null
-    protected var layoutManager: LM? = null
-    val shuffleButton get() = binding.shuffleButton
-    abstract val isShuffleVisible: Boolean
+    var isPlayingProvider: (() -> Boolean)? = null
 
-    // كل مرة تدخل صفحة فنان وترجع، الـ Navigation Component بيدمر View الصفحة
-    // ويبنيه تاني من الصفر، فبنخزن مكان السكرول هنا (على مستوى الـ Fragment نفسه)
-    // وبنرجعه لما الـ View الجديد يتبني.
-    private var savedRecyclerLayoutState: Parcelable? = null
+    /** Called with a line's start time when it is tapped. */
+    var onSeek: ((Long) -> Unit)? = null
 
-    // ارتفاع الـ status bar (بيتحدد من الـ insets)
-    private var statusBarTop = 0
+    var textColor: Int = Color.WHITE
+        set(value) {
+            field = value
+            invalidate()
+        }
 
-    // الـ FastScroller بيتعمل أول ما المستخدم يسحب القايمة، فبنحتفظ بيه هنا
-    // عشان نظبط له الـ padding (يبدأ من أول عنصر مش من أول الشاشة).
-    private var fastScroller: FastScroller? = null
+    var textSizeSp: Float = 30f // dp, not scaled by the system font size
+        set(value) {
+            field = value
+            requestRebuild()
+        }
 
-    // ---- أبعاد الهيدر (dp) ----
-    // [status bar] 8 | شريط البحث 48 | 18 | الصف 40 | 11 | أول عنصر في القايمة
-    private fun px(dp: Int) = (dp * resources.displayMetrics.density).toInt()
-    private fun pillTop() = statusBarTop + px(8)
-    private fun pillBottom() = pillTop() + px(48)
-    private fun rowTop() = pillBottom() + px(18)
-    private fun rowBottom() = rowTop() + px(40)
-    private fun headerHeight() = rowBottom() + px(11)
+    var typeface: Typeface = Typeface.DEFAULT_BOLD
+        set(value) {
+            field = value
+            requestRebuild()
+        }
 
-    // أول صف من العناصر بياخد offset من فوق بمقدار الهيدر، فالقايمة بتبدأ تحت
-    // شريط البحث والصف (اللي مرسومين فوقها). الـ padding مش بنلمسه عشان
-    // InsetsRecyclerView بيتحكم فيه.
-    private val headerDecoration = object : RecyclerView.ItemDecoration() {
-        override fun getItemOffsets(
-            outRect: Rect,
-            view: View,
-            parent: RecyclerView,
-            state: RecyclerView.State,
-        ) {
-            if (isInFirstRow(parent, parent.getChildAdapterPosition(view))) {
-                outRect.top = headerHeight()
+    /** Where the top of the current line rests, as a fraction of the view height. */
+    var anchorFraction: Float = ANCHOR_FRACTION
+        set(value) {
+            field = value
+            invalidate()
+        }
+
+    var horizontalPaddingDp: Float = 28f
+        set(value) {
+            field = value
+            requestRebuild()
+        }
+
+    /** Shown in the middle when there are no lyrics. */
+    var emptyLabel: String = ""
+        set(value) {
+            field = value
+            invalidate()
+        }
+
+    private val density = context.resources.displayMetrics.density
+    private val scaledDensity = context.resources.displayMetrics.scaledDensity
+
+    private var lyrics: WordLyrics? = null
+    private var rows: List<Row> = emptyList()
+    private var tops = FloatArray(0)
+    private var emSize = 0f
+
+    // Playback clock, smoothed between the player's coarse position updates
+    private var position = 0f
+    private var hasPosition = false
+    private var lastFrameNanos = 0L
+
+    // Scrolling
+    private var targetIndex = -1
+    private var snapNext = true
+    private var manual = false
+    private var manualScroll = 0f
+
+    // Interlude dots: three dots shown above the next line while nobody is singing
+    private var dotsRowShown = -1
+    private var dotsAmount = 0f
+    private var dotsFrom = 0L
+    private var dotsTo = 0L
+    private val dotsPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private var touching = false
+    private var lastTouch = 0L
+    private val scroller = OverScroller(context)
+
+    private val mainPaint = TextPaint(Paint.ANTI_ALIAS_FLAG or Paint.SUBPIXEL_TEXT_FLAG)
+    private val backgroundPaint = TextPaint(Paint.ANTI_ALIAS_FLAG or Paint.SUBPIXEL_TEXT_FLAG)
+    private val translationPaint = TextPaint(Paint.ANTI_ALIAS_FLAG or Paint.SUBPIXEL_TEXT_FLAG)
+    /** Draws glyphs into their cached masks. */
+    private val maskPaint = TextPaint(Paint.ANTI_ALIAS_FLAG or Paint.SUBPIXEL_TEXT_FLAG)
+    /** Draws the cached masks. Filtering lets a mask move by fractions of a pixel. */
+    private val bitmapPaint = Paint(Paint.FILTER_BITMAP_FLAG)
+    private val shaderMatrix = Matrix()
+    private var wipeShader: LinearGradient? = null
+    private var wipeShaderLit = 0
+    private var wipeShaderUnlit = 0
+    private var wipeShaderWidth = 0f
+
+    private val frameTick = Runnable { invalidate() }
+
+    // The frame's start time in nanoseconds. Choreographer only offers it to callbacks.
+    private var callbackNanos = 0L
+    private val frameCallback = Choreographer.FrameCallback { callbackNanos = it }
+
+    /** The start of the frame being drawn; the clock is used when no recent one is known. */
+    private fun currentFrameNanos(): Long {
+        val clock = System.nanoTime()
+        val frame = callbackNanos
+        Choreographer.getInstance().postFrameCallback(frameCallback)
+        return if (frame != 0L && clock - frame in 0L..50_000_000L) frame else clock
+    }
+
+    init {
+        isVerticalFadingEdgeEnabled = true
+        setFadingEdgeLength((48 * density).toInt())
+    }
+
+    fun setLyrics(newLyrics: WordLyrics?) {
+        lyrics = newLyrics
+        scroller.forceFinished(true)
+        manual = false
+        hasPosition = false
+        requestRebuild()
+    }
+
+    // ---------------------------------------------------------------------------------------
+    // Model
+    // ---------------------------------------------------------------------------------------
+
+    /** The stretch of one visual line that a syllable covers, in reading direction. */
+    private class Stop(
+        val visualLine: Int,
+        val startMs: Long,
+        val endMs: Long,
+        val from: Float,
+        val to: Float,
+        val rtl: Boolean,
+        var first: Boolean = false,
+        var last: Boolean = false
+    )
+
+    /** Per-letter motion of a long word. */
+    private class Emphasis(
+        val wordStartMs: Long,
+        val delayMs: Float,
+        val holdSec: Float,
+        val responseSec: Float,
+        val intensity: Float,
+        val glow: Float,
+        val spread: Float,
+        /** The glow has its own clock: the part of the word the letter is in. */
+        val glowStartMs: Long,
+        val glowSpanMs: Float
+    )
+
+    /** Text drawn in one call: a syllable, a joined-script word, or one emphasised letter. */
+    private class Piece(
+        val start: Int,
+        val end: Int,
+        val visualLine: Int,
+        val x: Float,
+        val width: Float,
+        val baseline: Float,
+        val rtl: Boolean,
+        val startMs: Long,
+        val emphasis: Emphasis? = null,
+        /** The rise of a plain piece lasts from startMs to endMs. */
+        val endMs: Long = startMs + 1000L
+    ) {
+        // The glyphs (and their glow) rendered once, so that moving them costs no text layout
+        var mask: Bitmap? = null
+        var glowMask: Bitmap? = null
+        /** Where the top left corner of the masks sits in the block, in whole pixels. */
+        var maskLeft = 0f
+        var maskTop = 0f
+        var maskTried = false
+        /** The masks are drawn this many times larger, so that a swelling letter stays sharp. */
+        var maskScale = 1f
+    }
+
+    private class Block(
+        val layout: StaticLayout,
+        val paint: TextPaint,
+        val pieces: List<Piece>,
+        val stops: List<Stop>
+    ) {
+        var hasMasks = false
+        var masksReady = false
+    }
+
+    private class Row(
+        val line: LyricLine,
+        val main: Block,
+        val background: Block?,
+        val translation: StaticLayout?,
+        val rightAligned: Boolean,
+        /** The row stays lit until this time. */
+        val activeUntilMs: Long
+    ) {
+        var activation = 0f
+        var scale = 1f
+        var dim = 0.33f
+        val layers = ArrayList<Layer>()
+
+        fun offset(now: Long): Float {
+            var sum = 0f
+            val iterator = layers.iterator()
+            while (iterator.hasNext()) {
+                val layer = iterator.next()
+                val progress = ScrollSpring.value((now - layer.startedAt - layer.delayMs).toFloat())
+                if (progress >= 1f) iterator.remove() else sum += layer.distance * (1f - progress)
             }
+            return sum
         }
     }
 
-    private fun isInFirstRow(parent: RecyclerView, position: Int): Boolean {
-        if (position == RecyclerView.NO_POSITION) return false
-        return when (val lm = parent.layoutManager) {
-            is GridLayoutManager -> lm.spanSizeLookup.getSpanGroupIndex(position, lm.spanCount) == 0
-            is StaggeredGridLayoutManager -> position < lm.spanCount
-            else -> position == 0
-        }
-    }
-
-    // شريط البحث بيستخبى لما تسحب القايمة لفوق وبيرجع فورًا لما تسحب لتحت؛ ولما
-    // تسيب إيدك بيكمل لأقرب وضع (مخفي/ظاهر).
-    private fun hideRange() = pillBottom().toFloat()
-
-    private val snapSearchBar = Runnable {
-        val bar = _binding?.searchBar ?: return@Runnable
-        val target = if (bar.translationY < -hideRange() / 2f) -hideRange() else 0f
-        // the (empty) update listener keeps this on the UI thread, so the glass sees the bar's real position
-        bar.animate().translationY(target).setDuration(150).setUpdateListener { }.start()
-    }
-
-    override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
-        super.onViewCreated(view, savedInstanceState)
-        _binding = FragmentMainRecyclerBinding.bind(view)
-        postponeEnterTransition()
-        view.doOnPreDraw { startPostponedEnterTransition() }
-        enterTransition = MaterialFadeThrough().addTarget(binding.recyclerView)
-        reenterTransition = MaterialFadeThrough().addTarget(binding.recyclerView)
-        initLayoutManager()
-        initAdapter()
-        checkForMargins()
-        setUpRecyclerView()
-        setUpSearchBar()
-        setUpHeaderRow()
-        restoreScrollState()
-        updateCount()
-        binding.recyclerView.post { updateRowPosition() }
-    }
-
-    open fun onShuffleClicked() {
-    }
-
-    // placeholder مخفي، موجود بس عشان أي كود قديم بيشاور على toolbar يفضل يتبني
-    val toolbar: Toolbar get() = binding.toolbar
-
-    abstract val titleRes: Int
-
-    private fun setUpSearchBar() {
-        val bar = binding.searchBar
-        val row = binding.listHeaderRow
-        val list = binding.recyclerView
-
-        // نفس عائلة لون أزرار الهوم، بس معتم عشان المحتوى اللي بيعدي تحته مايبانش
-        val screenBg = MaterialColors.getColor(bar, com.google.android.material.R.attr.colorSurface)
-        val pillColor = ColorUtils.compositeColors(
-            ColorUtil.withAlpha(accentColor(), 0.12f),
-            screenBg
-        )
-        searchPillColor = pillColor
-        SearchBarIcon.attach(bar, binding.menuButton, binding.searchText)
-        applySearchGlass()
-
-        ViewCompat.setOnApplyWindowInsetsListener(requireView()) { _, insets ->
-            statusBarTop = insets.getInsets(WindowInsetsCompat.Type.statusBars()).top
-            bar.updateLayoutParams<ViewGroup.MarginLayoutParams> { topMargin = pillTop() }
-            row.updateLayoutParams<ViewGroup.MarginLayoutParams> { topMargin = rowTop() }
-            list.invalidateItemDecorations()
-            updateRowPosition()
-            applyFastScrollerPadding()
-            insets
-        }
-        ViewCompat.requestApplyInsets(requireView())
-
-        // الضغط على الشريط -> البحث (نفس وجهة أيقونة البحث القديمة)
-        bar.setOnClickListener {
-            findNavController().navigate(R.id.action_search, null, navOptions)
-        }
-
-        // الهامبرغر يفتح الدراور
-        binding.menuButton.setOnClickListener {
-            mainActivity.openDrawer()
-        }
-    }
-
-    private var searchPillColor = Color.TRANSPARENT
+    /** A scroll step that is still on its way. Steps add up, so retargeting stays smooth. */
+    private class Layer(val distance: Float, val startedAt: Long, val delayMs: Long)
 
     /**
-     * The search bar is a glass pill (same as the bottom bar and the mini player) that blurs the
-     * list scrolling under it; with the glass setting off it keeps its plain coloured pill.
+     * The line-scroll spring of Apple Music-like Lyrics (AMLL): mass 1, damping 15, stiffness 100,
+     * which is a damping ratio of 0.75 and about 3% overshoot. Apple Music itself was measured
+     * at a damping ratio of 0.75-0.85 for the full-screen player.
      */
-    private fun applySearchGlass() {
-        val b = _binding ?: return
-        val layer = GlassHelper.syncFill(b.searchBar, b.recyclerView, PreferenceUtil.glassEnabled)
-        // the list has no background, so the blur is painted over this colour: it must be the
-        // colour the page really has, otherwise the bar looks tinted compared to the other glass
-        layer?.baseColor = pageColor(b.searchBar)
-        // blur only what is under the bar (nothing from the cards just above it leaks in)
-        layer?.contained = true
-        b.searchBar.setCardBackgroundColor(if (layer != null) Color.TRANSPARENT else searchPillColor)
-        layer?.onToneExtra = { tone -> applySearchInk(tone) }
-        applySearchInk(if (layer != null && layer.sampled) layer.lightness else null)
-    }
+    private object ScrollSpring {
+        private const val MASS = 1.0
+        private const val DAMPING = 15.0
+        private const val STIFFNESS = 100.0
+        private const val DONE_MS = 1300f
+        private val omega = sqrt(STIFFNESS / MASS)
+        private val zeta = DAMPING / (2.0 * sqrt(STIFFNESS * MASS))
+        private val damped = omega * sqrt(1.0 - zeta * zeta)
+        private val k = zeta / sqrt(1.0 - zeta * zeta)
 
-    /** The first opaque background colour above [from] (the page as the user actually sees it). */
-    private fun pageColor(from: View): Int {
-        var v: View? = from.parent as? View
-        while (v != null) {
-            val bg = v.background
-            if (bg is ColorDrawable && Color.alpha(bg.color) == 255) return bg.color
-            v = v.parent as? View
+        /** 0 -> 1 progress of a spring that starts at rest; it overshoots 1 a little. */
+        fun value(ms: Float): Float {
+            if (ms <= 0f) return 0f
+            if (ms >= DONE_MS) return 1f
+            val t = ms / 1000.0
+            val decay = exp(-zeta * omega * t)
+            return (1.0 - decay * (cos(damped * t) + k * kotlin.math.sin(damped * t))).toFloat()
         }
-        return MaterialColors.getColor(from, android.R.attr.colorBackground, Color.BLACK)
     }
 
-    /** Text and icon follow the brightness of the page behind the glass (null = theme colours). */
-    private fun applySearchInk(tone: Float?) {
-        val b = _binding ?: return
-        if (!isAdded) return
-        val ink = tone?.let { ColorUtils.blendARGB(Color.WHITE, GlassLayer.DARK_INK, it) }
-        b.searchText.setTextColor(
-            if (ink != null) ColorUtils.setAlphaComponent(ink, 200) else textColorSecondary()
-        )
-        b.menuButton.imageTintList = ink?.let { ColorStateList.valueOf(it) }
-        SearchBarIcon.tint(b.searchBar, ink ?: textColorSecondary())
+    // ---------------------------------------------------------------------------------------
+    // Layout
+    // ---------------------------------------------------------------------------------------
+
+    private fun requestRebuild() {
+        rows = emptyList()
+        targetIndex = -1
+        dotsRowShown = -1
+        dotsAmount = 0f
+        snapNext = true
+        invalidate()
     }
 
-    private fun setUpHeaderRow() {
-        if (isShuffleVisible) {
-            binding.shuffleButton.setOnClickListener {
-                onShuffleClicked()
+    override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
+        super.onSizeChanged(w, h, oldw, oldh)
+        if (w != oldw) requestRebuild() else snapNext = true
+    }
+
+    private val sidePadding: Float
+        get() = horizontalPaddingDp * density
+
+    private fun buildRows() {
+        val data = lyrics ?: return
+        val textWidth = (width - sidePadding * 2).toInt()
+        if (textWidth <= 0) return
+        emSize = textSizeSp * density
+        mainPaint.textSize = emSize
+        backgroundPaint.textSize = emSize * 0.6f
+        translationPaint.textSize = emSize * 0.6f
+        listOf(mainPaint, backgroundPaint, translationPaint).forEach {
+            it.typeface = typeface
+            // Letters are measured and drawn one by one: a ligature such as "fi" would give the
+            // first letter the width of both and throw the second onto the next letter
+            it.fontFeatureSettings = "liga 0, clig 0"
+        }
+
+        rows = data.lines.mapIndexed { index, line ->
+            val alignment =
+                if (line.isOpposite) Layout.Alignment.ALIGN_OPPOSITE
+                else Layout.Alignment.ALIGN_NORMAL
+            val main = buildBlock(line, mainPaint, textWidth, alignment, emphasise = true)
+            val background = line.background?.let {
+                buildBlock(it, backgroundPaint, textWidth, alignment, emphasise = false)
             }
-        } else {
-            binding.shuffleButton.isVisible = false
+            val translation = line.translation?.let {
+                layoutText(it, translationPaint, textWidth, alignment)
+            }
+            val paragraphRtl = main.layout.lineCount > 0 &&
+                    main.layout.getParagraphDirection(0) == Layout.DIR_RIGHT_TO_LEFT
+
+            val end = max(line.endMs, line.background?.endMs ?: 0L)
+            val next = data.lines.getOrNull(index + 1)?.startMs
+            val previousEnd = data.lines.take(index + 1).maxOf {
+                max(it.endMs, it.background?.endMs ?: 0L)
+            }
+            val activeUntil = when {
+                // The final line keeps its normal hold before fading out
+                next == null -> end + LINE_HOLD_MS
+                // Turn the line off when the interlude dots actually appear
+                next - previousEnd >= INTERLUDE_MIN_MS -> previousEnd
+                // Otherwise, keep it lit until the next line starts, even if timings overlap
+                else -> next
+            }
+            Row(line, main, background, translation, paragraphRtl != line.isOpposite, activeUntil)
+        }
+        tops = FloatArray(rows.size)
+    }
+
+    @Suppress("DEPRECATION")
+    private fun layoutText(
+        text: String,
+        paint: TextPaint,
+        width: Int,
+        alignment: Layout.Alignment
+    ): StaticLayout {
+        val metrics = paint.fontMetrics
+        val extra = LINE_HEIGHT_EM * paint.textSize - (metrics.descent - metrics.ascent)
+        return StaticLayout(text, paint, width, alignment, 1f, extra, false)
+    }
+
+    private fun buildBlock(
+        line: LyricLine,
+        paint: TextPaint,
+        width: Int,
+        alignment: Layout.Alignment,
+        emphasise: Boolean
+    ): Block {
+        val text = line.text
+        val layout = layoutText(text, paint, width, alignment)
+        val pieces = ArrayList<Piece>()
+        val stops = ArrayList<Stop>()
+
+        // Syllables with no white space between them form one word
+        var first = 0
+        val words = line.words
+        while (first < words.size) {
+            var last = first
+            while (last + 1 < words.size && words[last + 1].start <= words[last].end) last++
+            addWord(words.subList(first, last + 1), text, layout, paint, emphasise, pieces, stops)
+            first = last + 1
         }
 
-        // ⋯ بيفتح PopupMenu متملي بنفس المنطق اللي كان بيملى toolbar.menu
-        binding.moreButton.setOnClickListener { anchor ->
-            val popup = GlassPopupMenu(requireContext(), anchor)
-            onCreateMenu(popup.menu, popup.menuInflater)
-            popup.setOnMenuItemClickListener { item -> onMenuItemSelected(item) }
-            popup.show()
+        for (i in stops.indices) {
+            stops[i].first = i == 0 || stops[i - 1].visualLine != stops[i].visualLine
+            stops[i].last = i == stops.lastIndex || stops[i + 1].visualLine != stops[i].visualLine
         }
+        return Block(layout, paint, pieces, stops)
     }
 
-    // الصف بيتحرك مع القايمة: مكانه = أعلى القايمة - مقدار السكرول، فيطلع معاها
-    private fun updateRowPosition() {
-        val b = _binding ?: return
-        val hideDistance = rowBottom().toFloat()
-        val offset = b.recyclerView.computeVerticalScrollOffset().toFloat()
-        b.listHeaderRow.translationY = -offset.coerceAtMost(hideDistance)
-    }
+    /** Part of a syllable that sits on one visual line. */
+    private class Segment(val word: LyricWord, val start: Int, val end: Int, val line: Int)
 
-    private fun updateCount() {
-        val b = _binding ?: return
-        val count = adapter?.itemCount ?: 0
-        b.countText.text = "$count ${getString(titleRes).lowercase()}"
-    }
+    private fun addWord(
+        syllables: List<LyricWord>,
+        text: String,
+        layout: StaticLayout,
+        paint: TextPaint,
+        emphasise: Boolean,
+        pieces: MutableList<Piece>,
+        stops: MutableList<Stop>
+    ) {
+        val segments = ArrayList<Segment>(syllables.size)
+        for (syllable in syllables) {
+            var start = syllable.start
+            while (start < syllable.end) {
+                val line = layout.getLineForOffset(start)
+                var end = min(syllable.end, layout.getLineEnd(line))
+                if (end <= start) end = syllable.end
+                segments.add(Segment(syllable, start, end, line))
+                start = end
+            }
+        }
 
-    private fun setUpRecyclerView() {
-        binding.recyclerView.apply {
-            layoutManager = this@AbsRecyclerViewFragment.layoutManager
-            adapter = this@AbsRecyclerViewFragment.adapter
-            addItemDecoration(headerDecoration)
-            addOnScrollListener(object : RecyclerView.OnScrollListener() {
-                override fun onScrolled(recyclerView: RecyclerView, dx: Int, dy: Int) {
-                    updateRowPosition()
-                    val bar = _binding?.searchBar ?: return
-                    bar.animate().cancel()
-                    bar.translationY = if (recyclerView.computeVerticalScrollOffset() <= 0) {
-                        0f
-                    } else {
-                        (bar.translationY - dy).coerceIn(-hideRange(), 0f)
-                    }
-                    bar.removeCallbacks(snapSearchBar)
-                    bar.postDelayed(snapSearchBar, 120)
+        val wordText = text.substring(syllables.first().start, syllables.last().end)
+        val joined = wordText.any { isJoiningScript(it) }
+        val emphasisStarts = emphasisClusters(wordText, syllables, emphasise && !joined)
+
+        var letterIndex = 0
+        var from = 0
+        while (from < segments.size) {
+            val visualLine = segments[from].line
+            var to = from
+            while (to + 1 < segments.size && segments[to + 1].line == visualLine) to++
+
+            // The part of the word on this visual line is measured as one run
+            val runStart = segments[from].start
+            val runEnd = segments[to].end
+            val advances = FloatArray(runEnd - runStart)
+            paint.getTextWidths(text, runStart, runEnd, advances)
+            val runWidth = advances.sum()
+            val rtl = layout.isRtlCharAt(runStart)
+            val paragraphRtl =
+                layout.getParagraphDirection(visualLine) == Layout.DIR_RIGHT_TO_LEFT
+            val anchor =
+                if (rtl == paragraphRtl) layout.getPrimaryHorizontal(runStart)
+                else layout.getSecondaryHorizontal(runStart)
+            val runLeft = if (rtl) anchor - runWidth else anchor
+            val baseline = layout.getLineBaseline(visualLine).toFloat()
+
+            fun widthOf(start: Int, end: Int): Float {
+                var sum = 0f
+                for (i in start until end) sum += advances[i - runStart]
+                return sum
+            }
+
+            fun leftOf(start: Int, end: Int): Float =
+                if (rtl) runLeft + runWidth - widthOf(runStart, end)
+                else runLeft + widthOf(runStart, start)
+
+            for (i in from..to) {
+                val segment = segments[i]
+                val left = leftOf(segment.start, segment.end)
+                val segmentWidth = widthOf(segment.start, segment.end)
+                // A syllable broken over two lines shares its time between them by length
+                val word = segment.word
+                val length = max(1, word.end - word.start)
+                val duration = max(MIN_WORD_MS, word.endMs - word.startMs)
+                val startMs = word.startMs + duration * (segment.start - word.start) / length
+                val endMs = word.startMs + duration * (segment.end - word.start) / length
+                val begin = if (rtl) -(left + segmentWidth) else left
+                stops.add(Stop(visualLine, startMs, endMs, begin, begin + segmentWidth, rtl))
+
+                if (emphasisStarts == null && !joined) {
+                    pieces.add(
+                        Piece(
+                            segment.start, segment.end, visualLine, left, segmentWidth,
+                            baseline, rtl, startMs, endMs = endMs
+                        )
+                    )
                 }
-            })
-            // الـ FastScroller بيعتبر أي حدث layout/تحميل بيانات (حتى لو مفيش
-            // سكرول حقيقي) إنه سكرول، فكان بيظهر لحظة مع فتح الصفحة أو
-            // الرجوع من صفحة فنان. عشان كده مش بنعمله خالص لحد ما المستخدم
-            // يلمس القايمة ويبدأ يسحبها فعليًا (SCROLL_STATE_DRAGGING) - وقتها
-            // بس بنعمله. الـ listener بيشيل نفسه بعد أول مرة.
-            addOnScrollListener(object : RecyclerView.OnScrollListener() {
-                override fun onScrollStateChanged(recyclerView: RecyclerView, newState: Int) {
-                    if (newState == RecyclerView.SCROLL_STATE_DRAGGING) {
-                        recyclerView.removeOnScrollListener(this)
-                        fastScroller = create(recyclerView)
-                        applyFastScrollerPadding()
+            }
+
+            if (emphasisStarts != null) {
+                val base = syllables.first().start
+                val partOf = emphasisStarts.map { cluster ->
+                    syllables.firstOrNull {
+                        base + cluster.first >= it.start && base + cluster.first < it.end
                     }
                 }
-            })
-        }
-    }
-
-    // مسار الـ FastScroller يبدأ من أول عنصر (تحت شريط البحث والصف) بدل أعلى
-    // الشاشة. الجوانب صفر: شبكات الألبومات والفنانين والبلاي ليست بتحط padding
-    // جانبي على القايمة، ولو مررناه للـ FastScroller الشكل بيبعد عن حافة الشاشة
-    // (وده كان الفرق بين صفحة Songs وباقي الصفحات).
-    private fun applyFastScrollerPadding() {
-        val list = _binding?.recyclerView ?: return
-        fastScroller?.setPadding(
-            0,
-            headerHeight(),
-            0,
-            list.paddingBottom
-        )
-    }
-
-    protected open fun createFastScroller(recyclerView: RecyclerView): FastScroller {
-        return FastScrollerBuilder(recyclerView).useMd2Style().build()
-    }
-
-    private fun initAdapter() {
-        adapter = createAdapter()
-        adapter?.registerAdapterDataObserver(object : RecyclerView.AdapterDataObserver() {
-            override fun onChanged() {
-                super.onChanged()
-                checkIsEmpty()
-                updateCount()
-            }
-
-            override fun onItemRangeInserted(positionStart: Int, itemCount: Int) {
-                super.onItemRangeInserted(positionStart, itemCount)
-                updateCount()
-            }
-
-            override fun onItemRangeRemoved(positionStart: Int, itemCount: Int) {
-                super.onItemRangeRemoved(positionStart, itemCount)
-                updateCount()
-            }
-        })
-    }
-
-    protected open val emptyMessage: Int
-        @StringRes get() = R.string.empty
-
-    private fun getEmojiByUnicode(unicode: Int): String {
-        return String(Character.toChars(unicode))
-    }
-
-    private fun checkIsEmpty() {
-        binding.emptyText.setText(emptyMessage)
-        binding.empty.isVisible = adapter!!.itemCount == 0
-    }
-
-    private var defaultBottomPadding = -1
-    private var defaultClipToPadding = true
-
-    private fun checkForMargins() {
-        val list = binding.recyclerView
-        if (defaultBottomPadding < 0) {
-            defaultBottomPadding = list.paddingBottom
-            defaultClipToPadding = list.clipToPadding
-        }
-        if (mainActivity.isBottomNavVisible) {
-            if (PreferenceUtil.glassEnabled) {
-                // Glass bar: the list keeps going under the floating bar and mini player (so there
-                // is something to blur) instead of stopping above them. The padding lets the
-                // last item scroll up clear of both.
-                val inset = ViewCompat.getRootWindowInsets(list)
-                    ?.getInsets(WindowInsetsCompat.Type.navigationBars())?.bottom ?: 0
-                list.updateLayoutParams<ViewGroup.MarginLayoutParams> { bottomMargin = 0 }
-                list.clipToPadding = false
-                list.updatePadding(
-                    bottom = defaultBottomPadding + dip(R.dimen.bottom_nav_mini_player_height) + inset
+                for (i in emphasisStarts.indices) {
+                    val start = base + emphasisStarts[i].first
+                    val end = base + emphasisStarts[i].second
+                    if (start < runStart || end > runEnd) continue
+                    // The glow goes by the part of the word the letter is in
+                    val part = partOf[i]
+                    val countInPart = max(1, partOf.count { it === part })
+                    val indexInPart = partOf.subList(0, i).count { it === part }
+                    pieces.add(
+                        Piece(
+                            start, end, visualLine, leftOf(start, end), widthOf(start, end),
+                            baseline, rtl, syllables.first().startMs,
+                            emphasisFor(
+                                syllables, letterIndex++, emphasisStarts.size,
+                                part, indexInPart, countInPart
+                            )
+                        )
+                    )
+                }
+            } else if (joined) {
+                // Drawing the word in one piece keeps its letters connected
+                pieces.add(
+                    Piece(
+                        runStart, runEnd, visualLine, runLeft, runWidth, baseline, rtl,
+                        segments[from].word.startMs, endMs = segments[to].word.endMs
+                    )
                 )
+            }
+            from = to + 1
+        }
+    }
+
+    /** Letter ranges for a word that is held long enough to be emphasised, otherwise null. */
+    private fun emphasisClusters(
+        word: String,
+        syllables: List<LyricWord>,
+        allowed: Boolean
+    ): List<Pair<Int, Int>>? {
+        if (!allowed || word.any { isCjk(it) }) return null
+        val sung = syllables.sumOf { it.endMs - it.startMs }
+        if (sung < EMPHASIS_MIN_MS) return null
+        val breaks = BreakIterator.getCharacterInstance()
+        breaks.setText(word)
+        val clusters = ArrayList<Pair<Int, Int>>()
+        var graphemes = 0
+        var start = breaks.first()
+        var end = breaks.next()
+        while (end != BreakIterator.DONE) {
+            graphemes++
+            if (clusters.isNotEmpty() && word[start] in TRAILING_PUNCTUATION) {
+                clusters[clusters.lastIndex] = clusters.last().first to end
             } else {
-                list.updateLayoutParams<ViewGroup.MarginLayoutParams> {
-                    bottomMargin = dip(R.dimen.bottom_nav_height)
-                }
-                list.clipToPadding = defaultClipToPadding
-                list.updatePadding(bottom = defaultBottomPadding)
+                clusters.add(start to end)
+            }
+            start = end
+            end = breaks.next()
+        }
+        return if (graphemes in 1..EMPHASIS_MAX_LETTERS) clusters else null
+    }
+
+    /** [partSeconds] is how long the part of the word that the letter belongs to is sung. */
+    private fun emphasisFor(
+        syllables: List<LyricWord>,
+        index: Int,
+        count: Int,
+        part: LyricWord? = null,
+        indexInPart: Int = index,
+        countInPart: Int = count
+    ): Emphasis {
+        val start = syllables.first().startMs
+        val seconds = max(0.001f, (syllables.last().endMs - start) / 1000f)
+        val partStart = part?.startMs ?: start
+        val partSeconds = part?.let { max(0.001f, (it.endMs - it.startMs) / 1000f) } ?: seconds
+        val partDelay = min(partSeconds / countInPart * 0.4f, 0.4f)
+        val delay = min(seconds / count * 0.4f, 0.4f)
+        val middle = (count - 1) / 2f
+        return Emphasis(
+            wordStartMs = start,
+            delayMs = (index + 1) * delay * 1000f,
+            holdSec = 2f * seconds / count,
+            responseSec = min(3f, seconds),
+            intensity = (seconds - 1f).coerceIn(0f, 1f),
+            glow = 0.45f * ((partSeconds - 0.8f) / 0.4f).coerceIn(0f, 1f),
+            spread = (index - middle) / max(1f, middle),
+            glowStartMs = partStart + ((indexInPart + 1) * partDelay * 1000f).toLong(),
+            glowSpanMs = max(
+                1f,
+                2000f * partSeconds / countInPart + 2000f * min(3f, partSeconds)
+            )
+        )
+    }
+
+    private fun isJoiningScript(c: Char): Boolean {
+        val code = c.code
+        // Hebrew, Arabic and friends, Indic and South East Asian scripts, presentation forms
+        return code in 0x0590..0x109F || code in 0x1780..0x18AF ||
+                code in 0xFB1D..0xFDFF || code in 0xFE70..0xFEFC
+    }
+
+    private fun isCjk(c: Char): Boolean {
+        val code = c.code
+        return code in 0x2E80..0x9FFF || code in 0xAC00..0xD7AF || code in 0xF900..0xFAFF
+    }
+
+    // ---------------------------------------------------------------------------------------
+    // Frame
+    // ---------------------------------------------------------------------------------------
+
+    private fun updateClock(elapsed: Float, playing: Boolean): Boolean {
+        val raw = positionProvider?.invoke() ?: -1L
+        if (raw < 0L) return false
+        if (!hasPosition) {
+            hasPosition = true
+            position = raw.toFloat()
+            return false
+        }
+        val predicted = if (playing) position + elapsed else position
+        val error = raw - predicted
+        return if (abs(error) > SEEK_THRESHOLD_MS) {
+            position = raw.toFloat()
+            true
+        } else if (!playing) {
+            position = raw.toFloat()
+            false
+        } else {
+            // The player reports coarsely, so the clock runs on its own and is only nudged
+            // towards it. The nudge is limited in speed, which keeps motion even and means
+            // the clock can never step back.
+            val pull = error * (1f - exp(-elapsed / CLOCK_TAU_MS))
+            val limit = elapsed * CLOCK_MAX_SLEW
+            position = predicted + pull.coerceIn(-limit, limit)
+            false
+        }
+    }
+
+    /** The line the view should be resting on. It moves a little ahead of the singing. */
+    private fun findTarget(now: Long): Int {
+        var index = 0
+        var heldBack = false
+        for (i in 1 until rows.size) {
+            val start = rows[i].line.startMs
+            val previous = rows[i - 1].line
+            // Include background-vocal timing when deciding whether two lines overlap.
+            val previousEnd = max(previous.endMs, previous.background?.endMs ?: 0L)
+            // Line-timed lyrics have no pause between lines, so they always lead.
+            val dueEnd = if (previous.words.isEmpty()) 0L else previousEnd
+            val due = max(start - SCROLL_LEAD_MS, min(dueEnd, start))
+            if (now < due) break
+
+            // If this is the second line in an overlap, keep the current scroll target.
+            // The next line's start releases the hold, so overlapping lines move together
+            // instead of scrolling once for each line.
+            val currentEnd = max(
+                rows[index].line.endMs,
+                rows[index].line.background?.endMs ?: 0L
+            )
+            if (!heldBack && start < currentEnd) {
+                heldBack = true
+            } else {
+                index = i
+                heldBack = false
             }
         }
+        return index
     }
 
-    private fun initLayoutManager() {
-        layoutManager = createLayoutManager()
-    }
-
-    protected abstract fun createLayoutManager(): LM
-
-    @NonNull
-    protected abstract fun createAdapter(): A
-
-    protected fun invalidateLayoutManager() {
-        initLayoutManager()
-        binding.recyclerView.layoutManager = layoutManager
-    }
-
-    protected fun invalidateAdapter() {
-        initAdapter()
-        checkIsEmpty()
-        updateCount()
-        binding.recyclerView.adapter = adapter
-    }
-
-    val recyclerView get() = binding.recyclerView
-
-    val container get() = binding.root
-
-    override fun scrollToTop() {
-        recyclerView.scrollToPosition(0)
-        binding.searchBar.animate().translationY(0f).setDuration(150).setUpdateListener { }.start()
-        recyclerView.post { updateRowPosition() }
-    }
-
-    override fun onCreateMenu(menu: Menu, inflater: MenuInflater) {
-        inflater.inflate(R.menu.menu_main, menu)
-    }
-
-    override fun onMenuItemSelected(item: MenuItem): Boolean {
-        when (item.itemId) {
-            R.id.action_settings -> findNavController().navigate(
-                R.id.settings_fragment,
-                null,
-                navOptions
-            )
-            R.id.action_import_playlist -> ImportPlaylistDialog().show(
-                childFragmentManager,
-                "ImportPlaylist"
-            )
-            R.id.action_add_to_playlist -> CreatePlaylistDialog.create(emptyList()).show(
-                childFragmentManager,
-                "ShowCreatePlaylistDialog"
-            )
+    private fun computeTops() {
+        val gap = emSize * 0.35f
+        var y = 0f
+        for (i in rows.indices) {
+            val row = rows[i]
+            if (i == dotsRowShown) y += dotsSpace() * dotsAmount
+            tops[i] = y
+            y += row.main.layout.height
+            row.background?.let { y += (it.layout.height + emSize * BG_GAP_EM) * row.activation }
+            row.translation?.let { y += it.height + gap * 0.5f }
+            y += emSize * ROW_GAP_EM
         }
-        return false
     }
 
-    override fun onResume() {
-        super.onResume()
-        checkForMargins()
-        applySearchGlass()
+    private fun restingScroll(index: Int): Float {
+        val dots = if (index == dotsRowShown) dotsSpace() * dotsAmount else 0f
+        return tops[index] - dots - height * anchorFraction
     }
 
-    override fun onDestroyView() {
-        // بنسجل مكان السكرول قبل ما الـ View يتدمر، عشان نرجعه لما الـ View
-        // الجديد يتبني (شوف restoreScrollState).
-        savedRecyclerLayoutState = layoutManager?.onSaveInstanceState()
-        _binding?.searchBar?.removeCallbacks(snapSearchBar)
-        fastScroller = null
-        super.onDestroyView()
-        _binding = null
+    private fun dotsSpace(): Float = emSize * DOTS_SPACE_EM
+
+    /**
+     * The row that the interlude dots sit above, or -1. Like AMLL, the dots are for a pause of
+     * at least 4 seconds (before the first line the dots stop a little before it starts).
+     */
+    private fun findInterlude(time: Long): Int {
+        var next = -1
+        var previousEnd = 0L
+        for (i in rows.indices) {
+            val row = rows[i]
+            if (time >= row.line.startMs - HIGHLIGHT_LEAD_MS && time < row.activeUntilMs) return -1
+            if (row.line.startMs > time) {
+                if (next < 0) next = i
+            } else {
+                previousEnd = max(previousEnd, row.line.endMs, row.line.background?.endMs ?: 0L)
+            }
+        }
+        if (next < 0) return -1
+        val end = rows[next].line.startMs - if (next == 0) 250L else 0L
+        if (end - previousEnd < INTERLUDE_MIN_MS || time < previousEnd || time >= end) return -1
+        dotsFrom = previousEnd
+        dotsTo = end
+        return next
     }
 
-    private fun restoreScrollState() {
-        savedRecyclerLayoutState?.let { layoutManager?.onRestoreInstanceState(it) }
+    private fun drawInterludeDots(canvas: Canvas, now: Long, resting: Float) {
+        val row = rows[dotsRowShown]
+        val rowTop = tops[dotsRowShown] - if (manual) manualScroll else resting - row.offset(now)
+        val radius = emSize * DOT_RADIUS_EM
+        val centerY = rowTop - dotsSpace() * dotsAmount + radius
+        val span = (dotsTo - dotsFrom).toFloat()
+        val elapsed = position - dotsFrom
+        val progress = if (span > 0f) (elapsed / span).coerceIn(0f, 1f) else 1f
+        // The three dots light up one after another, the group breathes, and at the end the
+        // dots shrink away just before the line starts
+        val closing = ((dotsTo - position) / DOT_CLOSE_MS).coerceIn(0f, 1f)
+        val breath = 1f + DOT_BREATH * kotlin.math.sin(2.0 * PI * elapsed / DOT_BREATH_MS).toFloat()
+        val scale = breath * (0.5f + 0.5f * closing)
+        val pitch = radius * DOT_PITCH
+        val total = pitch * 2f + radius * 2f
+        val indent = emSize * DOT_INDENT_EM
+        val startX = if (row.rightAligned) width - sidePadding - indent - total
+        else sidePadding + indent
+        val rtlText = row.main.layout.lineCount > 0 &&
+                row.main.layout.getParagraphDirection(0) == Layout.DIR_RIGHT_TO_LEFT
+        val centerX = startX + total / 2f
+        canvas.save()
+        canvas.scale(scale, scale, centerX, centerY)
+        for (i in 0 until 3) {
+            val lit = (progress * 3f - i).coerceIn(0f, 1f)
+            val alpha = (DOT_UNLIT + (1f - DOT_UNLIT) * lit) * dotsAmount * closing
+            dotsPaint.color = withAlpha(alpha)
+            // In right-to-left text the first dot is the one on the right
+            val dotX = if (rtlText) startX + total - radius - i * pitch
+            else startX + radius + i * pitch
+            canvas.drawCircle(dotX, centerY, radius, dotsPaint)
+        }
+        canvas.restore()
     }
 
-    override fun onPause() {
-        super.onPause()
-        (adapter as? AbsMultiSelectAdapter<*, *>)?.actionMode?.finish()
+    private fun moveTarget(index: Int, now: Long, jumped: Boolean) {
+        if (index == targetIndex) return
+        val old = targetIndex
+        targetIndex = index
+        if (manual) return
+        if (old < 0 || snapNext) {
+            rows.forEach { it.layers.clear() }
+            return
+        }
+        val distance = restingScroll(index) - restingScroll(old)
+        if (abs(distance) > height * 2f) {
+            rows.forEach { it.layers.clear() }
+            return
+        }
+        // All lines move together, with no delay between them
+        for (i in rows.indices) {
+            rows[i].layers.add(Layer(distance, now, 0L))
+        }
+    }
+
+    /** Leaves manual scrolling and glides back to the current line. */
+    private fun followAgain(now: Long) {
+        if (!manual) return
+        manual = false
+        scroller.forceFinished(true)
+        if (targetIndex !in rows.indices) return
+        val distance = restingScroll(targetIndex) - manualScroll
+        rows.forEach {
+            it.layers.clear()
+            it.layers.add(Layer(distance, now, 0L))
+        }
+    }
+
+    override fun onDraw(canvas: Canvas) {
+        super.onDraw(canvas)
+        removeCallbacks(frameTick)
+        if (rows.isEmpty()) buildRows()
+        if (rows.isEmpty()) {
+            drawEmptyLabel(canvas)
+            return
+        }
+
+        // Time comes from the frame itself, not from when this code happens to run, so a
+        // late frame does not make the motion speed up and slow down
+        val frameNanos = currentFrameNanos()
+        val now = frameNanos / 1_000_000L
+        val gapNanos = if (lastFrameNanos == 0L) 0L else max(0L, frameNanos - lastFrameNanos)
+        val elapsed = (gapNanos / 1_000_000f).coerceIn(0f, 100f)
+        // After a pause in drawing the position is taken from the player as it is
+        if (gapNanos > STALE_FRAME_MS * 1_000_000L) hasPosition = false
+        lastFrameNanos = frameNanos
+        val playing = isPlayingProvider?.invoke() == true
+        val jumped = updateClock(elapsed, playing)
+        val time = position.toLong()
+
+        var settling = false
+        val snap = snapNext
+        // During a long pause in the singing the view rests on the next line, with the dots
+        // above it (as AMLL does)
+        val interlude = findInterlude(time)
+        if (interlude >= 0) dotsRowShown = interlude
+        val nextTarget = if (interlude >= 0) interlude else findTarget(time)
+        for (i in rows.indices) {
+            val row = rows[i]
+            val active = time >= row.line.startMs - HIGHLIGHT_LEAD_MS && time < row.activeUntilMs
+            val activationTarget = if (active) 1f else 0f
+            val distance = abs(i - nextTarget)
+            val scaleTarget = if (active) ACTIVE_SIZE_RATIO else 1f
+            val dimTarget = when {
+                active || manual -> UNLIT
+                distance <= 2 -> UNLIT
+                distance == 3 -> 0.28f
+                else -> 0.22f
+            }
+            if (snap) {
+                row.activation = activationTarget
+                row.scale = scaleTarget
+                row.dim = dimTarget
+            } else {
+                row.dim = approach(row.dim, dimTarget, elapsed, 250f)
+                if (row.dim != dimTarget) settling = true
+                row.activation = approach(row.activation, activationTarget, elapsed, 120f)
+                row.scale = approach(row.scale, scaleTarget, elapsed, 200f)
+                if (row.activation != activationTarget || row.scale != scaleTarget) settling = true
+            }
+        }
+        val dotsTarget = if (interlude >= 0) 1f else 0f
+        dotsAmount = if (snap) dotsTarget else approach(dotsAmount, dotsTarget, elapsed, 250f)
+        if (dotsAmount != dotsTarget) settling = true
+        if (dotsAmount == 0f && interlude < 0) dotsRowShown = -1
+        computeTops()
+
+        if (manual) {
+            if (scroller.computeScrollOffset()) {
+                manualScroll = scroller.currY.toFloat()
+                lastTouch = now
+                settling = true
+            } else if (!touching && now - lastTouch > MANUAL_TIMEOUT_MS) {
+                targetIndex = nextTarget
+                followAgain(now)
+            }
+        }
+        moveTarget(nextTarget, now, jumped)
+        snapNext = false
+
+        // Glyph masks are made a few at a time for the lines about to be sung, and dropped
+        // for lines that are far away
+        var budget = MASKS_PER_FRAME
+        for (i in rows.indices) {
+            val row = rows[i]
+            if ((i >= nextTarget - 1 && i <= nextTarget + 2) || row.activation > 0f) {
+                budget = warmMasks(row.main, budget)
+                row.background?.let { budget = warmMasks(it, budget) }
+            } else {
+                if (row.main.hasMasks) releaseMasks(row.main)
+                row.background?.let { if (it.hasMasks) releaseMasks(it) }
+            }
+        }
+
+        val resting = restingScroll(targetIndex)
+        for (i in rows.indices) {
+            val row = rows[i]
+            val offset = row.offset(now)
+            if (row.layers.isNotEmpty()) settling = true
+            val rawTop = tops[i] - if (manual) manualScroll else resting - offset
+            // At rest, lines sit on whole pixels so that they are as sharp as plain text
+            val top = if (!manual && row.layers.isEmpty()) round(rawTop) else rawTop
+            val bottom = (tops.getOrNull(i + 1) ?: (tops[i] + height.toFloat())) - tops[i] + top
+            if (bottom < -emSize || top > height + emSize) continue
+            drawRow(canvas, row, top, position)
+        }
+
+        if (dotsRowShown in rows.indices && dotsAmount > 0.01f) drawInterludeDots(canvas, now, resting)
+
+        if (playing || settling) {
+            postInvalidateOnAnimation()
+        } else {
+            // Paused and at rest: only look now and then for a seek or for playback resuming
+            postDelayed(frameTick, IDLE_FRAME_MS)
+        }
+    }
+
+    private fun approach(value: Float, target: Float, elapsed: Float, tauMs: Float): Float {
+        val next = value + (target - value) * (1f - exp(-elapsed / tauMs))
+        return if (abs(target - next) < 0.002f) target else next
+    }
+
+    private fun drawEmptyLabel(canvas: Canvas) {
+        if (emptyLabel.isEmpty() || width <= 0) return
+        translationPaint.textSize = 18 * scaledDensity
+        translationPaint.typeface = typeface
+        translationPaint.shader = null
+        translationPaint.color = withAlpha(0.6f)
+        val layout = layoutText(emptyLabel, translationPaint, width, Layout.Alignment.ALIGN_CENTER)
+        canvas.save()
+        canvas.translate(0f, (height - layout.height) / 2f)
+        layout.draw(canvas)
+        canvas.restore()
+    }
+
+    private fun withAlpha(alpha: Float): Int {
+        val value = (Color.alpha(textColor) * alpha.coerceIn(0f, 1f)).toInt()
+        return textColor and 0x00FFFFFF or (value shl 24)
+    }
+
+    private fun drawRow(canvas: Canvas, row: Row, top: Float, time: Float) {
+        val gap = emSize * 0.35f
+        canvas.save()
+        canvas.translate(round(sidePadding), top)
+        val layoutWidth = row.main.layout.width.toFloat()
+        canvas.scale(
+            row.scale, row.scale,
+            if (row.rightAligned) layoutWidth else 0f, row.main.layout.height / 2f
+        )
+
+        drawBlock(canvas, row.main, row.activation, time, 1f, row.dim)
+        var y = row.main.layout.height.toFloat()
+
+        val background = row.background
+        if (background != null) {
+            if (row.activation > 0.01f) {
+                canvas.save()
+                canvas.translate(0f, y + emSize * BG_GAP_EM * row.activation)
+                // Background vocals are quieter and only appear while their line is active
+                drawBlock(canvas, background, row.activation, time, row.activation * 0.75f, row.dim)
+                canvas.restore()
+            }
+            y += (background.layout.height + emSize * BG_GAP_EM) * row.activation
+        }
+
+        row.translation?.let {
+            canvas.save()
+            canvas.translate(0f, y + gap * 0.5f)
+            translationPaint.textSize = emSize * 0.6f
+            translationPaint.shader = null
+            translationPaint.color = withAlpha(row.dim + 0.2f * row.activation)
+            it.draw(canvas)
+            canvas.restore()
+        }
+        canvas.restore()
+    }
+
+    private fun drawBlock(
+        canvas: Canvas,
+        block: Block,
+        activation: Float,
+        time: Float,
+        opacity: Float = 1f,
+        base: Float = UNLIT
+    ) {
+        val paint = block.paint
+        paint.shader = null
+        val lit = withAlpha((base + (1f - base) * activation) * opacity)
+        val unlit = withAlpha(base * opacity)
+
+        // Line-timed lyrics, and rows at rest, are a single colour
+        if (block.pieces.isEmpty() || activation <= 0f) {
+            paint.color = if (block.pieces.isEmpty()) lit else unlit
+            block.layout.draw(canvas)
+            return
+        }
+
+        // Where the wipe is: the syllable being sung, or the last one that was
+        var currentIndex = -1
+        for (i in block.stops.indices) {
+            if (block.stops[i].startMs <= time) currentIndex = i else break
+        }
+        val current: Stop? = block.stops.getOrNull(currentIndex)
+        // The soft edge reaches further ahead of the wipe than behind it, so the next word
+        // starts to light up before the wipe arrives
+        val trail = emSize * WIPE_TRAIL_EM
+        val lead = emSize * WIPE_LEAD_EM
+        val gradient = trail + lead
+        var wipeLine = -1
+        var wipe = 0f
+        if (current != null) {
+            val progress =
+                ((time - current.startMs).toFloat() / max(1L, current.endMs - current.startMs))
+                    .coerceIn(0f, 1f)
+            val from = current.from
+            // The sweep runs on to the start of the next syllable (spaces included), so it
+            // never restarts at a word: its speed is the timing of the syllable it is on
+            val next = block.stops.getOrNull(currentIndex + 1)
+            val to = if (current.last) current.to + trail
+            else if (next != null && next.rtl == current.rtl) max(next.from, current.to)
+            else current.to
+            wipeLine = current.visualLine
+            val sweep = from + (to - from) * progress
+            // The lead starts at zero at the beginning of each visual line and grows to its
+            // full size over the first LEAD_GROW_EM of the line, so nothing lights up early
+            var k = currentIndex
+            while (k > 0 && !block.stops[k].first) k--
+            val grow = ((sweep - block.stops[k].from) / (emSize * LEAD_GROW_EM)).coerceIn(0f, 1f)
+            wipe = sweep - lead + lead * easeInOut(grow)
+        } else {
+            // Before the first syllable nothing is lit
+            val first = block.stops.firstOrNull()
+            if (first != null) {
+                wipeLine = first.visualLine
+                wipe = first.from - lead
+            }
+        }
+
+        for (piece in block.pieces) {
+            var lift = 0f
+            var shift = 0f
+            var scale = 1f
+            var glow = 0f
+            var settled = true
+            val emphasis = piece.emphasis
+            if (emphasis == null) {
+                val rise = easeInOut(((time - piece.startMs) / LIFT_MS).coerceIn(0f, 1f))
+                lift = -0.05f * emSize * rise * activation
+                settled = rise >= 1f
+            } else {
+                val spanMs =
+                    max(1f, emphasis.holdSec * 1000f + emphasis.responseSec * 2000f)
+                val fraction =
+                    ((time - emphasis.wordStartMs - emphasis.delayMs) / spanMs).coerceIn(0f, 1f)
+                if (fraction > 0f) {
+                    val seconds = spanMs / 1000f * fraction
+                    val rising = spring(seconds, emphasis.responseSec)
+                    val pulse = if (fraction >= 1f) 0f else {
+                        rising * (1f - spring(seconds - emphasis.holdSec, emphasis.responseSec)) *
+                                emphasis.intensity * activation
+                    }
+                    lift = -(0.05f * (if (fraction >= 1f) 1f else rising) + 0.035f * pulse) *
+                            emSize * activation
+                    shift = emphasis.spread * 0.05f * emSize * pulse
+                    scale = 1f + 0.1f * pulse
+                }
+                val glowFraction =
+                    ((time - emphasis.glowStartMs) / emphasis.glowSpanMs).coerceIn(0f, 1f)
+                glow = emphasis.glow * glowCurve(glowFraction) * activation
+                settled = fraction <= 0f || fraction >= 1f
+            }
+
+            val begin = if (piece.rtl) -(piece.x + piece.width) else piece.x
+            // Positions cannot be compared across a change of direction: go by time there
+            val opposed = current != null && piece.visualLine == wipeLine &&
+                    piece.rtl != current.rtl
+            val isLit = piece.visualLine < wipeLine || (piece.visualLine == wipeLine &&
+                    if (opposed) piece.startMs <= time else begin + piece.width <= wipe - trail)
+            val isUnlit = piece.visualLine > wipeLine ||
+                    if (opposed) piece.startMs > time else begin >= wipe + lead
+            // A piece that has stopped moving sits on whole pixels
+            if (settled && activation >= 1f) lift = round(lift)
+
+            val mask = ensureMask(block, piece)
+            canvas.save()
+            canvas.translate(shift, lift)
+            if (scale != 1f) {
+                canvas.scale(
+                    scale, scale,
+                    piece.x + piece.width / 2f, piece.baseline + 0.1f * emSize
+                )
+            }
+            if (mask != null) {
+                // Cached glyphs move by fractions of a pixel, so slow motion stays smooth
+                canvas.translate(piece.maskLeft, piece.maskTop)
+                val maskScale = piece.maskScale
+                if (maskScale != 1f) canvas.scale(1f / maskScale, 1f / maskScale)
+                val glowMask = piece.glowMask
+                if (glow > 0.01f && glowMask != null) {
+                    bitmapPaint.shader = null
+                    bitmapPaint.color = withAlpha(glow)
+                    canvas.drawBitmap(glowMask, 0f, 0f, bitmapPaint)
+                }
+                if (isLit) {
+                    bitmapPaint.shader = null
+                    bitmapPaint.color = lit
+                } else if (isUnlit) {
+                    bitmapPaint.shader = null
+                    bitmapPaint.color = unlit
+                } else {
+                    bitmapPaint.color = Color.BLACK // the shader supplies colour and alpha
+                    bitmapPaint.shader =
+                        wipeShader(
+                            lit, unlit, gradient, wipe - trail, piece.rtl, piece.maskLeft, maskScale
+                        )
+                }
+                canvas.drawBitmap(mask, 0f, 0f, bitmapPaint)
+            } else {
+                paint.shader = null
+                if (isLit) {
+                    paint.color = lit
+                } else if (isUnlit) {
+                    paint.color = unlit
+                } else {
+                    paint.color = Color.BLACK
+                    paint.shader = wipeShader(lit, unlit, gradient, wipe - trail, piece.rtl)
+                }
+                if (glow > 0.01f) paint.setShadowLayer(GLOW_RADIUS_EM * emSize, 0f, 0f, withAlpha(glow))
+                canvas.drawText(
+                    block.layout.text, piece.start, piece.end, piece.x, piece.baseline, paint
+                )
+                if (glow > 0.01f) paint.clearShadowLayer()
+            }
+            canvas.restore()
+        }
+        bitmapPaint.shader = null
+        paint.shader = null
+    }
+
+    // ---------------------------------------------------------------------------------------
+    // Glyph masks
+    // ---------------------------------------------------------------------------------------
+
+    private fun ensureMask(block: Block, piece: Piece): Bitmap? {
+        if (piece.mask == null && !piece.maskTried) buildMask(block, piece)
+        return piece.mask
+    }
+
+    /** Makes masks for the pieces of a block that have none yet, within this frame's budget. */
+    private fun warmMasks(block: Block, budget: Int): Int {
+        if (block.masksReady || block.pieces.isEmpty()) return budget
+        var left = budget
+        for (piece in block.pieces) {
+            if (piece.mask != null || piece.maskTried) continue
+            if (left <= 0) return 0
+            buildMask(block, piece)
+            left--
+        }
+        block.masksReady = true
+        return left
+    }
+
+    private fun releaseMasks(block: Block) {
+        for (piece in block.pieces) {
+            piece.mask = null
+            piece.glowMask = null
+            piece.maskTried = false
+        }
+        block.hasMasks = false
+        block.masksReady = false
+    }
+
+    /**
+     * Renders a piece once as coverage (alpha only) and, if it glows, its blurred glow too.
+     * Colour is applied when the mask is drawn, so the wipe still costs nothing.
+     */
+    private fun buildMask(block: Block, piece: Piece) {
+        piece.maskTried = true
+        block.hasMasks = true
+        val p = maskPaint
+        p.set(block.paint)
+        p.shader = null
+        p.maskFilter = null
+        p.clearShadowLayer()
+        p.color = Color.WHITE
+
+        // A letter that swells is rendered at its largest size and drawn smaller when at rest,
+        // so that it is not blown up (and blurred) while it swells
+        val scale = if (piece.emphasis != null) EMPHASIS_SUPERSAMPLE else 1f
+        p.textSize = p.textSize * scale
+        val metrics = p.fontMetrics
+        val pad = ceil(emSize * MASK_PAD_EM * scale).toInt()
+        val top = floor(metrics.top).toInt()
+        val height = ceil(metrics.bottom).toInt() - top + pad * 2
+        // The whole-pixel part of the position is the mask's corner, the rest stays in the text
+        val originX = floor(piece.x)
+        val fraction = piece.x - originX
+        val width = ceil((fraction + piece.width) * scale).toInt() + pad * 2
+        if (width <= 0 || height <= 0 || width.toLong() * height > MAX_MASK_PIXELS) return
+
+        val text = block.layout.text
+        val textX = pad + fraction * scale
+        val textY = (pad - top).toFloat()
+        try {
+            val glyphs = Bitmap.createBitmap(width, height, Bitmap.Config.ALPHA_8)
+            Canvas(glyphs).drawText(text, piece.start, piece.end, textX, textY, p)
+
+            var glow: Bitmap? = null
+            if ((piece.emphasis?.glow ?: 0f) > 0.01f) {
+                p.maskFilter = BlurMaskFilter(
+                    max(1f, GLOW_RADIUS_EM * emSize * scale), BlurMaskFilter.Blur.NORMAL
+                )
+                glow = Bitmap.createBitmap(width, height, Bitmap.Config.ALPHA_8)
+                Canvas(glow).drawText(text, piece.start, piece.end, textX, textY, p)
+                p.maskFilter = null
+            }
+            piece.maskScale = scale
+            piece.maskLeft = originX - pad / scale
+            piece.maskTop = piece.baseline + (top - pad) / scale
+            piece.glowMask = glow
+            piece.mask = glyphs
+        } catch (e: OutOfMemoryError) {
+            // Out of memory: this piece is drawn as plain text instead
+            p.maskFilter = null
+        }
+    }
+
+    /** A soft edge from lit to unlit that starts at [start], counted in reading direction. */
+    private fun wipeShader(
+        lit: Int,
+        unlit: Int,
+        width: Float,
+        start: Float,
+        rtl: Boolean,
+        originX: Float = 0f,
+        scale: Float = 1f
+    ): Shader {
+        var shader = wipeShader
+        if (shader == null || lit != wipeShaderLit || unlit != wipeShaderUnlit ||
+            width != wipeShaderWidth
+        ) {
+            // The middle stop sits where the sweep really is. It is a little darker than a
+            // straight line from lit to unlit, which tones down the light that runs ahead
+            val centre = WIPE_TRAIL_EM / (WIPE_TRAIL_EM + WIPE_LEAD_EM)
+            val middle = blend(lit, unlit, min(0.95f, centre + WIPE_AHEAD_DIM))
+            shader = LinearGradient(
+                0f, 0f, width, 0f,
+                intArrayOf(lit, middle, unlit), floatArrayOf(0f, centre, 1f),
+                Shader.TileMode.CLAMP
+            )
+            wipeShader = shader
+            wipeShaderLit = lit
+            wipeShaderUnlit = unlit
+            wipeShaderWidth = width
+        }
+        shaderMatrix.reset()
+        if (rtl) shaderMatrix.setScale(-1f, 1f)
+        shaderMatrix.postTranslate(if (rtl) -start else start, 0f)
+        // Masks are drawn from their own corner, text from the block's
+        shaderMatrix.postTranslate(-originX, 0f)
+        if (scale != 1f) shaderMatrix.postScale(scale, 1f)
+        shader.setLocalMatrix(shaderMatrix)
+        return shader
+    }
+
+    private fun blend(from: Int, to: Int, t: Float): Int {
+        fun channel(shift: Int): Int {
+            val a = (from shr shift) and 0xFF
+            val b = (to shr shift) and 0xFF
+            return (a + (b - a) * t).toInt().coerceIn(0, 255) shl shift
+        }
+        return channel(24) or channel(16) or channel(8) or channel(0)
+    }
+
+    private fun spring(seconds: Float, response: Float): Float {
+        if (seconds <= 0f) return 0f
+        val x = 2f * PI.toFloat() * seconds / max(0.001f, response)
+        return 1f - (1f + x) * exp(-x)
+    }
+
+    private fun glowCurve(fraction: Float): Float = when {
+        fraction <= 0f || fraction >= 1f -> 0f
+        fraction < 0.15f -> 0.8f * fraction / 0.15f
+        fraction < 0.30f -> 0.8f + 0.2f * (fraction - 0.15f) / 0.15f
+        fraction < 0.60f -> 1f - 0.7f * (fraction - 0.30f) / 0.30f
+        else -> 0.3f * (1f - fraction) / 0.40f
+    }
+
+    private fun easeInOut(t: Float): Float = t * t * (3f - 2f * t)
+
+    override fun getTopFadingEdgeStrength(): Float = if (rows.isEmpty()) 0f else 1f
+
+    override fun getBottomFadingEdgeStrength(): Float = if (rows.isEmpty()) 0f else 1f
+
+    // ---------------------------------------------------------------------------------------
+    // Touch
+    // ---------------------------------------------------------------------------------------
+
+    private val gestures = GestureDetector(
+        context,
+        object : GestureDetector.SimpleOnGestureListener() {
+            override fun onDown(e: MotionEvent): Boolean = true
+
+            override fun onScroll(
+                e1: MotionEvent,
+                e2: MotionEvent,
+                distanceX: Float,
+                distanceY: Float
+            ): Boolean {
+                startManual()
+                manualScroll = clampScroll(manualScroll + distanceY)
+                invalidate()
+                return true
+            }
+
+            override fun onFling(
+                e1: MotionEvent,
+                e2: MotionEvent,
+                velocityX: Float,
+                velocityY: Float
+            ): Boolean {
+                startManual()
+                scroller.fling(
+                    0, manualScroll.toInt(), 0, -velocityY.toInt(), 0, 0,
+                    restingScroll(0).toInt(), restingScroll(rows.lastIndex).toInt()
+                )
+                invalidate()
+                return true
+            }
+
+            override fun onSingleTapUp(e: MotionEvent): Boolean {
+                val row = rowAt(e.y)
+                val seek = onSeek
+                if (row != null && seek != null) {
+                    followAgain(SystemClock.uptimeMillis())
+                    seek(row.line.startMs)
+                    invalidate()
+                } else {
+                    performClick()
+                }
+                return true
+            }
+        }
+    ).apply { setIsLongpressEnabled(false) }
+
+    private fun startManual() {
+        if (manual || targetIndex !in rows.indices) return
+        // Start from where the current line is on screen right now
+        manualScroll = restingScroll(targetIndex) -
+                rows[targetIndex].offset(SystemClock.uptimeMillis())
+        manual = true
+        rows.forEach { it.layers.clear() }
+    }
+
+    private fun clampScroll(value: Float): Float =
+        value.coerceIn(restingScroll(0), restingScroll(rows.lastIndex))
+
+    private fun rowAt(y: Float): Row? {
+        if (targetIndex !in rows.indices) return null
+        val now = SystemClock.uptimeMillis()
+        for (i in rows.indices) {
+            val scroll =
+                if (manual) manualScroll else restingScroll(targetIndex) - rows[i].offset(now)
+            val top = tops[i] - scroll
+            val bottom = top + rows[i].main.layout.height + emSize * ROW_GAP_EM
+            if (y >= top - emSize * 0.3f && y < bottom) return rows[i]
+        }
+        return null
+    }
+
+    override fun onTouchEvent(event: MotionEvent): Boolean {
+        if (rows.isEmpty()) return super.onTouchEvent(event)
+        when (event.actionMasked) {
+            MotionEvent.ACTION_DOWN -> {
+                // The player sheet must not take over a drag that scrolls the lyrics
+                parent?.requestDisallowInterceptTouchEvent(true)
+                touching = true
+                scroller.forceFinished(true)
+            }
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> touching = false
+        }
+        lastTouch = SystemClock.uptimeMillis()
+        gestures.onTouchEvent(event)
+        return true
+    }
+
+    override fun performClick(): Boolean = super.performClick()
+
+    // ---------------------------------------------------------------------------------------
+    // Lifecycle
+    // ---------------------------------------------------------------------------------------
+
+    override fun onVisibilityChanged(changedView: View, visibility: Int) {
+        super.onVisibilityChanged(changedView, visibility)
+        if (visibility == VISIBLE) invalidate()
+    }
+
+    override fun onWindowVisibilityChanged(visibility: Int) {
+        super.onWindowVisibilityChanged(visibility)
+        if (visibility == VISIBLE) invalidate() else removeCallbacks(frameTick)
+    }
+
+    override fun onDetachedFromWindow() {
+        removeCallbacks(frameTick)
+        super.onDetachedFromWindow()
+    }
+
+    private companion object {
+        const val UNLIT = 0.33f
+        const val LINE_HEIGHT_EM = 1.2f
+        const val ROW_GAP_EM = 1.17f // gap between two lyric lines, in font sizes
+        const val BG_GAP_EM = 0.92f // gap between the main line and its small background line
+        const val ANCHOR_FRACTION = 0.27f // where the sung line rests: higher number = lower on screen
+        const val WIPE_TRAIL_EM = 0.5f
+        const val WIPE_LEAD_EM = 0.5f
+        const val INTERLUDE_MIN_MS = 6000L // shortest pause that gets dots
+        const val DOTS_SPACE_EM = 1.5f // room the dots take above the next line
+        const val DOT_RADIUS_EM = 0.175f
+        const val DOT_PITCH = 3.3f // distance between dot centres, in radii
+        const val DOT_INDENT_EM = 0.1f // how far the dots sit in from the text's edge
+        const val DOT_UNLIT = 0.3f
+        const val DOT_BREATH = 0.1f // how much the group grows and shrinks
+        const val DOT_BREATH_MS = 4500.0 // one breath
+        const val DOT_CLOSE_MS = 600f // the dots shrink away over this long at the end
+        const val LEAD_GROW_EM = 1.5f
+        const val ACTIVE_SIZE_RATIO = 31f / 30f // the line being sung is a little larger
+        const val WIPE_AHEAD_DIM = 0.12f // higher = less light ahead of the sweep // distance over which the lead grows at a line's start
+        const val MIN_WORD_MS = 100L
+        const val LIFT_MS = 1000f
+        const val EMPHASIS_MIN_MS = 1000L
+        const val EMPHASIS_MAX_LETTERS = 7
+        const val EMPHASIS_SUPERSAMPLE = 1.1f // letters that swell are rendered this much larger
+        const val TRAILING_PUNCTUATION = "!?.,;:~…‥。、！？"
+        const val HIGHLIGHT_LEAD_MS = 150L
+        const val SCROLL_LEAD_MS = 350L
+        const val LINE_HOLD_MS = 1000L
+        const val LINE_TAIL_MS = 300L
+        const val SEEK_THRESHOLD_MS = 250f
+        const val MANUAL_TIMEOUT_MS = 3000L
+        const val IDLE_FRAME_MS = 250L
+        const val STALE_FRAME_MS = 400L
+        const val CLOCK_TAU_MS = 250f
+        const val CLOCK_MAX_SLEW = 0.12f
+        const val MASKS_PER_FRAME = 3
+        const val MASK_PAD_EM = 0.3f
+        const val GLOW_RADIUS_EM = 0.09f
+        const val MAX_MASK_PIXELS = 1_000_000L
     }
 }
