@@ -1086,6 +1086,12 @@ class AppleLyricsView @JvmOverloads constructor(
                 canvas.translate(piece.maskLeft, piece.maskTop)
                 val maskScale = piece.maskScale
                 if (maskScale != 1f) canvas.scale(1f / maskScale, 1f / maskScale)
+                val halo = piece.glowMask
+                if (glow > 0.01f && halo != null) {
+                    bitmapPaint.shader = null
+                    bitmapPaint.color = withAlpha(glow * HALO_STRENGTH)
+                    canvas.drawBitmap(halo, 0f, 0f, bitmapPaint)
+                }
                 if (isLit) {
                     bitmapPaint.shader = null
                     bitmapPaint.color = lit
@@ -1202,6 +1208,18 @@ class AppleLyricsView @JvmOverloads constructor(
             val glyphs = Bitmap.createBitmap(width, height, Bitmap.Config.ALPHA_8)
             Canvas(glyphs).drawText(text, piece.start, piece.end, textX, textY, p)
 
+            // A very tight, faint halo for the letters that swell
+            var halo: Bitmap? = null
+            if ((piece.emphasis?.glow ?: 0f) > 0.01f) {
+                p.maskFilter = BlurMaskFilter(
+                    max(1f, GLOW_RADIUS_EM * emSize * scale), BlurMaskFilter.Blur.NORMAL
+                )
+                halo = Bitmap.createBitmap(width, height, Bitmap.Config.ALPHA_8)
+                Canvas(halo).drawText(text, piece.start, piece.end, textX, textY, p)
+                p.maskFilter = null
+            }
+
+            piece.glowMask = halo
             piece.maskScale = scale
             piece.maskLeft = originX - pad / scale
             piece.maskTop = piece.baseline + (top - pad) / scale
@@ -1430,7 +1448,8 @@ class AppleLyricsView @JvmOverloads constructor(
         const val CLOCK_MAX_SLEW = 0.12f
         const val MASKS_PER_FRAME = 3
         const val MASK_PAD_EM = 0.3f
-        const val GLOW_RADIUS_EM = 0.05f
+        const val GLOW_RADIUS_EM = 0.03f // the halo is only a few pixels wide
+        const val HALO_STRENGTH = 0.4f // how strong the halo is, next to the brightening
         const val MAX_MASK_PIXELS = 1_000_000L
     }
 }
