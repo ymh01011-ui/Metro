@@ -77,7 +77,7 @@ class AppleLyricsView @JvmOverloads constructor(
             invalidate()
         }
 
-    var textSizeSp: Float = 31f // dp, not scaled by the system font size
+    var textSizeSp: Float = 29f // dp, not scaled by the system font size
         set(value) {
             field = value
             requestRebuild()
@@ -226,6 +226,8 @@ class AppleLyricsView @JvmOverloads constructor(
         var maskLeft = 0f
         var maskTop = 0f
         var maskTried = false
+        /** The masks are drawn this many times larger, so that a swelling letter stays sharp. */
+        var maskScale = 1f
     }
 
     private class Block(
@@ -1039,6 +1041,8 @@ class AppleLyricsView @JvmOverloads constructor(
             if (mask != null) {
                 // Cached glyphs move by fractions of a pixel, so slow motion stays smooth
                 canvas.translate(piece.maskLeft, piece.maskTop)
+                val maskScale = piece.maskScale
+                if (maskScale != 1f) canvas.scale(1f / maskScale, 1f / maskScale)
                 val glowMask = piece.glowMask
                 if (glow > 0.01f && glowMask != null) {
                     bitmapPaint.shader = null
@@ -1054,7 +1058,9 @@ class AppleLyricsView @JvmOverloads constructor(
                 } else {
                     bitmapPaint.color = Color.BLACK // the shader supplies colour and alpha
                     bitmapPaint.shader =
-                        wipeShader(lit, unlit, gradient, wipe - trail, piece.rtl, piece.maskLeft)
+                        wipeShader(
+                            lit, unlit, gradient, wipe - trail, piece.rtl, piece.maskLeft, maskScale
+                        )
                 }
                 canvas.drawBitmap(mask, 0f, 0f, bitmapPaint)
             } else {
@@ -1126,18 +1132,22 @@ class AppleLyricsView @JvmOverloads constructor(
         p.clearShadowLayer()
         p.color = Color.WHITE
 
+        // A letter that swells is rendered at its largest size and drawn smaller when at rest,
+        // so that it is not blown up (and blurred) while it swells
+        val scale = if (piece.emphasis != null) EMPHASIS_SUPERSAMPLE else 1f
+        p.textSize = p.textSize * scale
         val metrics = p.fontMetrics
-        val pad = ceil(emSize * MASK_PAD_EM).toInt()
+        val pad = ceil(emSize * MASK_PAD_EM * scale).toInt()
         val top = floor(metrics.top).toInt()
         val height = ceil(metrics.bottom).toInt() - top + pad * 2
         // The whole-pixel part of the position is the mask's corner, the rest stays in the text
         val originX = floor(piece.x)
         val fraction = piece.x - originX
-        val width = ceil(fraction + piece.width).toInt() + pad * 2
+        val width = ceil((fraction + piece.width) * scale).toInt() + pad * 2
         if (width <= 0 || height <= 0 || width.toLong() * height > MAX_MASK_PIXELS) return
 
         val text = block.layout.text
-        val textX = pad + fraction
+        val textX = pad + fraction * scale
         val textY = (pad - top).toFloat()
         try {
             val glyphs = Bitmap.createBitmap(width, height, Bitmap.Config.ALPHA_8)
@@ -1146,14 +1156,15 @@ class AppleLyricsView @JvmOverloads constructor(
             var glow: Bitmap? = null
             if ((piece.emphasis?.glow ?: 0f) > 0.01f) {
                 p.maskFilter = BlurMaskFilter(
-                    max(1f, GLOW_RADIUS_EM * emSize), BlurMaskFilter.Blur.NORMAL
+                    max(1f, GLOW_RADIUS_EM * emSize * scale), BlurMaskFilter.Blur.NORMAL
                 )
                 glow = Bitmap.createBitmap(width, height, Bitmap.Config.ALPHA_8)
                 Canvas(glow).drawText(text, piece.start, piece.end, textX, textY, p)
                 p.maskFilter = null
             }
-            piece.maskLeft = originX - pad
-            piece.maskTop = piece.baseline + top - pad
+            piece.maskScale = scale
+            piece.maskLeft = originX - pad / scale
+            piece.maskTop = piece.baseline + (top - pad) / scale
             piece.glowMask = glow
             piece.mask = glyphs
         } catch (e: OutOfMemoryError) {
@@ -1169,7 +1180,8 @@ class AppleLyricsView @JvmOverloads constructor(
         width: Float,
         start: Float,
         rtl: Boolean,
-        originX: Float = 0f
+        originX: Float = 0f,
+        scale: Float = 1f
     ): Shader {
         var shader = wipeShader
         if (shader == null || lit != wipeShaderLit || unlit != wipeShaderUnlit ||
@@ -1194,6 +1206,7 @@ class AppleLyricsView @JvmOverloads constructor(
         shaderMatrix.postTranslate(if (rtl) -start else start, 0f)
         // Masks are drawn from their own corner, text from the block's
         shaderMatrix.postTranslate(-originX, 0f)
+        if (scale != 1f) shaderMatrix.postScale(scale, 1f)
         shader.setLocalMatrix(shaderMatrix)
         return shader
     }
@@ -1363,6 +1376,7 @@ class AppleLyricsView @JvmOverloads constructor(
         const val LIFT_MS = 1000f
         const val EMPHASIS_MIN_MS = 1000L
         const val EMPHASIS_MAX_LETTERS = 7
+        const val EMPHASIS_SUPERSAMPLE = 1.1f // letters that swell are rendered this much larger
         const val TRAILING_PUNCTUATION = "!?.,;:~…‥。、！？"
         const val HIGHLIGHT_LEAD_MS = 150L
         const val SCROLL_LEAD_MS = 350L
