@@ -304,13 +304,15 @@ abstract class AbsRecyclerViewFragment<A : RecyclerView.Adapter<*>, LM : Recycle
     }
 
     // مسار الـ FastScroller يبدأ من أول عنصر (تحت شريط البحث والصف) بدل أعلى
-    // الشاشة. باقي الأطراف بتفضل زي padding القايمة الأصلي.
+    // الشاشة. الجوانب صفر: شبكات الألبومات والفنانين والبلاي ليست بتحط padding
+    // جانبي على القايمة، ولو مررناه للـ FastScroller الشكل بيبعد عن حافة الشاشة
+    // (وده كان الفرق بين صفحة Songs وباقي الصفحات).
     private fun applyFastScrollerPadding() {
         val list = _binding?.recyclerView ?: return
         fastScroller?.setPadding(
-            list.paddingLeft,
+            0,
             headerHeight(),
-            list.paddingRight,
+            0,
             list.paddingBottom
         )
     }
