@@ -77,7 +77,7 @@ class AppleLyricsView @JvmOverloads constructor(
             invalidate()
         }
 
-    var textSizeSp: Float = 31f // dp, not scaled by the system font size
+    var textSizeSp: Float = 30f // dp, not scaled by the system font size
         set(value) {
             field = value
             requestRebuild()
@@ -202,7 +202,10 @@ class AppleLyricsView @JvmOverloads constructor(
         val responseSec: Float,
         val intensity: Float,
         val glow: Float,
-        val spread: Float
+        val spread: Float,
+        /** The glow has its own clock: the part of the word the letter is in. */
+        val glowStartMs: Long,
+        val glowSpanMs: Float
     )
 
     /** Text drawn in one call: a syllable, a joined-script word, or one emphasised letter. */
@@ -346,11 +349,16 @@ class AppleLyricsView @JvmOverloads constructor(
 
             val end = max(line.endMs, line.background?.endMs ?: 0L)
             val next = data.lines.getOrNull(index + 1)?.startMs
+            val previousEnd = data.lines.take(index + 1).maxOf {
+                max(it.endMs, it.background?.endMs ?: 0L)
+            }
             val activeUntil = when {
+                // The final line keeps its normal hold before fading out
                 next == null -> end + LINE_HOLD_MS
-                // Short pauses: keep the line lit until the next one takes over
-                next >= end && next - end <= LINE_HOLD_MS -> next
-                else -> end + LINE_TAIL_MS
+                // Turn the line off when the interlude dots actually appear
+                next - previousEnd >= INTERLUDE_MIN_MS -> previousEnd
+                // Otherwise, keep it lit until the next line starts, even if timings overlap
+                else -> next
             }
             Row(line, main, background, translation, paragraphRtl != line.isOpposite, activeUntil)
         }
@@ -425,10 +433,6 @@ class AppleLyricsView @JvmOverloads constructor(
         val wordText = text.substring(syllables.first().start, syllables.last().end)
         val joined = wordText.any { isJoiningScript(it) }
         val emphasisStarts = emphasisClusters(wordText, syllables, emphasise && !joined)
-        // Held long enough for a wave but too long to wave as one word: each part of it is
-        // treated as a word of its own, with its own time and letter count
-        val splitUp = emphasise && !joined && emphasisStarts == null && syllables.size > 1 &&
-                syllables.sumOf { it.endMs - it.startMs } >= EMPHASIS_MIN_MS
 
         var letterIndex = 0
         var from = 0
@@ -476,52 +480,38 @@ class AppleLyricsView @JvmOverloads constructor(
                 stops.add(Stop(visualLine, startMs, endMs, begin, begin + segmentWidth, rtl))
 
                 if (emphasisStarts == null && !joined) {
-                    val syllable = segment.word
-                    val clusters = if (splitUp) {
-                        emphasisClusters(
-                            text.substring(syllable.start, syllable.end),
-                            listOf(syllable),
-                            true
+                    pieces.add(
+                        Piece(
+                            segment.start, segment.end, visualLine, left, segmentWidth,
+                            baseline, rtl, startMs, endMs = endMs
                         )
-                    } else null
-                    if (clusters == null) {
-                        pieces.add(
-                            Piece(
-                                segment.start, segment.end, visualLine, left, segmentWidth,
-                                baseline, rtl, startMs, endMs = endMs
-                            )
-                        )
-                    } else {
-                        for (c in clusters.indices) {
-                            val start = syllable.start + clusters[c].first
-                            val end = syllable.start + clusters[c].second
-                            if (start < segment.start || end > segment.end) continue
-                            pieces.add(
-                                Piece(
-                                    start, end, visualLine, leftOf(start, end),
-                                    widthOf(start, end), baseline, rtl, syllable.startMs,
-                                    emphasisFor(listOf(syllable), c, clusters.size)
-                                )
-                            )
-                        }
-                    }
+                    )
                 }
             }
 
             if (emphasisStarts != null) {
                 val base = syllables.first().start
+                val partOf = emphasisStarts.map { cluster ->
+                    syllables.firstOrNull {
+                        base + cluster.first >= it.start && base + cluster.first < it.end
+                    }
+                }
                 for (i in emphasisStarts.indices) {
                     val start = base + emphasisStarts[i].first
                     val end = base + emphasisStarts[i].second
                     if (start < runStart || end > runEnd) continue
                     // The glow goes by the part of the word the letter is in
-                    val part = syllables.firstOrNull { start >= it.start && start < it.end }
-                    val partSeconds = part?.let { (it.endMs - it.startMs) / 1000f }
+                    val part = partOf[i]
+                    val countInPart = max(1, partOf.count { it === part })
+                    val indexInPart = partOf.subList(0, i).count { it === part }
                     pieces.add(
                         Piece(
                             start, end, visualLine, leftOf(start, end), widthOf(start, end),
                             baseline, rtl, syllables.first().startMs,
-                            emphasisFor(syllables, letterIndex++, emphasisStarts.size, partSeconds)
+                            emphasisFor(
+                                syllables, letterIndex++, emphasisStarts.size,
+                                part, indexInPart, countInPart
+                            )
                         )
                     )
                 }
@@ -571,11 +561,15 @@ class AppleLyricsView @JvmOverloads constructor(
         syllables: List<LyricWord>,
         index: Int,
         count: Int,
-        partSeconds: Float? = null
+        part: LyricWord? = null,
+        indexInPart: Int = index,
+        countInPart: Int = count
     ): Emphasis {
         val start = syllables.first().startMs
         val seconds = max(0.001f, (syllables.last().endMs - start) / 1000f)
-        val glowSeconds = partSeconds ?: seconds
+        val partStart = part?.startMs ?: start
+        val partSeconds = part?.let { max(0.001f, (it.endMs - it.startMs) / 1000f) } ?: seconds
+        val partDelay = min(partSeconds / countInPart * 0.4f, 0.4f)
         val delay = min(seconds / count * 0.4f, 0.4f)
         val middle = (count - 1) / 2f
         return Emphasis(
@@ -584,8 +578,13 @@ class AppleLyricsView @JvmOverloads constructor(
             holdSec = 2f * seconds / count,
             responseSec = min(3f, seconds),
             intensity = (seconds - 1f).coerceIn(0f, 1f),
-            glow = 0.45f * ((glowSeconds - 0.8f) / 0.4f).coerceIn(0f, 1f),
-            spread = (index - middle) / max(1f, middle)
+            glow = 0.45f * ((partSeconds - 0.8f) / 0.4f).coerceIn(0f, 1f),
+            spread = (index - middle) / max(1f, middle),
+            glowStartMs = partStart + ((indexInPart + 1) * partDelay * 1000f).toLong(),
+            glowSpanMs = max(
+                1f,
+                2000f * partSeconds / countInPart + 2000f * min(3f, partSeconds)
+            )
         )
     }
 
@@ -635,16 +634,31 @@ class AppleLyricsView @JvmOverloads constructor(
     /** The line the view should be resting on. It moves a little ahead of the singing. */
     private fun findTarget(now: Long): Int {
         var index = 0
+        var heldBack = false
         for (i in 1 until rows.size) {
             val start = rows[i].line.startMs
             val previous = rows[i - 1].line
-            // Line-timed lyrics have no pause between lines, so they always lead
-            val previousEnd = if (previous.words.isEmpty()) 0L else previous.endMs
-            val due = max(start - SCROLL_LEAD_MS, min(previousEnd, start))
-            if (now >= due) index = i else break
+            // Include background-vocal timing when deciding whether two lines overlap.
+            val previousEnd = max(previous.endMs, previous.background?.endMs ?: 0L)
+            // Line-timed lyrics have no pause between lines, so they always lead.
+            val dueEnd = if (previous.words.isEmpty()) 0L else previousEnd
+            val due = max(start - SCROLL_LEAD_MS, min(dueEnd, start))
+            if (now < due) break
+
+            // If this is the second line in an overlap, keep the current scroll target.
+            // The next line's start releases the hold, so overlapping lines move together
+            // instead of scrolling once for each line.
+            val currentEnd = max(
+                rows[index].line.endMs,
+                rows[index].line.background?.endMs ?: 0L
+            )
+            if (!heldBack && start < currentEnd) {
+                heldBack = true
+            } else {
+                index = i
+                heldBack = false
+            }
         }
-        // Overlapping singers: stay on the earliest line that is still being sung
-        while (index > 0 && rows[index - 1].line.endMs > now + SCROLL_LEAD_MS) index--
         return index
     }
 
@@ -682,7 +696,7 @@ class AppleLyricsView @JvmOverloads constructor(
             if (row.line.startMs > time) {
                 if (next < 0) next = i
             } else {
-                previousEnd = max(previousEnd, row.activeUntilMs)
+                previousEnd = max(previousEnd, row.line.endMs, row.line.background?.endMs ?: 0L)
             }
         }
         if (next < 0) return -1
@@ -711,6 +725,8 @@ class AppleLyricsView @JvmOverloads constructor(
         val indent = emSize * DOT_INDENT_EM
         val startX = if (row.rightAligned) width - sidePadding - indent - total
         else sidePadding + indent
+        val rtlText = row.main.layout.lineCount > 0 &&
+                row.main.layout.getParagraphDirection(0) == Layout.DIR_RIGHT_TO_LEFT
         val centerX = startX + total / 2f
         canvas.save()
         canvas.scale(scale, scale, centerX, centerY)
@@ -718,7 +734,10 @@ class AppleLyricsView @JvmOverloads constructor(
             val lit = (progress * 3f - i).coerceIn(0f, 1f)
             val alpha = (DOT_UNLIT + (1f - DOT_UNLIT) * lit) * dotsAmount * closing
             dotsPaint.color = withAlpha(alpha)
-            canvas.drawCircle(startX + radius + i * pitch, centerY, radius, dotsPaint)
+            // In right-to-left text the first dot is the one on the right
+            val dotX = if (rtlText) startX + total - radius - i * pitch
+            else startX + radius + i * pitch
+            canvas.drawCircle(dotX, centerY, radius, dotsPaint)
         }
         canvas.restore()
     }
@@ -790,7 +809,7 @@ class AppleLyricsView @JvmOverloads constructor(
             val active = time >= row.line.startMs - HIGHLIGHT_LEAD_MS && time < row.activeUntilMs
             val activationTarget = if (active) 1f else 0f
             val distance = abs(i - nextTarget)
-            val scaleTarget = 1f
+            val scaleTarget = if (active) ACTIVE_SIZE_RATIO else 1f
             val dimTarget = when {
                 active || manual -> UNLIT
                 distance <= 2 -> UNLIT
@@ -1013,8 +1032,10 @@ class AppleLyricsView @JvmOverloads constructor(
                             emSize * activation
                     shift = emphasis.spread * 0.05f * emSize * pulse
                     scale = 1f + 0.1f * pulse
-                    glow = emphasis.glow * glowCurve(fraction) * activation
                 }
+                val glowFraction =
+                    ((time - emphasis.glowStartMs) / emphasis.glowSpanMs).coerceIn(0f, 1f)
+                glow = emphasis.glow * glowCurve(glowFraction) * activation
                 settled = fraction <= 0f || fraction >= 1f
             }
 
@@ -1360,8 +1381,8 @@ class AppleLyricsView @JvmOverloads constructor(
         const val BG_GAP_EM = 0.92f // gap between the main line and its small background line
         const val ANCHOR_FRACTION = 0.27f // where the sung line rests: higher number = lower on screen
         const val WIPE_TRAIL_EM = 0.5f
-        const val WIPE_LEAD_EM = 0.7f
-        const val INTERLUDE_MIN_MS = 4000L // shortest pause that gets dots (as in AMLL)
+        const val WIPE_LEAD_EM = 0.5f
+        const val INTERLUDE_MIN_MS = 6000L // shortest pause that gets dots
         const val DOTS_SPACE_EM = 1.5f // room the dots take above the next line
         const val DOT_RADIUS_EM = 0.175f
         const val DOT_PITCH = 3.3f // distance between dot centres, in radii
@@ -1371,6 +1392,7 @@ class AppleLyricsView @JvmOverloads constructor(
         const val DOT_BREATH_MS = 4500.0 // one breath
         const val DOT_CLOSE_MS = 600f // the dots shrink away over this long at the end
         const val LEAD_GROW_EM = 1.5f
+        const val ACTIVE_SIZE_RATIO = 31f / 30f // the line being sung is a little larger
         const val WIPE_AHEAD_DIM = 0.12f // higher = less light ahead of the sweep // distance over which the lead grows at a line's start
         const val MIN_WORD_MS = 100L
         const val LIFT_MS = 1000f
