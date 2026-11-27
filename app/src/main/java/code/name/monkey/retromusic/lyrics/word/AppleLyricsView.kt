@@ -696,7 +696,7 @@ class AppleLyricsView @JvmOverloads constructor(
             if (row.line.startMs > time) {
                 if (next < 0) next = i
             } else {
-                previousEnd = max(previousEnd, row.line.endMs, row.line.background?.endMs ?: 0L)
+                previousEnd = maxOf(previousEnd, row.line.endMs, row.line.background?.endMs ?: 0L)
             }
         }
         if (next < 0) return -1
