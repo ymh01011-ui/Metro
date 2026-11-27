@@ -349,16 +349,13 @@ class AppleLyricsView @JvmOverloads constructor(
 
             val end = max(line.endMs, line.background?.endMs ?: 0L)
             val next = data.lines.getOrNull(index + 1)?.startMs
-            val previousEnd = data.lines.take(index + 1).maxOf {
-                max(it.endMs, it.background?.endMs ?: 0L)
-            }
             val activeUntil = when {
-                // The final line keeps its normal hold before fading out
                 next == null -> end + LINE_HOLD_MS
-                // Turn the line off when the interlude dots actually appear
-                next - previousEnd >= INTERLUDE_MIN_MS -> previousEnd
-                // Otherwise, keep it lit until the next line starts, even if timings overlap
-                else -> next
+                // A long pause: the line goes out and the interlude dots take over
+                next - end >= INTERLUDE_MIN_MS -> end + LINE_TAIL_MS
+                // Otherwise the line stays lit until the next one starts
+                next >= end -> next
+                else -> end + LINE_TAIL_MS
             }
             Row(line, main, background, translation, paragraphRtl != line.isOpposite, activeUntil)
         }
@@ -480,12 +477,33 @@ class AppleLyricsView @JvmOverloads constructor(
                 stops.add(Stop(visualLine, startMs, endMs, begin, begin + segmentWidth, rtl))
 
                 if (emphasisStarts == null && !joined) {
-                    pieces.add(
-                        Piece(
-                            segment.start, segment.end, visualLine, left, segmentWidth,
-                            baseline, rtl, startMs, endMs = endMs
+                    // The one exception to "parts of a long word do not wave": a part that is a
+                    // single letter, held long enough, waves on its own
+                    val syllable = segment.word
+                    val single = syllables.size > 1 && syllable.end - syllable.start == 1
+                    val clusters = if (single && emphasise) {
+                        emphasisClusters(
+                            text.substring(syllable.start, syllable.end),
+                            listOf(syllable),
+                            true
                         )
-                    )
+                    } else null
+                    if (clusters == null) {
+                        pieces.add(
+                            Piece(
+                                segment.start, segment.end, visualLine, left, segmentWidth,
+                                baseline, rtl, startMs, endMs = endMs
+                            )
+                        )
+                    } else {
+                        pieces.add(
+                            Piece(
+                                segment.start, segment.end, visualLine, left, segmentWidth,
+                                baseline, rtl, syllable.startMs,
+                                emphasisFor(listOf(syllable), 0, 1)
+                            )
+                        )
+                    }
                 }
             }
 
@@ -556,7 +574,7 @@ class AppleLyricsView @JvmOverloads constructor(
         return if (graphemes in 1..EMPHASIS_MAX_LETTERS) clusters else null
     }
 
-    /** [partSeconds] is how long the part of the word that the letter belongs to is sung. */
+    /** [part] is the part of the word the letter is in: the glow goes by its timing. */
     private fun emphasisFor(
         syllables: List<LyricWord>,
         index: Int,
@@ -638,21 +656,13 @@ class AppleLyricsView @JvmOverloads constructor(
         for (i in 1 until rows.size) {
             val start = rows[i].line.startMs
             val previous = rows[i - 1].line
-            // Include background-vocal timing when deciding whether two lines overlap.
-            val previousEnd = max(previous.endMs, previous.background?.endMs ?: 0L)
-            // Line-timed lyrics have no pause between lines, so they always lead.
-            val dueEnd = if (previous.words.isEmpty()) 0L else previousEnd
-            val due = max(start - SCROLL_LEAD_MS, min(dueEnd, start))
+            // Line-timed lyrics have no pause between lines, so they always lead
+            val previousEnd = if (previous.words.isEmpty()) 0L else previous.endMs
+            val due = max(start - SCROLL_LEAD_MS, min(previousEnd, start))
             if (now < due) break
-
-            // If this is the second line in an overlap, keep the current scroll target.
-            // The next line's start releases the hold, so overlapping lines move together
-            // instead of scrolling once for each line.
-            val currentEnd = max(
-                rows[index].line.endMs,
-                rows[index].line.background?.endMs ?: 0L
-            )
-            if (!heldBack && start < currentEnd) {
+            // A line that starts while the current one is still being sung does not scroll;
+            // the view moves on when the line after that starts
+            if (!heldBack && start < rows[index].line.endMs) {
                 heldBack = true
             } else {
                 index = i
@@ -696,7 +706,7 @@ class AppleLyricsView @JvmOverloads constructor(
             if (row.line.startMs > time) {
                 if (next < 0) next = i
             } else {
-                previousEnd = maxOf(previousEnd, row.line.endMs, row.line.background?.endMs ?: 0L)
+                previousEnd = max(previousEnd, row.line.endMs, row.line.background?.endMs ?: 0L)
             }
         }
         if (next < 0) return -1
@@ -809,7 +819,8 @@ class AppleLyricsView @JvmOverloads constructor(
             val active = time >= row.line.startMs - HIGHLIGHT_LEAD_MS && time < row.activeUntilMs
             val activationTarget = if (active) 1f else 0f
             val distance = abs(i - nextTarget)
-            val scaleTarget = if (active) ACTIVE_SIZE_RATIO else 1f
+            // The line the view scrolls to grows while it scrolls, not when it is sung
+            val scaleTarget = if (i == nextTarget) ACTIVE_SIZE_RATIO else 1f
             val dimTarget = when {
                 active || manual -> UNLIT
                 distance <= 2 -> UNLIT
