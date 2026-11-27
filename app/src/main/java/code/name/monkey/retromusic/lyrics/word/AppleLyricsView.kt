@@ -77,7 +77,7 @@ class AppleLyricsView @JvmOverloads constructor(
             invalidate()
         }
 
-    var textSizeSp: Float = 29f // dp, not scaled by the system font size
+    var textSizeSp: Float = 31f // dp, not scaled by the system font size
         set(value) {
             field = value
             requestRebuild()
@@ -584,7 +584,7 @@ class AppleLyricsView @JvmOverloads constructor(
             holdSec = 2f * seconds / count,
             responseSec = min(3f, seconds),
             intensity = (seconds - 1f).coerceIn(0f, 1f),
-            glow = 0.6f * ((glowSeconds - 0.8f) / 0.4f).coerceIn(0f, 1f),
+            glow = 0.45f * ((glowSeconds - 0.8f) / 0.4f).coerceIn(0f, 1f),
             spread = (index - middle) / max(1f, middle)
         )
     }
@@ -1390,7 +1390,7 @@ class AppleLyricsView @JvmOverloads constructor(
         const val CLOCK_MAX_SLEW = 0.12f
         const val MASKS_PER_FRAME = 3
         const val MASK_PAD_EM = 0.3f
-        const val GLOW_RADIUS_EM = 0.12f
+        const val GLOW_RADIUS_EM = 0.09f
         const val MAX_MASK_PIXELS = 1_000_000L
     }
 }
