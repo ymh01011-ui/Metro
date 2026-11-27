@@ -349,12 +349,15 @@ class AppleLyricsView @JvmOverloads constructor(
 
             val end = max(line.endMs, line.background?.endMs ?: 0L)
             val next = data.lines.getOrNull(index + 1)?.startMs
+            val third = data.lines.getOrNull(index + 2)?.startMs
             val activeUntil = when {
                 next == null -> end + LINE_HOLD_MS
                 // A long pause: the line goes out and the interlude dots take over
                 next - end >= INTERLUDE_MIN_MS -> end + LINE_TAIL_MS
                 // Otherwise the line stays lit until the next one starts
                 next >= end -> next
+                // Two lines overlap: the first stays lit until the third one starts
+                third != null && third >= end && third - end < INTERLUDE_MIN_MS -> third
                 else -> end + LINE_TAIL_MS
             }
             // Whatever the rules above say, a line never goes out while it is still being sung
@@ -600,7 +603,7 @@ class AppleLyricsView @JvmOverloads constructor(
             holdSec = 2f * seconds / count,
             responseSec = min(3f, seconds),
             intensity = (seconds - 1f).coerceIn(0f, 1f),
-            glow = 0.55f * ((partSeconds - 0.8f) / 0.4f).coerceIn(0f, 1f),
+            glow = 0.8f * ((partSeconds - 0.8f) / 0.4f).coerceIn(0f, 1f),
             spread = (index - middle) / max(1f, middle),
             glowStartMs = partStart + ((indexInPart + 1) * partDelay * 1000f).toLong(),
             glowSpanMs = max(
@@ -824,8 +827,11 @@ class AppleLyricsView @JvmOverloads constructor(
             val active = time >= row.line.startMs - HIGHLIGHT_LEAD_MS && time < row.activeUntilMs
             val activationTarget = if (active) 1f else 0f
             val distance = abs(i - nextTarget)
-            // The line the view scrolls to grows while it scrolls, not when it is sung
-            val scaleTarget = if (i == nextTarget) ACTIVE_SIZE_RATIO else 1f
+            // The line the view scrolls to grows while it scrolls, and so does every line that
+            // is being sung (two overlapping lines are both large)
+            val sungEnd = max(row.line.endMs, row.line.background?.endMs ?: 0L)
+            val beingSung = time >= row.line.startMs - HIGHLIGHT_LEAD_MS && time < sungEnd
+            val scaleTarget = if (i == nextTarget || beingSung) ACTIVE_SIZE_RATIO else 1f
             val dimTarget = when {
                 active || manual -> UNLIT
                 distance <= 2 -> UNLIT
@@ -1080,12 +1086,6 @@ class AppleLyricsView @JvmOverloads constructor(
                 canvas.translate(piece.maskLeft, piece.maskTop)
                 val maskScale = piece.maskScale
                 if (maskScale != 1f) canvas.scale(1f / maskScale, 1f / maskScale)
-                val glowMask = piece.glowMask
-                if (glow > 0.01f && glowMask != null) {
-                    bitmapPaint.shader = null
-                    bitmapPaint.color = withAlpha(glow)
-                    canvas.drawBitmap(glowMask, 0f, 0f, bitmapPaint)
-                }
                 if (isLit) {
                     bitmapPaint.shader = null
                     bitmapPaint.color = lit
@@ -1100,6 +1100,13 @@ class AppleLyricsView @JvmOverloads constructor(
                         )
                 }
                 canvas.drawBitmap(mask, 0f, 0f, bitmapPaint)
+                if (glow > 0.01f) {
+                    // More light on the letter itself, no halo: the letter is drawn again on
+                    // top of itself in the lit colour
+                    bitmapPaint.shader = null
+                    bitmapPaint.color = withAlpha(glow)
+                    canvas.drawBitmap(mask, 0f, 0f, bitmapPaint)
+                }
             } else {
                 paint.shader = null
                 if (isLit) {
@@ -1110,11 +1117,16 @@ class AppleLyricsView @JvmOverloads constructor(
                     paint.color = Color.BLACK
                     paint.shader = wipeShader(lit, unlit, gradient, wipe - trail, piece.rtl)
                 }
-                if (glow > 0.01f) paint.setShadowLayer(GLOW_RADIUS_EM * emSize, 0f, 0f, withAlpha(glow))
                 canvas.drawText(
                     block.layout.text, piece.start, piece.end, piece.x, piece.baseline, paint
                 )
-                if (glow > 0.01f) paint.clearShadowLayer()
+                if (glow > 0.01f) {
+                    paint.shader = null
+                    paint.color = withAlpha(glow)
+                    canvas.drawText(
+                        block.layout.text, piece.start, piece.end, piece.x, piece.baseline, paint
+                    )
+                }
             }
             canvas.restore()
         }
@@ -1190,19 +1202,9 @@ class AppleLyricsView @JvmOverloads constructor(
             val glyphs = Bitmap.createBitmap(width, height, Bitmap.Config.ALPHA_8)
             Canvas(glyphs).drawText(text, piece.start, piece.end, textX, textY, p)
 
-            var glow: Bitmap? = null
-            if ((piece.emphasis?.glow ?: 0f) > 0.01f) {
-                p.maskFilter = BlurMaskFilter(
-                    max(1f, GLOW_RADIUS_EM * emSize * scale), BlurMaskFilter.Blur.NORMAL
-                )
-                glow = Bitmap.createBitmap(width, height, Bitmap.Config.ALPHA_8)
-                Canvas(glow).drawText(text, piece.start, piece.end, textX, textY, p)
-                p.maskFilter = null
-            }
             piece.maskScale = scale
             piece.maskLeft = originX - pad / scale
             piece.maskTop = piece.baseline + (top - pad) / scale
-            piece.glowMask = glow
             piece.mask = glyphs
         } catch (e: OutOfMemoryError) {
             // Out of memory: this piece is drawn as plain text instead
