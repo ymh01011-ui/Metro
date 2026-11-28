@@ -1244,13 +1244,18 @@ class AppleLyricsView @JvmOverloads constructor(
         if (shader == null || lit != wipeShaderLit || unlit != wipeShaderUnlit ||
             width != wipeShaderWidth
         ) {
-            // The middle stop sits where the sweep really is. It is a little darker than a
-            // straight line from lit to unlit, which tones down the light that runs ahead
-            val centre = WIPE_TRAIL_EM / (WIPE_TRAIL_EM + WIPE_LEAD_EM)
-            val middle = blend(lit, unlit, min(0.95f, centre + WIPE_AHEAD_DIM))
+            // The lead is WIPE_LEAD_BASE_EM of normal light plus an extra stretch ahead of it
+            // (WIPE_LEAD_EM in all). The light fades evenly over all of it, and the extra
+            // stretch is only a little dimmer than the normal one would be
+            val total = WIPE_TRAIL_EM + WIPE_LEAD_EM
+            val centre = WIPE_TRAIL_EM / total
+            val baseEnd = (WIPE_TRAIL_EM + WIPE_LEAD_BASE_EM) / total
+            val middle = blend(lit, unlit, centre)
+            val extraStart = blend(lit, unlit, min(0.97f, baseEnd + WIPE_EXTRA_DIM))
             shader = LinearGradient(
                 0f, 0f, width, 0f,
-                intArrayOf(lit, middle, unlit), floatArrayOf(0f, centre, 1f),
+                intArrayOf(lit, middle, extraStart, unlit),
+                floatArrayOf(0f, centre, baseEnd, 1f),
                 Shader.TileMode.CLAMP
             )
             wipeShader = shader
@@ -1417,7 +1422,7 @@ class AppleLyricsView @JvmOverloads constructor(
         const val BG_GAP_EM = 0.92f // gap between the main line and its small background line
         const val ANCHOR_FRACTION = 0.27f // where the sung line rests: higher number = lower on screen
         const val WIPE_TRAIL_EM = 0.5f
-        const val WIPE_LEAD_EM = 0.5f
+        const val WIPE_LEAD_EM = 0.7f
         const val INTERLUDE_MIN_MS = 6000L // shortest pause that gets dots
         const val DOTS_SPACE_EM = 1.5f // room the dots take above the next line
         const val DOT_RADIUS_EM = 0.175f
@@ -1429,7 +1434,8 @@ class AppleLyricsView @JvmOverloads constructor(
         const val DOT_CLOSE_MS = 600f // the dots shrink away over this long at the end
         const val LEAD_GROW_EM = 1.5f
         const val ACTIVE_SIZE_RATIO = 31f / 30f // the line being sung is a little larger
-        const val WIPE_AHEAD_DIM = 0.12f // higher = less light ahead of the sweep // distance over which the lead grows at a line's start
+        const val WIPE_LEAD_BASE_EM = 0.5f // the normal part of the lead (the rest of WIPE_LEAD_EM is the extra)
+        const val WIPE_EXTRA_DIM = 0.06f // how much dimmer the extra part is; 0 = no difference // distance over which the lead grows at a line's start
         const val MIN_WORD_MS = 100L
         const val LIFT_MS = 1000f
         const val EMPHASIS_MIN_MS = 1000L
@@ -1448,8 +1454,8 @@ class AppleLyricsView @JvmOverloads constructor(
         const val CLOCK_MAX_SLEW = 0.12f
         const val MASKS_PER_FRAME = 3
         const val MASK_PAD_EM = 0.3f
-        const val GLOW_RADIUS_EM = 0.03f // the halo is only a few pixels wide
-        const val HALO_STRENGTH = 0.4f // how strong the halo is, next to the brightening
+        const val GLOW_RADIUS_EM = 0.2f // how far the halo reaches (measured on the reference)
+        const val HALO_STRENGTH = 0.22f // halo opacity: about 18% at most, very faint
         const val MAX_MASK_PIXELS = 1_000_000L
     }
 }
